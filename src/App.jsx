@@ -33,7 +33,7 @@ import 'jspdf-autotable';
 
 // Importations des icônes Lucide React
 import {
-    Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, 
+    Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, Bell,
     PlusCircle, MinusCircle, History, CheckCircle, Truck, ShoppingCart, BarChart2,
     DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send, UserPlus, ToggleLeft, ToggleRight, Percent, Save, Download, Wrench, HandCoins, Book, CandlestickChart
 } from 'lucide-react';
@@ -85,6 +85,24 @@ const auth = getAuth(firebaseApp);
 const formatPrice = (price) => `${(price || 0).toFixed(2)} €`;
 const formatDate = (timestamp) => !timestamp?.toDate ? 'Date inconnue' : timestamp.toDate().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const formatPercent = (rate) => `${((rate || 0) * 100).toFixed(0)} %`;
+
+const formatRelativeTime = (timestamp) => {
+    if (!timestamp?.toDate) return null;
+    const now = new Date();
+    const seconds = Math.floor((now - timestamp.toDate()) / 1000);
+    if (seconds < 60) return "à l'instant";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `il y a ${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `il y a ${hours} h`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `il y a ${days} j`;
+    const months = Math.floor(days / 30);
+    if (months < 12) return `il y a ${months} mois`;
+    const years = Math.floor(days / 365);
+    return `il y a ${years} an(s)`;
+};
+
 const AnimationStyles = () => ( <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}.animate-fade-in{animation:fadeIn .5s ease-in-out}@keyframes fadeInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.animate-fade-in-up{animation:fadeInUp .5s ease-out forwards}@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.animate-spin{animation:spin 1s linear infinite}.custom-scrollbar::-webkit-scrollbar{width:8px}.custom-scrollbar::-webkit-scrollbar-track{background:#1f2937}.custom-scrollbar::-webkit-scrollbar-thumb{background:#4f46e5;border-radius:10px}`}</style> );
 
 const Toast = ({ message, type, onClose }) => {
@@ -192,6 +210,86 @@ const ReasonPromptModal = ({ title, message, onConfirm, onCancel }) => {
     );
 };
 
+// NOUVEAU : Composant pour le système de notifications
+const NotificationBell = ({ db, user }) => {
+    const [notifications, setNotifications] = useState([]);
+    const [isPanelOpen, setIsPanelOpen] = useState(false);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const recipientIds = user.role === 'admin' ? [user.uid, 'all_admins'] : [user.uid];
+
+        const q = query(
+            collection(db, 'notifications'), 
+            where('recipientUid', 'in', recipientIds), 
+            orderBy('createdAt', 'desc')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+
+        return () => unsubscribe();
+    }, [db, user]);
+
+    const unreadCount = notifications.filter(n => !n.isRead).length;
+
+    const handleMarkOneAsRead = async (notificationId) => {
+        const notifDocRef = doc(db, 'notifications', notificationId);
+        await updateDoc(notifDocRef, { isRead: true });
+    };
+    
+    const handleMarkAllAsRead = async () => {
+        const batch = writeBatch(db);
+        notifications.forEach(notif => {
+            if (!notif.isRead) {
+                const notifDocRef = doc(db, 'notifications', notif.id);
+                batch.update(notifDocRef, { isRead: true });
+            }
+        });
+        await batch.commit();
+    };
+
+    return (
+        <div className="relative">
+            <button onClick={() => setIsPanelOpen(!isPanelOpen)} className="relative p-2 text-gray-400 hover:text-white">
+                <Bell size={22} />
+                {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                    </span>
+                )}
+            </button>
+
+            {isPanelOpen && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-gray-800 rounded-lg shadow-2xl border border-gray-700 animate-fade-in-up z-50">
+                    <div className="p-3 flex justify-between items-center border-b border-gray-700">
+                        <h4 className="font-bold text-white">Notifications</h4>
+                        {unreadCount > 0 && 
+                            <button onClick={handleMarkAllAsRead} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold">
+                                Marquer tout comme lu
+                            </button>
+                        }
+                    </div>
+                    <div className="max-h-96 overflow-y-auto custom-scrollbar">
+                        {notifications.length > 0 ? notifications.map(notif => (
+                            <div key={notif.id} 
+                                 onClick={() => handleMarkOneAsRead(notif.id)}
+                                 className={`p-4 border-b border-gray-700/50 cursor-pointer hover:bg-gray-900/50 ${!notif.isRead ? 'bg-indigo-900/20' : ''}`}>
+                                <p className="text-sm text-gray-200">{notif.message}</p>
+                                <p className="text-xs text-gray-400 mt-1.5">{formatRelativeTime(notif.createdAt)}</p>
+                            </div>
+                        )) : <p className="p-4 text-sm text-center text-gray-400">Aucune nouvelle notification.</p>}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 const KpiCard = ({ title, value, icon: Icon, color }) => ( <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4"><div className={`p-3 rounded-lg ${color}`}><Icon size={28} className="text-white"/></div><div><p className="text-gray-400 text-sm font-medium">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div> );
 const LoginPage = ({ onLogin, error, isLoggingIn }) => { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); }; return <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4"><div className="text-center mb-8 animate-fade-in"><Package size={48} className="mx-auto text-indigo-400"/><h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1><p className="text-gray-400">Espace de connexion</p></div><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up"><form onSubmit={handleSubmit} className="space-y-6"><div><label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>{error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}<button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60">{isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}</button></form></div></div>;};
 const CreatePosModal = ({ db, showToast, onClose }) => { const [name, setName]=useState(''); const [email, setEmail]=useState(''); const [password, setPassword]=useState(''); const [isLoading, setIsLoading]=useState(false); const handleCreate=async(ev)=>{ev.preventDefault();if(!name||!email||password.length<6){showToast("Nom, email et mot de passe (6+ car.) requis.","error");return}setIsLoading(true);const appName=`secondary-app-${Date.now()}`;let secondaryApp;try{secondaryApp=initializeApp(firebaseConfig,appName);const secondaryAuth=getAuth(secondaryApp);const userCredential=await createUserWithEmailAndPassword(secondaryAuth,email,password);const nU=userCredential.user;const batch=writeBatch(db);batch.set(doc(db,"users",nU.uid),{displayName:name,email:email,role:"pos",status:"active",createdAt:serverTimestamp()});batch.set(doc(db,"pointsOfSale",nU.uid),{name:name,commissionRate:0.3,createdAt:serverTimestamp(),status:"active"});await batch.commit();showToast(`Compte pour ${name} créé !`,"success");onClose()}catch(err){if(err.code==='auth/email-already-in-use'){showToast("Email déjà utilisé.","error")}else{showToast("Erreur de création.","error")}}finally{setIsLoading(false);if(secondaryApp){signOut(getAuth(secondaryApp)).then(()=>deleteApp(secondaryApp))}}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2><form onSubmit={handleCreate} className="space-y-4"><div><label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label><input type="text" value={name} onChange={e=>setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Mot de passe initial</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">{isLoading?<div className="animate-spin rounded-full h-5 w-5 border-b-2"></div>:<><UserPlus size={18}/>Créer</>}</button></div></form></div></div>;};
@@ -291,8 +389,31 @@ const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) =
     );
 };
 
-const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); const handleItemChange=(i,f,v)=>{const nI=[...items];nI[i][f]=v;if(f==='productId')nI[i].scent='';setItems(nI)}; const handleAdd=()=>setItems([...items,{productId:'',scent:'',quantity:10}]); const handleRemove=(i)=>setItems(items.filter((_,idx)=>i!==idx)); const handleSend=async()=>{const vI=items.filter(i=>{const p=products.find(pr=>pr.id===i.productId);if(!p||(p.hasScents!==false&&!i.scent)||i.quantity<=0)return false;return true});if(vI.length===0){showToast("Ajoutez au moins un article valide.","error");return}try{await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp()});showToast("Demande de livraison envoyée !","success");onClose()}catch(e){showToast("Échec de l'envoi.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2><div className="space-y-4">{items.map((item,i)=>{const p=products.find(pr=>pr.id===item.productId);const sS=p&&p.hasScents!==false;return(<div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"><div className="sm:col-span-1"><label className="text-sm">Produit</label><select value={item.productId} onChange={e=>handleItemChange(i,'productId',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="sm:col-span-1">{sS&&<>
-<label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>};
+const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { 
+    const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); 
+    const handleItemChange=(i,f,v)=>{const nI=[...items];nI[i][f]=v;if(f==='productId')nI[i].scent='';setItems(nI)}; 
+    const handleAdd=()=>setItems([...items,{productId:'',scent:'',quantity:10}]); 
+    const handleRemove=(i)=>setItems(items.filter((_,idx)=>i!==idx)); 
+    const handleSend=async()=>{
+        const vI=items.filter(i=>{const p=products.find(pr=>pr.id===i.productId);if(!p||(p.hasScents!==false&&!i.scent)||i.quantity<=0)return false;return true});
+        if(vI.length===0){showToast("Ajoutez au moins un article valide.","error");return}
+        try{
+            await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp()});
+            // Créer une notification pour les admins
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: 'all_admins',
+                message: `Nouvelle demande de livraison reçue de ${posName}.`,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                type: 'NEW_DELIVERY_REQUEST'
+            });
+            showToast("Demande de livraison envoyée !","success");
+            onClose();
+        }catch(e){showToast("Échec de l'envoi.","error")}
+    }; 
+    return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2><div className="space-y-4">{items.map((item,i)=>{const p=products.find(pr=>pr.id===item.productId);const sS=p&&p.hasScents!==false;return(<div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"><div className="sm:col-span-1"><label className="text-sm">Produit</label><select value={item.productId} onChange={e=>handleItemChange(i,'productId',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="sm:col-span-1">{sS&&<>
+<label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>
+};
 
 const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCancelRequest }) => { 
     const [isLoading, setIsLoading] = useState(false); 
@@ -316,7 +437,15 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
             if (!request.originalItems) { 
                 dataToUpdate.originalItems = request.items; 
             } 
-            await updateDoc(requestDocRef, dataToUpdate); 
+            await updateDoc(requestDocRef, dataToUpdate);
+            // Notifier le client de la modification
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: request.posId,
+                message: `Votre demande de livraison du ${formatDate(request.createdAt)} a été modifiée.`,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                type: 'DELIVERY_MODIFIED'
+            });
             showToast("Modifications enregistrées !", "success"); 
         } catch (error) { 
             showToast("Erreur lors de la sauvegarde.", "error"); 
@@ -325,7 +454,36 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
         } 
     }; 
 
-    const handleAdvanceStatus = async () => { setIsLoading(true); const currentIndex = deliveryStatusOrder.indexOf(request.status); if (currentIndex >= deliveryStatusOrder.length - 1) { setIsLoading(false); return; } const nextStatus = deliveryStatusOrder[currentIndex + 1]; try { if (nextStatus === 'delivered') { await runTransaction(db, async (transaction) => { const requestDocRef = doc(db, "deliveryRequests", request.id); for (const item of editableItems) { const product = products.find(p => p.id === item.productId); if (!product) throw new Error(`Produit ID ${item.productId} non trouvé.`); const stockId = product.hasScents !== false ? `${item.productId}_${item.scent}` : item.productId; const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId); const stockDoc = await transaction.get(stockDocRef); if (stockDoc.exists()) { const newQuantity = (stockDoc.data().quantity || 0) + item.quantity; transaction.update(stockDocRef, { quantity: newQuantity }); } else { transaction.set(stockDocRef, { productId: item.productId, productName: product.name, price: product.price, scent: item.scent || null, quantity: item.quantity }); } } transaction.update(requestDocRef, { status: 'delivered', items: editableItems }); }); showToast("Livraison confirmée et stock mis à jour !", "success"); } else { const requestDocRef = doc(db, 'deliveryRequests', request.id); await updateDoc(requestDocRef, { status: nextStatus }); showToast(`Statut mis à jour : ${DELIVERY_STATUS_STEPS[nextStatus]}`, "success"); } onClose(); } catch (error) { console.error("Erreur: ", error); showToast(error.message || "Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; 
+    const handleAdvanceStatus = async () => { 
+        setIsLoading(true); 
+        const currentIndex = deliveryStatusOrder.indexOf(request.status); 
+        if (currentIndex >= deliveryStatusOrder.length - 1) { setIsLoading(false); return; } 
+        const nextStatus = deliveryStatusOrder[currentIndex + 1]; 
+        try { 
+            if (nextStatus === 'delivered') { 
+                await runTransaction(db, async (transaction) => { const requestDocRef = doc(db, "deliveryRequests", request.id); for (const item of editableItems) { const product = products.find(p => p.id === item.productId); if (!product) throw new Error(`Produit ID ${item.productId} non trouvé.`); const stockId = product.hasScents !== false ? `${item.productId}_${item.scent}` : item.productId; const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId); const stockDoc = await transaction.get(stockDocRef); if (stockDoc.exists()) { const newQuantity = (stockDoc.data().quantity || 0) + item.quantity; transaction.update(stockDocRef, { quantity: newQuantity }); } else { transaction.set(stockDocRef, { productId: item.productId, productName: product.name, price: product.price, scent: item.scent || null, quantity: item.quantity }); } } transaction.update(requestDocRef, { status: 'delivered', items: editableItems }); }); 
+                showToast("Livraison confirmée et stock mis à jour !", "success"); 
+            } else { 
+                const requestDocRef = doc(db, 'deliveryRequests', request.id); 
+                await updateDoc(requestDocRef, { status: nextStatus }); 
+                showToast(`Statut mis à jour : ${DELIVERY_STATUS_STEPS[nextStatus]}`, "success"); 
+            }
+            // Notifier le client du changement de statut
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: request.posId,
+                message: `Le statut de votre commande est maintenant : "${DELIVERY_STATUS_STEPS[nextStatus]}".`,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                type: 'DELIVERY_UPDATE'
+            });
+            onClose(); 
+        } catch (error) { 
+            console.error("Erreur: ", error); 
+            showToast(error.message || "Erreur lors de la mise à jour.", "error"); 
+        } finally { 
+            setIsLoading(false); 
+        } 
+    }; 
     const isLastStep = request.status === 'shipping'; const canAdvance = request.status !== 'delivered' && request.status !== 'cancelled'; 
     
     return ( 
@@ -445,7 +603,6 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                 <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Package} color="bg-pink-600" />
             </div>
 
-            {/* MODIFIÉ: La classe de la grille est passée à `md:grid-cols-2` */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
                 <div className="bg-gray-800 rounded-2xl p-6">
                     <h3 className="text-xl font-bold mb-6">Suivi de vos livraisons</h3>
@@ -643,9 +800,14 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
         setIsLoading(true);
         const requestDocRef = doc(db, 'deliveryRequests', requestToCancel.id);
         try {
-            await updateDoc(requestDocRef, {
-                status: 'cancelled',
-                cancellationReason: reason
+            await updateDoc(requestDocRef, { status: 'cancelled', cancellationReason: reason });
+            // Notifier le client de l'annulation
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: requestToCancel.posId,
+                message: `Votre commande du ${formatDate(requestToCancel.createdAt)} a été annulée.`,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                type: 'DELIVERY_CANCELLED'
             });
             showToast("Commande annulée avec succès.", "success");
             setRequestToCancel(null);
@@ -847,7 +1009,10 @@ export default function App() {
                  <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30 backdrop-blur-sm">
                      <div className="flex items-center gap-2"><Package size={24} className="text-indigo-400"/><h1 className="text-xl font-bold">{APP_NAME}</h1></div>
                      <div className="flex items-center gap-4">
-                         <span className="text-gray-300 text-sm"><span className="font-semibold">{userData.displayName}</span> ({userData.role})</span>
+                         <span className="text-gray-300 text-sm hidden sm:block"><span className="font-semibold">{userData.displayName}</span> ({userData.role})</span>
+                         
+                         <NotificationBell db={db} user={userData} />
+
                          <button onClick={handleLogout} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"><LogOut size={20} /></button>
                      </div>
                  </header>
