@@ -79,6 +79,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
 const KpiCard = ({ title, value, icon: Icon, color }) => ( <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4"><div className={`p-3 rounded-lg ${color}`}><Icon size={28} className="text-white"/></div><div><p className="text-gray-400 text-sm font-medium">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div> );
 const LoginPage = ({ onLogin, error, isLoggingIn }) => { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); }; return <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4"><div className="text-center mb-8 animate-fade-in"><Package size={48} className="mx-auto text-indigo-400"/><h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1><p className="text-gray-400">Espace de connexion</p></div><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up"><form onSubmit={handleSubmit} className="space-y-6"><div><label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>{error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}<button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60">{isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}</button></form></div></div>;};
 const CreatePosModal = ({ db, showToast, onClose }) => { const [name, setName]=useState(''); const [email, setEmail]=useState(''); const [password, setPassword]=useState(''); const [isLoading, setIsLoading]=useState(false); const handleCreate=async(ev)=>{ev.preventDefault();if(!name||!email||password.length<6){showToast("Nom, email et mot de passe (6+ car.) requis.","error");return}setIsLoading(true);const appName=`secondary-app-${Date.now()}`;let secondaryApp;try{secondaryApp=initializeApp(firebaseConfig,appName);const secondaryAuth=getAuth(secondaryApp);const userCredential=await createUserWithEmailAndPassword(secondaryAuth,email,password);const nU=userCredential.user;const batch=writeBatch(db);batch.set(doc(db,"users",nU.uid),{displayName:name,email:email,role:"pos",status:"active",createdAt:serverTimestamp()});batch.set(doc(db,"pointsOfSale",nU.uid),{name:name,commissionRate:0.3,createdAt:serverTimestamp(),lastPayment:null});await batch.commit();showToast(`Compte pour ${name} créé !`,"success");onClose()}catch(err){if(err.code==='auth/email-already-in-use'){showToast("Email déjà utilisé.","error")}else{showToast("Erreur de création.","error")}}finally{setIsLoading(false);if(secondaryApp){signOut(getAuth(secondaryApp)).then(()=>deleteApp(secondaryApp))}}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2><form onSubmit={handleCreate} className="space-y-4"><div><label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label><input type="text" value={name} onChange={e=>setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Mot de passe initial</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">{isLoading?<div className="animate-spin rounded-full h-5 w-5 border-b-2"></div>:<><UserPlus size={18}/>Créer</>}</button></div></form></div></div>;};
+const EditPosModal = ({ db, pos, showToast, onClose, onSave }) => { const [name, setName] = useState(pos.name); const [commissionRate, setCommissionRate] = useState((pos.commissionRate || 0) * 100); const [isLoading, setIsLoading] = useState(false); const handleSave = async (event) => { event.preventDefault(); setIsLoading(true); const newRate = parseFloat(commissionRate) / 100; if (isNaN(newRate) || newRate < 0 || newRate > 1) { showToast("Le taux de commission doit être entre 0 et 100.", "error"); setIsLoading(false); return; } try { const posDocRef = doc(db, "pointsOfSale", pos.id); await updateDoc(posDocRef, { name: name, commissionRate: newRate, }); showToast("Dépôt mis à jour avec succès !", "success"); onSave(); onClose(); } catch (error) { console.error("Erreur de mise à jour du dépôt : ", error); showToast("Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}> <h2 className="text-2xl font-bold text-white mb-6">Modifier le Dépôt-Vente</h2> <form onSubmit={handleSave} className="space-y-4"> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label> <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Taux de Commission (%)</label> <input type="number" value={commissionRate} onChange={e => setCommissionRate(e.target.value)} required min="0" max="100" className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div className="flex justify-end gap-4 pt-4"> <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button> <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60"> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>} </button> </div> </form> </div> </div> ); };
 const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) => { const [pId,setpId]=useState(''); const [s,setS]=useState(''); const [q,setQ]=useState(1); const aS=useMemo(()=>products.find(p=>p.id===pId)?.hasScents!==false?scents:[],[pId, products, scents]); const maxQ=useMemo(()=>(!pId?0:stock.find(i=>i.productId===pId&&(i.scent===s||aS.length===0))?.quantity||0),[stock,pId,s,aS]); const handleSave=async()=>{const p=products.find(pr=>pr.id===pId);if(!p||(p.hasScents!==false&&!s)||q<=0){showToast("Veuillez remplir tous les champs.","error");return}if(q>maxQ){showToast("Quantité > stock disponible.","error");return}try{const b=writeBatch(db);b.set(doc(collection(db,`pointsOfSale/${posId}/sales`)),{productId:p.id,productName:p.name,scent:p.hasScents!==false?s:null,quantity:Number(q),unitPrice:p.price,totalAmount:p.price*Number(q),createdAt:serverTimestamp()});const stockDocRef=doc(db,`pointsOfSale/${posId}/stock`,p.hasScents!==false?`${p.id}_${s}`:p.id);const currentStockItem=stock.find(i=>i.id===stockDocRef.id);if(currentStockItem){b.update(stockDocRef,{quantity:maxQ-Number(q)})}else{b.set(stockDocRef,{productId:p.id,productName:p.name,scent:p.hasScents!==false?s:null,quantity:-(Number(q)),price:p.price})}await b.commit();showToast("Vente enregistrée !","success");onClose()}catch(e){showToast("Échec de l'enregistrement.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg border-gray-700" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Enregistrer une Vente</h2><div className="space-y-4"><div><label className="block text-sm">Produit</label><select value={pId} onChange={e=>{setpId(e.target.value);setS('')}} className="w-full bg-gray-700 p-3 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>{aS.length>0&&<div><label className="block text-sm">Parfum</label><select value={s} onChange={e=>setS(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" disabled={!pId}><option value="">-- Choisir --</option>{aS.map(sc=><option key={sc.id} value={sc.name}>{sc.name}</option>)}</select></div>}<div><label className="block text-sm">Quantité</label><input type="number" value={q} onChange={e=>setQ(Number(e.target.value))} min="1" max={maxQ} className="w-full bg-gray-700 p-3 rounded-lg"/>{maxQ>0&&<p className="text-xs text-gray-400 mt-1">En stock: {maxQ}</p>}</div></div><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSave} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">Enregistrer</button></div></div></div>};
 const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); const handleItemChange=(i,f,v)=>{const nI=[...items];nI[i][f]=v;if(f==='productId')nI[i].scent='';setItems(nI)}; const handleAdd=()=>setItems([...items,{productId:'',scent:'',quantity:10}]); const handleRemove=(i)=>setItems(items.filter((_,idx)=>i!==idx)); const handleSend=async()=>{const vI=items.filter(i=>{const p=products.find(pr=>pr.id===i.productId);if(!p||(p.hasScents!==false&&!i.scent)||i.quantity<=0)return false;return true});if(vI.length===0){showToast("Ajoutez au moins un article valide.","error");return}try{await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp()});showToast("Demande de livraison envoyée !","success");onClose()}catch(e){showToast("Échec de l'envoi.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2><div className="space-y-4">{items.map((item,i)=>{const p=products.find(pr=>pr.id===item.productId);const sS=p&&p.hasScents!==false;return(<div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"><div className="sm:col-span-1"><label className="text-sm">Produit</label><select value={item.productId} onChange={e=>handleItemChange(i,'productId',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="sm:col-span-1">{sS&&<>
 <label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>};
@@ -158,8 +159,6 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
         } catch (error) { console.error("Erreur annulation vente: ", error); showToast("Erreur: impossible d'annuler la vente.", "error"); }
     };
 
-    const AdminCommissionManager = () => { /* ... (inchangé) */ return null };
-
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
             {showSaleModal && <SaleModal db={db} posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} showToast={showToast} products={products} scents={scents} />}
@@ -199,7 +198,6 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-white">Gestion du Stock Actuel</h3>
                     <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
-                        {/* CORRECTION APPLIQUÉE ICI */}
                         <>
                             {showHistory ? "Masquer l'historique" : "Voir l'historique"} {showHistory ? <ChevronUp/> : <ChevronDown/>}
                         </>
@@ -219,6 +217,9 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [selectedPos, setSelectedPos] = useState(null);
+    const [posToEdit, setPosToEdit] = useState(null);
+    const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0, topPos: [], topProducts: [] });
+    const [deliveryRequests, setDeliveryRequests] = useState([]);
 
     useEffect(() => {
         const q = query(collection(db, "pointsOfSale"), orderBy('name'));
@@ -228,8 +229,62 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
         return unsub;
     }, [db]);
 
+    useEffect(() => {
+        const q = query(collection(db, "deliveryRequests"), where('status', '==', 'pending'), orderBy('createdAt', 'desc'));
+        const unsub = onSnapshot(q, (snapshot) => {
+            setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        return unsub;
+    }, [db]);
+
+    useEffect(() => {
+        if (pointsOfSale.length === 0) return;
+
+        const fetchAllSales = async () => {
+            let allSales = [];
+            for (const pos of pointsOfSale) {
+                const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`));
+                const salesSnapshot = await getDocs(salesQuery);
+                const salesData = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate }));
+                allSales = [...allSales, ...salesData];
+            }
+            return allSales;
+        };
+
+        fetchAllSales().then(allSales => {
+            const revenue = allSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
+            const commission = allSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
+            const toPay = revenue - commission;
+
+            const salesByPos = allSales.reduce((acc, sale) => {
+                acc[sale.posName] = (acc[sale.posName] || 0) + sale.totalAmount;
+                return acc;
+            }, {});
+            const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 3);
+
+            const salesByProduct = allSales.reduce((acc, sale) => {
+                const key = `${sale.productName} ${sale.scent || ''}`.trim();
+                acc[key] = (acc[key] || 0) + sale.quantity;
+                return acc;
+            }, {});
+            const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 3);
+
+            setGlobalStats({ revenue, commission, toPay, topPos, topProducts });
+        });
+
+    }, [pointsOfSale, db]);
+
+    const handleMarkRequestCompleted = async (requestId) => {
+        const requestDocRef = doc(db, 'deliveryRequests', requestId);
+        try {
+            await updateDoc(requestDocRef, { status: 'completed' });
+            showToast("Demande marquée comme traitée !", "success");
+        } catch (error) {
+            showToast("Erreur lors de la mise à jour.", "error");
+        }
+    };
+
     if (selectedPos) {
-        // Affiche la vue détaillée d'un dépôt-vente, en réutilisant le PosDashboard en mode admin
         return (
             <div>
                  <button onClick={() => setSelectedPos(null)} className="m-4 bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">← Retour à la liste</button>
@@ -241,9 +296,47 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
             {showCreateModal && <CreatePosModal db={db} showToast={showToast} onClose={() => setShowCreateModal(false)} />}
+            {posToEdit && <EditPosModal db={db} pos={posToEdit} showToast={showToast} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
+            
             <div className="flex justify-between items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord Administrateur</h2><p className="text-gray-400">Gestion des dépôts-ventes et du catalogue.</p></div>
                 <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><UserPlus size={20} /> Ajouter un Dépôt</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <KpiCard title="Chiffre d'Affaires Total" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
+                <KpiCard title="Commissions Totales" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
+                <KpiCard title="Total à Reverser" value={formatPrice(globalStats.toPay)} icon={Package} color="bg-pink-600" />
+                <KpiCard title="Dépôts Actifs" value={pointsOfSale.length} icon={Store} color="bg-purple-600" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
+                <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6">
+                    <h3 className="text-xl font-bold text-white mb-4">Demandes de livraison en attente</h3>
+                    {deliveryRequests.length > 0 ? (
+                        <ul className="space-y-3">
+                            {deliveryRequests.map(req => (
+                                <li key={req.id} className="bg-gray-700/50 p-3 rounded-lg flex justify-between items-center">
+                                    <div>
+                                        <p className="font-bold">{req.posName}</p>
+                                        <p className="text-sm text-gray-400">{formatDate(req.createdAt)} - {req.items.length} article(s)</p>
+                                    </div>
+                                    <button onClick={() => handleMarkRequestCompleted(req.id)} className="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-3 rounded-lg flex items-center gap-2 text-sm"><CheckCircle size={16}/> Traitée</button>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : <p className="text-gray-400">Aucune demande de livraison en attente.</p>}
+                </div>
+                <div className="space-y-6">
+                    <div className="bg-gray-800 rounded-2xl p-6">
+                        <h3 className="text-xl font-bold mb-4">Top 3 Dépôts (par CA)</h3>
+                        {globalStats.topPos.length > 0 ? <ul>{globalStats.topPos.map(([name, val])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{formatPrice(val)}</strong></li>)}</ul> : <p className="text-gray-400">Aucune donnée.</p>}
+                    </div>
+                    <div className="bg-gray-800 rounded-2xl p-6">
+                        <h3 className="text-xl font-bold mb-4">Top 3 Produits (par Qté)</h3>
+                        {globalStats.topProducts.length > 0 ? <ul>{globalStats.topProducts.map(([name, qty])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{qty}</strong></li>)}</ul> : <p className="text-gray-400">Aucune donnée.</p>}
+                    </div>
+                </div>
             </div>
 
             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
@@ -257,7 +350,10 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
                                     <td className="p-3 font-medium">{pos.name}</td>
                                     <td className="p-3">{formatPercent(pos.commissionRate)}</td>
                                     <td className="p-3">{formatDate(pos.createdAt)}</td>
-                                    <td className="p-3"><button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1">Voir Détails</button></td>
+                                    <td className="p-3 space-x-2">
+                                        <button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button>
+                                        <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Modifier</button>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -340,7 +436,7 @@ export default function App() {
                      </div>
                  </header>
                  <main>
-                     {catalogIsLoading ?
+                     {catalogIsLoading && (!products.length || !scents.length) ?
                          <div className="p-8 text-center text-gray-400">Chargement du catalogue...</div>
                          :
                          userData.role === 'admin' ? 
