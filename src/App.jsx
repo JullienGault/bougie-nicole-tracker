@@ -41,6 +41,7 @@ import {
 // =================================================================
 
 const firebaseConfig = {
+    // Vos clés de configuration Firebase restent ici
     apiKey: "AIzaSyDUmxNBMQ2gWvCHWMrk0iowFpYVE1wMpMo",
     authDomain: "bougienicole.firebaseapp.com",
     projectId: "bougienicole",
@@ -167,6 +168,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
     const [reason, setReason] = useState('');
     const handleConfirm = () => {
         if (requiresReason && !reason.trim()) {
+            // Remplacé alert par un moyen plus visible si possible, mais pour l'instant on garde une alerte simple.
             alert("Veuillez fournir une raison.");
             return;
         }
@@ -200,7 +202,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
 
 const ReasonPromptModal = ({ title, message, onConfirm, onCancel }) => {
     const [reason, setReason] = useState('');
-   
+    
     const handleConfirm = () => {
         if (!reason.trim()) {
             alert("Le motif est obligatoire.");
@@ -235,15 +237,125 @@ const ReasonPromptModal = ({ title, message, onConfirm, onCancel }) => {
     );
 };
 
+// --- MODAL DE VENTE AJOUTÉE ---
+const SaleModal = ({ posId, stock, onClose }) => {
+    const { db, showToast } = useContext(AppContext);
+    const [items, setItems] = useState([{ stockId: '', quantity: 1, maxQuantity: 0 }]);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const availableStock = useMemo(() => stock.filter(s => s.quantity > 0), [stock]);
+
+    const handleItemChange = (index, field, value) => {
+        const newItems = [...items];
+        newItems[index][field] = value;
+        if (field === 'stockId') {
+            const selectedStock = stock.find(s => s.id === value);
+            newItems[index].maxQuantity = selectedStock ? selectedStock.quantity : 0;
+            newItems[index].quantity = 1; // reset quantity
+        }
+        if (field === 'quantity') {
+            newItems[index].quantity = Math.max(1, Math.min(Number(value), newItems[index].maxQuantity));
+        }
+        setItems(newItems);
+    };
+
+    const addItem = () => setItems([...items, { stockId: '', quantity: 1, maxQuantity: 0 }]);
+    const removeItem = (index) => setItems(items.filter((_, i) => i !== index));
+
+    const handleConfirmSale = async () => {
+        const validItems = items.filter(item => item.stockId && item.quantity > 0);
+        if (validItems.length === 0) {
+            showToast("Veuillez ajouter au moins un produit à la vente.", "error");
+            return;
+        }
+        setIsLoading(true);
+
+        const batch = writeBatch(db);
+        let allSucceeded = true;
+
+        for (const item of validItems) {
+            const stockItem = stock.find(s => s.id === item.stockId);
+            if (!stockItem || stockItem.quantity < item.quantity) {
+                showToast(`Stock insuffisant pour ${stockItem.productName}.`, "error");
+                allSucceeded = false;
+                break;
+            }
+
+            const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, item.stockId);
+            batch.update(stockDocRef, { quantity: stockItem.quantity - item.quantity });
+
+            const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
+            batch.set(saleDocRef, {
+                productId: stockItem.productId,
+                productName: stockItem.productName,
+                scent: stockItem.scent,
+                quantity: item.quantity,
+                unitPrice: stockItem.price,
+                totalAmount: stockItem.price * item.quantity,
+                createdAt: serverTimestamp(),
+            });
+        }
+
+        if (allSucceeded) {
+            try {
+                await batch.commit();
+                showToast("Vente enregistrée avec succès !", "success");
+                onClose();
+            } catch (error) {
+                console.error("Erreur lors de la vente :", error);
+                showToast("Une erreur est survenue.", "error");
+            }
+        }
+        setIsLoading(false);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-white mb-6">Enregistrer une Vente</h2>
+                <div className="space-y-3">
+                    {items.map((item, index) => (
+                        <div key={index} className="bg-gray-700/50 p-4 rounded-lg flex gap-4 items-end">
+                            <div className="flex-grow">
+                                <label className="text-sm">Produit</label>
+                                <select value={item.stockId} onChange={e => handleItemChange(index, 'stockId', e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg mt-1">
+                                    <option value="">-- Choisir un produit en stock --</option>
+                                    {availableStock.map(s => <option key={s.id} value={s.id}>{s.productName} {s.scent && `(${s.scent})`} - Stock: {s.quantity}</option>)}
+                                </select>
+                            </div>
+                            <div className="w-32">
+                                <label className="text-sm">Quantité</label>
+                                <input type="number" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', e.target.value)} min="1" max={item.maxQuantity} className="w-full bg-gray-600 p-2 rounded-lg mt-1" disabled={!item.stockId} />
+                            </div>
+                            {items.length > 1 && <button onClick={() => removeItem(index)} className="p-2 bg-red-600 rounded-lg text-white mb-px"><Trash2 size={20} /></button>}
+                        </div>
+                    ))}
+                </div>
+                 <button type="button" onClick={addItem} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button>
+                <div className="flex justify-end gap-4 mt-8">
+                    <button onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
+                    <button onClick={handleConfirmSale} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60" disabled={isLoading}>
+                        {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><CheckCircle size={18} /> Valider la vente</>}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 const NotificationBell = () => {
     const { db, loggedInUserData } = useContext(AppContext);
     const [notifications, setNotifications] = useState([]);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     useEffect(() => {
-        if (!loggedInUserData) return;
+        if (!loggedInUserData || !db) return;
         
-        const recipientIds = loggedInUserData.role === 'admin' ? [loggedInUserData.uid, 'all_admins'] : [loggedInUserData.uid];
+        // 'all_admins' est pour les notifs globales, loggedInUserData.uid pour les notifs personnelles
+        const recipientIds = loggedInUserData.role === 'admin' 
+            ? [loggedInUserData.uid, 'all_admins'] 
+            : [loggedInUserData.uid];
 
         const q = query(
             collection(db, 'notifications'), 
@@ -254,6 +366,7 @@ const NotificationBell = () => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }, (error) => {
+            // Cette erreur est cruciale. Si elle apparaît, l'index est manquant.
             console.error("Erreur de lecture des notifications (vérifiez les index Firestore): ", error);
         });
 
@@ -264,7 +377,11 @@ const NotificationBell = () => {
 
     const handleMarkOneAsRead = async (notificationId) => {
         const notifDocRef = doc(db, 'notifications', notificationId);
-        await updateDoc(notifDocRef, { isRead: true });
+        try {
+            await updateDoc(notifDocRef, { isRead: true });
+        } catch (error) {
+            console.error("Erreur lors de la mise à jour de la notification: ", error);
+        }
     };
     
     const handleMarkAllAsRead = async () => {
@@ -276,7 +393,11 @@ const NotificationBell = () => {
                 batch.update(notifDocRef, { isRead: true });
             }
         });
-        await batch.commit();
+        try {
+            await batch.commit();
+        } catch (error) {
+            console.error("Erreur lors de la mise à jour des notifications: ", error);
+        }
     };
 
     return (
@@ -616,10 +737,10 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     const [showReasonModal, setShowReasonModal] = useState(false);
 
     const DeliveryStatusTracker = ({ status }) => { if (status === 'cancelled') { return ( <div className="flex items-center gap-4 bg-red-500/10 p-3 rounded-lg"> <AlertTriangle className="h-8 w-8 text-red-500"/> <div> <h4 className="font-bold text-red-400">Commande Annulée</h4> <p className="text-xs text-gray-400">Cette commande ne sera pas traitée.</p> </div> </div> ); } const currentIndex = deliveryStatusOrder.indexOf(status); return ( <div className="flex items-center space-x-4"> {deliveryStatusOrder.map((step, index) => { const isCompleted = index < currentIndex; const isActive = index === currentIndex; return ( <React.Fragment key={step}> <div className="flex flex-col items-center text-center"> <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${isCompleted ? 'bg-green-600' : isActive ? 'bg-blue-600 animate-pulse' : 'bg-gray-600'}`}> {isCompleted ? <Check size={16} /> : <span className="text-xs font-bold">{index + 1}</span>} </div> <p className={`mt-2 text-xs w-20 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{DELIVERY_STATUS_STEPS[step]}</p> </div> {index < deliveryStatusOrder.length - 1 && (<div className={`flex-1 h-1 rounded-full ${isCompleted ? 'bg-green-600' : 'bg-gray-600'}`}></div>)} </React.Fragment> ); })} </div> ); }; 
-   
+    
     const handleQuantityChange = (index, quantity) => { const newItems = [...editableItems]; newItems[index].quantity = Math.max(0, Number(quantity)); setEditableItems(newItems); }; 
     const handleRemoveItem = (index) => { setEditableItems(editableItems.filter((_, i) => i !== index)); }; 
-   
+    
     const handleSaveChanges = async (reason) => { 
         setShowReasonModal(false);
         setIsLoading(true); 
@@ -678,7 +799,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
         } 
     }; 
     const isLastStep = request.status === 'shipping'; const canAdvance = request.status !== 'delivered' && request.status !== 'cancelled'; 
-   
+    
     return ( 
     <>
         {showReasonModal && (
@@ -709,6 +830,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     </>
     ); 
 };
+
 
 // =================================================================
 // TABLEAUX DE BORD (DASHBOARDS)
@@ -952,7 +1074,7 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
 };
 
 const AdminDashboard = () => {
-    const { db, loggedInUserData, showToast } = useContext(AppContext);
+    const { db, loggedInUserData, showToast, products } = useContext(AppContext);
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [posUsers, setPosUsers] = useState([]); 
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1132,7 +1254,7 @@ const AdminDashboard = () => {
             {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
             {posToEdit && <EditPosModal pos={posToEdit} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
             {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`} onConfirm={handleTogglePosStatus} onCancel={() => setPosToToggleStatus(null)} confirmText="Oui, confirmer" confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} />}
-            {requestToProcess && <ProcessDeliveryModal request={requestToProcess} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
+            {requestToProcess && <ProcessDeliveryModal request={requestToProcess} products={products} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
             {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Vous êtes sur le point d'annuler cette commande. Veuillez fournir un motif (obligatoire).`} confirmText="Confirmer l'Annulation" confirmColor="bg-red-600 hover:bg-red-700" requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />}
             
             <div className="flex justify-between items-center mb-8">
@@ -1254,7 +1376,7 @@ export default function App() {
         const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), snap => setProducts(snap.docs.map(d=>({id:d.id, ...d.data()}))));
         const unsubScents = onSnapshot(query(collection(db, 'scents'), orderBy('name')), snap => setScents(snap.docs.map(d=>({id:d.id, ...d.data()}))));
         return () => { unsubProducts(); unsubScents(); };
-    }, []);
+    }, [db]);
     
     const showToast = useCallback((message, type = 'success') => { setToast({ id: Date.now(), message, type }); }, []);
     
@@ -1282,7 +1404,7 @@ export default function App() {
             }
         });
         return () => unsubscribe();
-    }, []);
+    }, [db]);
 
     const handleLogin = useCallback(async (email, password) => {
         setLoginError(null); setIsLoggingIn(true);
