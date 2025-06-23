@@ -196,7 +196,15 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
             </div>
 
             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-white">Gestion du Stock Actuel</h3><button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300">{showHistory ? 'Masquer l'historique' : 'Voir l'historique'} {showHistory ? <ChevronUp/> : <ChevronDown/>}</button></div>
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-white">Gestion du Stock Actuel</h3>
+                    <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
+                        {/* CORRECTION APPLIQUÉE ICI */}
+                        <>
+                            {showHistory ? "Masquer l'historique" : "Voir l'historique"} {showHistory ? <ChevronUp/> : <ChevronDown/>}
+                        </>
+                    </button>
+                </div>
                 {showHistory ? (
                     <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Actions</th></tr></thead><tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName} <span className="text-gray-400">{sale.scent || ''}</span></td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3"><button onClick={() => setSaleToDelete(sale)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button></td></tr>))}</tbody></table></div>
                 ) : (
