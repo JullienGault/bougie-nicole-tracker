@@ -5,9 +5,7 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore, collection, doc, onSnapshot, writeBatch, query, where, addDoc, setDoc, serverTimestamp, orderBy, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 
-// Importations pour l'export PDF
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+// Les imports pour jspdf sont retirés, ils seront chargés dynamiquement
 
 // Importations des icônes Lucide React
 import {
@@ -36,7 +34,6 @@ const LOW_STOCK_THRESHOLD = 3;
 // =================================================================
 // FONCTIONS UTILITAIRES ET COMPOSANTS UI
 // =================================================================
-// NOTE : Ces composants sont présents pour la clarté, mais ont été compactés.
 const formatPrice = (price) => `${(price || 0).toFixed(2)} €`;
 const formatDate = (timestamp) => !timestamp?.toDate ? 'Date inconnue' : timestamp.toDate().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const formatPercent = (rate) => `${((rate || 0) * 100).toFixed(0)} %`;
@@ -46,53 +43,28 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
 const KpiCard = ({ title, value, icon: Icon, color }) => ( <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4"><div className={`p-3 rounded-lg ${color}`}><Icon size={28} className="text-white"/></div><div><p className="text-gray-400 text-sm font-medium">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div> );
 const LoginPage = ({ onLogin, error, isLoggingIn }) => { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); }; return <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4"><div className="text-center mb-8 animate-fade-in"><Package size={48} className="mx-auto text-indigo-400"/><h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1><p className="text-gray-400">Espace de connexion</p></div><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up"><form onSubmit={handleSubmit} className="space-y-6"><div><label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>{error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}<button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60">{isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}</button></form></div></div>;};
 const CreatePosModal = ({ db, showToast, onClose }) => { const [d, setD]=useState(''); const [e, setE]=useState(''); const [p, setP]=useState(''); const [l, setL]=useState(false); const handleCreate=async(ev)=>{ev.preventDefault();if(!d||!e||p.length<6){showToast("Nom, email et mot de passe (6+ car.) requis.","error");return}setL(true);const appName=`secondary-app-${Date.now()}`;let secondaryApp;try{secondaryApp=initializeApp(firebaseConfig,appName);const secondaryAuth=getAuth(secondaryApp);const userCredential=await createUserWithEmailAndPassword(secondaryAuth,e,p);const nU=userCredential.user;await setDoc(doc(db,"users",nU.uid),{displayName:d,email:e,role:"pos",status:"active",createdAt:serverTimestamp()});await setDoc(doc(db,"pointsOfSale",nU.uid),{name:d,commissionRate:0.3,createdAt:serverTimestamp()});showToast(`Compte pour ${d} créé !`,"success");onClose()}catch(err){if(err.code==='auth/email-already-in-use'){showToast("Email déjà utilisé.","error")}else{showToast("Erreur de création.","error")}}finally{setL(false);if(secondaryApp){signOut(getAuth(secondaryApp)).then(()=>deleteApp(secondaryApp))}}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2><form onSubmit={handleCreate} className="space-y-4"><div><label>Nom du Dépôt</label><input type="text" value={d} onChange={e=>setD(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label>Email</label><input type="email" value={e} onChange={e=>setE(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label>Mot de passe initial</label><input type="password" value={p} onChange={e=>setP(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button type="submit" disabled={l} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">{l?<div className="animate-spin rounded-full h-5 w-5 border-b-2"></div>:<><UserPlus size={18}/>Créer</>}</button></div></form></div></div>;};
-
-// ... Les autres Modales (SaleModal, DeliveryRequestModal, StockAdjustmentModal) sont ici ...
-
-
-// =================================================================
-// TABLEAU DE BORD DÉPÔT-VENTE
-// =================================================================
-const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = false }) => {
-    // ... implémentation complète du dashboard POS ici ...
-    return <div>Tableau de bord pour {user.displayName}</div>
+const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) => { const [pId,setpId]=useState(''); const [s,setS]=useState(''); const [q,setQ]=useState(1); const aS=useMemo(()=>products.find(p=>p.id===pId)?.hasScents!==false?scents:[],[pId, products, scents]); const maxQ=useMemo(()=>(!pId?0:stock.find(i=>i.productId===pId&&(i.scent===s||aS.length===0))?.quantity||0),[stock,pId,s,aS]); const handleSave=async()=>{const p=products.find(pr=>pr.id===pId);if(!p||(p.hasScents!==false&&!s)||q<=0){showToast("Veuillez remplir tous les champs.","error");return}if(q>maxQ){showToast("Quantité > stock disponible.","error");return}try{const b=writeBatch(db);b.set(doc(collection(db,`pointsOfSale/${posId}/sales`)),{productId:p.id,productName:p.name,scent:p.hasScents!==false?s:null,quantity:Number(q),unitPrice:p.price,totalAmount:p.price*Number(q),createdAt:serverTimestamp()});b.update(doc(db,`pointsOfSale/${posId}/stock`,p.hasScents!==false?`${p.id}_${s}`:p.id),{quantity:maxQ-Number(q)});await b.commit();showToast("Vente enregistrée !","success");onClose()}catch(e){showToast("Échec de l'enregistrement.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg border-gray-700" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Enregistrer une Vente</h2><div className="space-y-4"><div><label className="block text-sm">Produit</label><select value={pId} onChange={e=>{setpId(e.target.value);setS('')}} className="w-full bg-gray-700 p-3 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>{aS.length>0&&<div><label className="block text-sm">Parfum</label><select value={s} onChange={e=>setS(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" disabled={!pId}><option value="">-- Choisir --</option>{aS.map(sc=><option key={sc.id} value={sc.name}>{sc.name}</option>)}</select></div>}<div><label className="block text-sm">Quantité</label><input type="number" value={q} onChange={e=>setQ(e.target.value)} min="1" max={maxQ} className="w-full bg-gray-700 p-3 rounded-lg"/>{maxQ>0&&<p className="text-xs text-gray-400 mt-1">En stock: {maxQ}</p>}</div></div><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSave} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">Enregistrer</button></div></div></div>};
+const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); const handleItemChange=(i,f,v)=>{const nI=[...items];nI[i][f]=v;if(f==='productId')nI[i].scent='';setItems(nI)}; const handleAdd=()=>setItems([...items,{productId:'',scent:'',quantity:10}]); const handleRemove=(i)=>setItems(items.filter((_,idx)=>i!==idx)); const handleSend=async()=>{const vI=items.filter(i=>{const p=products.find(pr=>pr.id===i.productId);if(!p||(p.hasScents!==false&&!i.scent)||i.quantity<=0)return false;return true});if(vI.length===0){showToast("Ajoutez au moins un article valide.","error");return}try{await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp()});showToast("Demande de livraison envoyée !","success");onClose()}catch(e){showToast("Échec de l'envoi.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2><div className="space-y-4">{items.map((item,i)=>{const p=products.find(pr=>pr.id===item.productId);const sS=p&&p.hasScents!==false;return(<div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"><div className="sm:col-span-1"><label className="text-sm">Produit</label><select value={item.productId} onChange={e=>handleItemChange(i,'productId',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="sm:col-span-1">{sS&&<>
+<label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>};
+const StockAdjustmentModal = ({ item, onClose, onAdjust, db, posId }) => {
+    const [adjustment, setAdjustment] = useState(0);
+    const [reason, setReason] = useState('');
+    const handleAdjust = () => { if(adjustment !== 0 && reason) onAdjust(item, adjustment, reason); };
+    return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-2">Ajuster le stock</h2><p className="text-gray-400 mb-6">Produit : {item.productName} {item.scent || ''}</p><div className="space-y-4"><div><label>Ajustement (ex: -1 pour une casse, +1 pour un retour)</label><input type="number" value={adjustment} onChange={e=>setAdjustment(Number(e.target.value))} className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label>Motif (obligatoire)</label><textarea value={reason} onChange={e=>setReason(e.target.value)} rows="3" className="w-full bg-gray-700 p-3 rounded-lg" placeholder="Ex: Produit cassé en rayon"></textarea></div></div><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleAdjust} disabled={!reason.trim() || adjustment === 0} className="bg-indigo-600 font-bold py-2 px-4 rounded-lg disabled:opacity-50">Ajuster</button></div></div></div>
 };
 
 
 // =================================================================
-// TABLEAU DE BORD ADMIN
+// TABLEAUX DE BORD (DASHBOARDS)
 // =================================================================
+
+const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = false }) => {
+    // ...
+    return <div>Tableau de bord pour {user.displayName}</div>; // Placeholder
+};
 const AdminDashboard = ({ db, user, showToast, products, scents }) => {
-    const [view, setView] = useState('dashboard'); // 'dashboard' ou 'products'
-    
-    // Logique pour la vue principale du dashboard
-    const AdminHome = () => {
-        const [pointsOfSale, setPointsOfSale] = useState([]);
-        const [deliveryRequests, setDeliveryRequests] = useState([]);
-        const [globalKpis, setGlobalKpis] = useState({ totalRevenue: 0, totalStockValue: 0, posCount: 0});
-        // ... autres états ...
-
-        // ... useEffect pour récupérer les données ...
-
-        return <div>Vue principale de l'admin</div>;
-    };
-    
-    // Logique pour le catalogue produit
-    const ProductCatalogAdmin = () => {
-        // ... UI et logique pour gérer les produits ...
-        return <div>Gestion du catalogue</div>
-    };
-    
-    return (
-        <div className="p-4 sm:p-8 animate-fade-in">
-            <div className="mb-8"><h2 className="text-3xl font-bold">Tableau de Bord Administrateur</h2></div>
-            <div className="flex gap-4 border-b border-gray-700 mb-6">
-                <button onClick={() => setView('dashboard')} className={`py-2 px-4 ${view === 'dashboard' ? 'border-b-2 border-indigo-500 text-white' : 'text-gray-400'}`}>Dashboard</button>
-                <button onClick={() => setView('products')} className={`py-2 px-4 ${view === 'products' ? 'border-b-2 border-indigo-500 text-white' : 'text-gray-400'}`}>Catalogue Produits</button>
-            </div>
-            {view === 'dashboard' ? <AdminHome /> : <ProductCatalogAdmin />}
-        </div>
-    );
+    // ...
+    return <div>Tableau de bord Admin</div>; // Placeholder
 };
 
 
@@ -109,12 +81,32 @@ export default function App() {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [toast, setToast] = useState(null);
 
-    // NOUVEAU: Données du catalogue chargées une seule fois
+    // Chargement dynamique du catalogue et des parfums
     const [products, setProducts] = useState([]);
     const [scents, setScents] = useState([]);
+    
+    // NOUVEAU: État pour savoir si les librairies PDF sont prêtes
+    const [pdfReady, setPdfReady] = useState(false);
 
     const db = useMemo(() => getFirestore(firebaseApp), []);
     const auth = useMemo(() => getAuth(firebaseApp), []);
+
+    // Chargement des librairies PDF au démarrage
+    useEffect(() => {
+        document.title = APP_TITLE;
+        const jspdfScript = document.createElement('script');
+        jspdfScript.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+        jspdfScript.async = true;
+        document.body.appendChild(jspdfScript);
+
+        jspdfScript.onload = () => {
+            const autotableScript = document.createElement('script');
+            autotableScript.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.1/jspdf.plugin.autotable.min.js";
+            autotableScript.async = true;
+            document.body.appendChild(autotableScript);
+            autotableScript.onload = () => setPdfReady(true);
+        };
+    }, []);
 
     // Chargement du catalogue
     useEffect(() => {
@@ -123,7 +115,7 @@ export default function App() {
         const unsubScents = onSnapshot(query(collection(db, 'scents'), orderBy('name')), snap => setScents(snap.docs.map(d=>({id:d.id, ...d.data()}))));
         return () => { unsubProducts(); unsubScents(); };
     }, [db]);
-
+    
     const showToast = useCallback((message, type = 'success') => { setToast({ id: Date.now(), message, type }); }, []);
     
     useEffect(() => {
@@ -134,9 +126,7 @@ export default function App() {
                     if (doc.exists()) {
                         setUserData({ uid: authUser.uid, email: authUser.email, ...doc.data() });
                         setUser(authUser);
-                    } else {
-                        signOut(auth);
-                    }
+                    } else { signOut(auth); }
                     setIsLoading(false);
                 }, () => { setIsLoading(false); signOut(auth); });
                 return () => unsubUser();
@@ -158,14 +148,12 @@ export default function App() {
     const handleLogout = useCallback(() => { signOut(auth); }, [auth]);
 
     const renderContent = () => {
-        if (isLoading || (user && products.length === 0)) {
+        if (isLoading || (user && (products.length === 0 || scents.length === 0))) {
             return <div className="bg-gray-900 min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>;
         }
-
         if (!user || !userData) {
             return <LoginPage onLogin={handleLogin} error={loginError} isLoggingIn={isLoggingIn} />;
         }
-        
         return (
              <div className="bg-gray-900 text-white min-h-screen font-sans">
                  <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30">
@@ -178,7 +166,7 @@ export default function App() {
                 <main>
                     {userData.role === 'admin' ? 
                         <AdminDashboard db={db} user={userData} showToast={showToast} products={products} scents={scents} /> : 
-                        <PosDashboard db={db} user={userData} showToast={showToast} products={products} scents={scents} />
+                        <PosDashboard db={db} user={userData} showToast={showToast} products={products} scents={scents} pdfReady={pdfReady} />
                     }
                 </main>
             </div>
