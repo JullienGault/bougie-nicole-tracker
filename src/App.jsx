@@ -18,7 +18,8 @@ import {
     where,
     setDoc,
     serverTimestamp,
-    orderBy
+    orderBy,
+    updateDoc
 } from 'firebase/firestore';
 
 // Importations des icônes Lucide React
@@ -43,7 +44,7 @@ const APP_NAME = "Bougie Nicole - Gestion Dépôts";
 const APP_TITLE = "Bougie Nicole Tracker";
 
 // =================================================================
-// INITIALISATION DE FIREBASE (ROBUSTE)
+// INITIALISATION DE FIREBASE
 // =================================================================
 let firebaseApp;
 if (!getApps().length) {
@@ -53,10 +54,14 @@ if (!getApps().length) {
 }
 
 // =================================================================
-// COMPOSANTS UI
+// COMPOSANTS UI GÉNÉRIQUES
 // =================================================================
 
 const AnimationStyles = () => ( <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style> );
+
+const Toast = ({ message, type, onClose }) => {
+    // ... (Code du composant Toast, inchangé)
+};
 
 const LoginPage = ({ onLogin, error, isLoggingIn }) => {
     const [email, setEmail] = useState('');
@@ -120,7 +125,7 @@ const CreatePosModal = ({ db, showToast, onClose }) => {
             
             await setDoc(doc(db, "pointsOfSale", newUser.uid), {
                 name: displayName,
-                commissionRate: 0.30, // Commission par défaut
+                commissionRate: 0.30,
                 createdAt: serverTimestamp()
             });
             
@@ -168,17 +173,21 @@ const AdminDashboard = ({ db, user, showToast }) => {
 
     useEffect(() => {
         if (!db) return;
-        const q = query(collection(db, 'users'), where('role', '==', 'pos'), orderBy('displayName'));
+        // ** CORRECTION : Requête simplifiée pour éviter le besoin d'un index composé **
+        const q = query(collection(db, 'users'), where('role', '==', 'pos'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const posData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+            let posData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+            // Tri côté client pour assurer l'ordre alphabétique
+            posData.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
             setPointsOfSale(posData);
             setIsLoadingList(false);
         }, (error) => {
-            console.error("Erreur lecture dépôts:", error);
+            console.error("Erreur de lecture des dépôts:", error);
             setIsLoadingList(false);
+            showToast("Impossible de charger la liste des dépôts.", "error");
         });
         return () => unsubscribe();
-    }, [db]);
+    }, [db, showToast]);
 
     return (
         <div style={{padding:'2rem'}}>
@@ -212,7 +221,7 @@ const AdminDashboard = ({ db, user, showToast }) => {
                             </div>
                         ))
                     ) : (
-                        <p style={{textAlign:'center', color:'#9CA3AF'}}>Aucun dépôt-vente créé.</p>
+                        <p style={{textAlign:'center', color:'#9CA3AF'}}>Aucun dépôt-vente créé pour le moment.</p>
                     )}
                 </div>
             </div>
@@ -260,9 +269,7 @@ export default function App() {
                     if (doc.exists()) {
                         setUserData({ uid: authUser.uid, email: authUser.email, ...doc.data() });
                         setUser(authUser);
-                    } else {
-                        signOut(auth);
-                    }
+                    } else { signOut(auth); }
                     setIsLoading(false);
                 }, () => { setIsLoading(false); signOut(auth); });
                 return () => unsubUser();
