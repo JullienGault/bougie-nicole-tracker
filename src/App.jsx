@@ -33,7 +33,7 @@ import {
 import {
     Package, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Bell, ArchiveRestore, Phone, Mail,
     PlusCircle, CheckCircle, Truck, DollarSign, Archive, ChevronDown, ChevronUp, Check, XCircle, Trash2, 
-    Send, UserPlus, Percent, Save, Wrench, HandCoins
+    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign
 } from 'lucide-react';
 
 // =================================================================
@@ -62,6 +62,13 @@ const DELIVERY_STATUS_STEPS = {
   cancelled: 'Annulée'
 };
 const deliveryStatusOrder = ['pending', 'processing', 'shipping', 'delivered'];
+
+// NOUVEAU: Statuts pour les paiements
+const PAYOUT_STATUSES = {
+    pending: { text: 'En attente', color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
+    paid: { text: 'Payé', color: 'text-green-400', bg: 'bg-green-500/10' },
+};
+
 
 // =================================================================
 // INITIALISATION DE FIREBASE
@@ -168,7 +175,6 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
     const [reason, setReason] = useState('');
     const handleConfirm = () => {
         if (requiresReason && !reason.trim()) {
-            // Remplacé alert par un moyen plus visible si possible, mais pour l'instant on garde une alerte simple.
             alert("Veuillez fournir une raison.");
             return;
         }
@@ -237,7 +243,6 @@ const ReasonPromptModal = ({ title, message, onConfirm, onCancel }) => {
     );
 };
 
-// --- MODAL DE VENTE AJOUTÉE ---
 const SaleModal = ({ posId, stock, onClose }) => {
     const { db, showToast } = useContext(AppContext);
     const [items, setItems] = useState([{ stockId: '', quantity: 1, maxQuantity: 0 }]);
@@ -293,6 +298,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
                 unitPrice: stockItem.price,
                 totalAmount: stockItem.price * item.quantity,
                 createdAt: serverTimestamp(),
+                payoutId: null // NOUVEAU: Initialiser à null pour marquer comme non réglé
             });
         }
 
@@ -352,7 +358,6 @@ const NotificationBell = () => {
     useEffect(() => {
         if (!loggedInUserData || !db) return;
         
-        // 'all_admins' est pour les notifs globales, loggedInUserData.uid pour les notifs personnelles
         const recipientIds = loggedInUserData.role === 'admin' 
             ? [loggedInUserData.uid, 'all_admins'] 
             : [loggedInUserData.uid];
@@ -366,7 +371,6 @@ const NotificationBell = () => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }, (error) => {
-            // Cette erreur est cruciale. Si elle apparaît, l'index est manquant.
             console.error("Erreur de lecture des notifications (vérifiez les index Firestore): ", error);
         });
 
@@ -648,7 +652,8 @@ const ProfileModal = ({ onClose }) => {
     );
 };
 
-const EditPosModal = ({ pos, onClose, onSave }) => { 
+// NOUVEAU: Logique de paiement ajoutée ici
+const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => { 
     const { db, showToast } = useContext(AppContext);
     const [name, setName] = useState(pos.name); 
     const [commissionRate, setCommissionRate] = useState((pos.commissionRate || 0) * 100); 
@@ -656,6 +661,12 @@ const EditPosModal = ({ pos, onClose, onSave }) => {
     
     const handleSave = async (event) => { 
         event.preventDefault(); 
+        
+        if (hasOpenBalance) {
+            showToast("Clôturez la période de paiement en cours avant de modifier la commission.", "error");
+            return;
+        }
+
         setIsLoading(true); 
         const newRate = parseFloat(commissionRate) / 100; 
         if (isNaN(newRate) || newRate < 0 || newRate > 1) { 
@@ -665,7 +676,17 @@ const EditPosModal = ({ pos, onClose, onSave }) => {
         } 
         try { 
             const posDocRef = doc(db, "pointsOfSale", pos.id); 
-            await updateDoc(posDocRef, { name: name, commissionRate: newRate, }); 
+            await updateDoc(posDocRef, { name: name, commissionRate: newRate });
+            
+            // Notification pour le client
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: pos.id,
+                message: `Le taux de votre commission a été mis à jour à ${formatPercent(newRate)}.`,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                type: 'COMMISSION_UPDATE'
+            });
+
             showToast("Dépôt mis à jour avec succès !", "success"); 
             onSave(); 
             onClose(); 
@@ -688,11 +709,26 @@ const EditPosModal = ({ pos, onClose, onSave }) => {
                     </div> 
                     <div> 
                         <label className="block text-sm font-medium text-gray-300 mb-1">Taux de Commission (%)</label> 
-                        <input type="number" value={commissionRate} onChange={e => setCommissionRate(e.target.value)} required min="0" max="100" className="w-full bg-gray-700 p-3 rounded-lg"/> 
+                        <input 
+                            type="number" 
+                            value={commissionRate} 
+                            onChange={e => setCommissionRate(e.target.value)} 
+                            required 
+                            min="0" 
+                            max="100" 
+                            className={`w-full bg-gray-700 p-3 rounded-lg ${hasOpenBalance ? 'cursor-not-allowed bg-gray-900/50' : ''}`}
+                            disabled={hasOpenBalance}
+                        /> 
+                        {hasOpenBalance && (
+                             <p className="text-xs text-yellow-400 mt-2">
+                                <Info size={14} className="inline mr-1" />
+                                Vous devez clôturer la période de paiement en cours pour modifier ce taux.
+                            </p>
+                        )}
                     </div> 
                     <div className="flex justify-end gap-4 pt-4"> 
                         <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button> 
-                        <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60"> 
+                        <button type="submit" disabled={isLoading || hasOpenBalance} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"> 
                             {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>} 
                         </button> 
                     </div> 
@@ -837,7 +873,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
 // =================================================================
 
 const PosDashboard = ({ pos, isAdminView = false }) => {
-    const { db, products, scents, showToast, loggedInUserData } = useContext(AppContext);
+    const { db, products, showToast, loggedInUserData } = useContext(AppContext);
     
     const currentUserData = isAdminView ? pos : loggedInUserData;
     const posId = currentUserData.uid;
@@ -848,12 +884,23 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [showSaleModal, setShowSaleModal] = useState(false);
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
-    const [showHistory, setShowHistory] = useState(false);
+    const [showHistory, setShowHistory] = useState('stock'); // 'stock', 'sales', 'payouts'
     const [saleToDelete, setSaleToDelete] = useState(null);
     const [expandedRequestId, setExpandedRequestId] = useState(null);
-    const [currentTab, setCurrentTab] = useState('actives');
+    const [deliveryTab, setDeliveryTab] = useState('actives');
     const [requestToCancel, setRequestToCancel] = useState(null);
     const [showInfoModal, setShowInfoModal] = useState(false);
+    // NOUVEAU: State pour les paiements
+    const [payouts, setPayouts] = useState([]);
+    const [payoutToConfirm, setPayoutToConfirm] = useState(null);
+
+    // NOUVEAU: Fetch des paiements
+    useEffect(() => {
+        if (!db || !posId) return;
+        const q = query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc'));
+        const unsub = onSnapshot(q, (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+        return unsub;
+    }, [db, posId]);
 
     const handleArchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
@@ -894,7 +941,7 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
         };
     }, [deliveryRequests, posId]);
     
-    const deliveriesToDisplay = currentTab === 'actives' ? activeDeliveries : archivedDeliveries;
+    const deliveriesToDisplay = deliveryTab === 'actives' ? activeDeliveries : archivedDeliveries;
 
     const toggleExpand = (requestId) => {
         setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
@@ -920,14 +967,23 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
         }); 
         return unsub;
     }, [db, posId, isAdminView]);
+    
+    // NOUVEAU: Séparer les ventes réglées des non réglées
+    const { unsettledSales, settledSales } = useMemo(() => {
+        return {
+            unsettledSales: salesHistory.filter(s => !s.payoutId),
+            settledSales: salesHistory.filter(s => s.payoutId)
+        };
+    }, [salesHistory]);
 
     const kpis = useMemo(() => {
         const totalStock = stock.reduce((acc, item) => acc + item.quantity, 0);
-        const totalRevenue = salesHistory.reduce((acc, sale) => acc + sale.totalAmount, 0);
+        // Calculer les KPI uniquement sur les ventes non réglées
+        const totalRevenue = unsettledSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
         const commission = totalRevenue * (posData?.commissionRate || 0);
         const netToBePaid = totalRevenue - commission;
         return { totalStock, totalRevenue, netToBePaid };
-    }, [stock, salesHistory, posData]);
+    }, [stock, unsettledSales, posData]);
 
     const salesStats = useMemo(() => {
         if (salesHistory.length === 0) return [];
@@ -938,7 +994,14 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
     const handleDeleteSale = async (reason) => {
         if (!saleToDelete) return;
         const sale = saleToDelete;
-        setSaleToDelete(null); 
+        setSaleToDelete(null);
+
+        // NOUVEAU: Empêcher la suppression d'une vente déjà réglée
+        if(sale.payoutId) {
+            showToast("Impossible d'annuler une vente qui fait partie d'un paiement déjà clôturé.", "error");
+            return;
+        }
+
         const product = products.find(p => p.id === sale.productId);
         if (!product) { showToast("Produit de la vente introuvable.", "error"); return; }
         const stockId = product.hasScents !== false ? `${sale.productId}_${sale.scent}` : sale.productId;
@@ -957,6 +1020,46 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
             showToast("Vente annulée et stock restauré.", "success");
         } catch (error) { console.error("Erreur annulation vente: ", error); showToast("Erreur: impossible d'annuler la vente.", "error"); }
     };
+    
+    // NOUVEAU: Logique pour créer un paiement
+    const handleCreatePayout = async () => {
+        if (unsettledSales.length === 0) {
+            showToast("Aucune vente à régler pour créer un paiement.", "info");
+            return;
+        }
+        setPayoutToConfirm(null);
+
+        const batch = writeBatch(db);
+        const payoutDocRef = doc(collection(db, `pointsOfSale/${posId}/payouts`));
+        
+        const salesToSettle = [...unsettledSales];
+        const grossRevenue = salesToSettle.reduce((acc, sale) => acc + sale.totalAmount, 0);
+        const commissionAmount = grossRevenue * (posData?.commissionRate || 0);
+        const netAmount = grossRevenue - commissionAmount;
+
+        batch.set(payoutDocRef, {
+            createdAt: serverTimestamp(),
+            status: 'pending',
+            grossRevenue,
+            commissionAmount,
+            netAmount,
+            commissionRateAtTheTime: posData?.commissionRate || 0,
+            salesCount: salesToSettle.length
+        });
+
+        salesToSettle.forEach(sale => {
+            const saleRef = doc(db, `pointsOfSale/${posId}/sales`, sale.id);
+            batch.update(saleRef, { payoutId: payoutDocRef.id });
+        });
+
+        try {
+            await batch.commit();
+            showToast("Période de paiement clôturée avec succès !", "success");
+        } catch(error) {
+            console.error("Erreur lors de la clôture de la période: ", error);
+            showToast("Erreur lors de la création du paiement.", "error");
+        }
+    };
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
@@ -965,15 +1068,18 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
             {saleToDelete && <ConfirmationModal title="Confirmer l'annulation" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName} ${saleToDelete.scent || ''} ?\nLe stock sera automatiquement restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} confirmText="Annuler la Vente" requiresReason={true} />}
             {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message="Êtes-vous sûr de vouloir annuler cette commande ? Cette action est irréversible." onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler" confirmColor="bg-red-600 hover:bg-red-700"/>}
             {showInfoModal && <InfoModal title="Annulation Impossible" message="Cette commande est déjà en cours de traitement et ne peut plus être annulée. Veuillez contacter l'administrateur en cas de problème." onClose={() => setShowInfoModal(false)} />}
+            {payoutToConfirm && <ConfirmationModal title="Clôturer la Période" message={`Vous allez clôturer la période avec un montant net à reverser de ${formatPrice(kpis.netToBePaid)}. Un nouveau paiement sera créé avec le statut 'En attente'. Êtes-vous sûr ?`} onConfirm={handleCreatePayout} onCancel={() => setPayoutToConfirm(null)} confirmText="Oui, Clôturer" confirmColor="bg-blue-600 hover:bg-blue-700" />}
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
-                {!isAdminView && (
-                    <div className="flex gap-4 mt-4 md:mt-0">
+                <div className="flex gap-4 mt-4 md:mt-0">
+                    {!isAdminView && <>
                         <button onClick={() => setShowDeliveryModal(true)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Truck size={20} /> Demander une Livraison</button>
                         <button onClick={() => setShowSaleModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><PlusCircle size={20} /> Nouvelle Vente</button>
-                    </div>
-                )}
+                    </>}
+                    {/* NOUVEAU: Bouton pour l'admin pour clôturer la période */}
+                    {isAdminView && <button onClick={() => setPayoutToConfirm(true)} disabled={kpis.netToBePaid <= 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"><CircleDollarSign size={20} /> Clôturer la période</button>}
+                </div>
             </div>
 
             {isAdminView && currentUserData && (
@@ -990,17 +1096,18 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <KpiCard title="Stock Total" value={kpis.totalStock} icon={Archive} color="bg-blue-600" />
-                <KpiCard title="Chiffre d'Affaires Brut" value={formatPrice(kpis.totalRevenue)} icon={DollarSign} color="bg-green-600" />
+                <KpiCard title="CA Brut (période en cours)" value={formatPrice(kpis.totalRevenue)} icon={DollarSign} color="bg-green-600" />
                 <KpiCard title="Votre Commission" value={formatPercent(posData?.commissionRate)} icon={Percent} color="bg-purple-600" />
-                <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Package} color="bg-pink-600" />
+                <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Coins} color="bg-pink-600" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-                <div className="bg-gray-800 rounded-2xl p-6 flex flex-col">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 mt-8">
+                <div className="lg:col-span-3 bg-gray-800 rounded-2xl p-6 flex flex-col">
+                    <h3 className="text-xl font-bold text-white mb-4">Suivi des Livraisons</h3>
                     <div className="border-b border-gray-700 mb-4">
                         <nav className="-mb-px flex gap-6" aria-label="Tabs">
-                            <button onClick={() => setCurrentTab('actives')} className={`${currentTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button>
-                            <button onClick={() => setCurrentTab('archived')} className={`${currentTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button>
+                            <button onClick={() => setDeliveryTab('actives')} className={`${deliveryTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button>
+                            <button onClick={() => setDeliveryTab('archived')} className={`${deliveryTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button>
                         </nav>
                     </div>
                     <div className="flex-grow">
@@ -1020,8 +1127,8 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                                                 </div>
                                                 {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                                             </button>
-                                            {currentTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}
-                                            {currentTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}
+                                            {deliveryTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}
+                                            {deliveryTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}
                                         </div>
 
                                         {isExpanded && (
@@ -1048,25 +1155,35 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                                 );
                             })}
                         </div>
-                    ) : <p className="text-center text-gray-400 pt-8">Aucune demande dans les {currentTab === 'actives' ? 'actives' : 'archives'}.</p>}
+                    ) : <p className="text-center text-gray-400 pt-8">Aucune demande de livraison.</p>}
                     </div>
                 </div>
-                <div className="bg-gray-800 rounded-2xl p-6">
+                <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6">
                     <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-xl font-bold text-white">Gestion du Stock Actuel</h3>
-                        <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
-                            <> {showHistory ? "Masquer l'historique" : "Voir l'historique"} {showHistory ? <ChevronUp/> : <ChevronDown/>} </>
-                        </button>
+                        <h3 className="text-xl font-bold text-white">Gestion & Historique</h3>
                     </div>
-                    {showHistory ? (
-                        <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Actions</th></tr></thead><tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName} <span className="text-gray-400">{sale.scent || ''}</span></td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3"><button onClick={() => setSaleToDelete(sale)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button></td></tr>))}</tbody></table></div>
-                    ) : (
-                        <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Produit</th><th className="p-3">Parfum</th><th className="p-3">Stock</th><th className="p-3">Prix Unitaire</th></tr></thead><tbody>{stock.map(item => (<tr key={item.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3 font-medium">{item.productName}</td><td className="p-3 text-gray-300">{item.scent || 'N/A'}</td><td className={`p-3 font-bold ${item.quantity <= LOW_STOCK_THRESHOLD ? 'text-yellow-400' : 'text-white'}`}>{item.quantity}</td><td className="p-3">{formatPrice(item.price)}</td></tr>))}</tbody></table></div>
+                    {/* NOUVEAU: Tabs pour l'historique */}
+                     <div className="border-b border-gray-700 mb-4">
+                        <nav className="-mb-px flex gap-6" aria-label="Tabs">
+                            <button onClick={() => setShowHistory('stock')} className={`${showHistory === 'stock' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Stock</button>
+                            <button onClick={() => setShowHistory('sales')} className={`${showHistory === 'sales' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Ventes</button>
+                            <button onClick={() => setShowHistory('payouts')} className={`${showHistory === 'payouts' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Paiements</button>
+                        </nav>
+                    </div>
+
+                    {showHistory === 'stock' && (
+                        <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Produit</th><th className="p-3">Parfum</th><th className="p-3">Stock</th><th className="p-3">Prix Unitaire</th></tr></thead><tbody>{stock.map(item => (<tr key={item.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3 font-medium">{item.productName}</td><td className="p-3 text-gray-300">{item.scent || 'N/A'}</td><td className={`p-3 font-bold ${item.quantity <= LOW_STOCK_THRESHOLD ? 'text-yellow-400' : 'text-white'}`}>{item.quantity}</td><td className="p-3">{formatPrice(item.price)}</td></tr>))}</tbody></table></div>
+                    )}
+                    {showHistory === 'sales' && (
+                        <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Statut</th><th className="p-3">Actions</th></tr></thead><tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName} <span className="text-gray-400">{sale.scent || ''}</span></td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3 text-xs font-semibold">{sale.payoutId ? <span className="text-gray-500">Réglée</span> : <span className="text-green-400">En cours</span>}</td><td className="p-3">{!sale.payoutId && <button onClick={() => setSaleToDelete(sale)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button>}</td></tr>))}</tbody></table></div>
+                    )}
+                    {showHistory === 'payouts' && (
+                         <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date Clôture</th><th className="p-3">Montant Net</th><th className="p-3">Statut</th><th className="p-3">Date Paiement</th></tr></thead><tbody>{payouts.map(p => (<tr key={p.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3">{formatDate(p.createdAt)}</td><td className="p-3 font-semibold">{formatPrice(p.netAmount)}</td><td className="p-3"><span className={`px-2 py-1 text-xs font-bold rounded-full ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>{PAYOUT_STATUSES[p.status]?.text}</span></td><td className="p-3">{p.paidAt ? formatDate(p.paidAt) : '-'}</td></tr>))}</tbody></table></div>
                     )}
                 </div>
             </div>
              <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                <h3 className="text-xl font-bold mb-4">Vos meilleures ventes</h3>
+                <h3 className="text-xl font-bold mb-4">Vos meilleures ventes (toutes périodes)</h3>
                 {salesStats.length > 0 ? <ul>{salesStats.map(([name, qty])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{qty}</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente enregistrée.</p>}
             </div>
         </div>
@@ -1087,14 +1204,17 @@ const AdminDashboard = () => {
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [expandedRequestId, setExpandedRequestId] = useState(null);
-    const [currentTab, setCurrentTab] = useState('actives');
+    const [deliveryTab, setDeliveryTab] = useState('actives');
+    // NOUVEAU: State pour les soldes de tous les dépôts
+    const [allPosBalances, setAllPosBalances] = useState({});
 
     const combinedPointsOfSale = useMemo(() => {
         return pointsOfSale.map(pos => {
             const posUser = posUsers.find(u => u.id === pos.id);
-            return { ...posUser, ...pos, uid: pos.id }; 
+            const balance = allPosBalances[pos.id] || 0;
+            return { ...posUser, ...pos, uid: pos.id, balance }; 
         });
-    }, [pointsOfSale, posUsers]);
+    }, [pointsOfSale, posUsers, allPosBalances]);
 
     const handleArchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
@@ -1113,7 +1233,7 @@ const AdminDashboard = () => {
         };
     }, [deliveryRequests, loggedInUserData.uid]);
 
-    const deliveriesToDisplay = currentTab === 'actives' ? activeDeliveries : archivedDeliveries;
+    const deliveriesToDisplay = deliveryTab === 'actives' ? activeDeliveries : archivedDeliveries;
 
     const toggleExpand = (requestId) => {
         setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
@@ -1171,9 +1291,22 @@ const AdminDashboard = () => {
         });
         return unsub;
     }, [db]);
-
+    
+    // NOUVEAU: Calcul des soldes pour tous les dépôts
     useEffect(() => {
         if (pointsOfSale.length === 0) return;
+        
+        const fetchAllBalances = async () => {
+            const balances = {};
+            for (const pos of pointsOfSale) {
+                const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
+                const salesSnapshot = await getDocs(salesQuery);
+                const gross = salesSnapshot.docs.reduce((acc, doc) => acc + doc.data().totalAmount, 0);
+                balances[pos.id] = gross - (gross * (pos.commissionRate || 0));
+            }
+            setAllPosBalances(balances);
+        };
+
         const fetchAllSales = async () => {
             let allSales = [];
             for (const pos of pointsOfSale) {
@@ -1185,6 +1318,7 @@ const AdminDashboard = () => {
             return allSales;
         };
 
+        fetchAllBalances();
         fetchAllSales().then(allSales => {
             const revenue = allSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
             const commission = allSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
@@ -1252,7 +1386,7 @@ const AdminDashboard = () => {
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
             {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
-            {posToEdit && <EditPosModal pos={posToEdit} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
+            {posToEdit && <EditPosModal pos={posToEdit} hasOpenBalance={posToEdit.balance > 0} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
             {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`} onConfirm={handleTogglePosStatus} onCancel={() => setPosToToggleStatus(null)} confirmText="Oui, confirmer" confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} />}
             {requestToProcess && <ProcessDeliveryModal request={requestToProcess} products={products} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
             {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Vous êtes sur le point d'annuler cette commande. Veuillez fournir un motif (obligatoire).`} confirmText="Confirmer l'Annulation" confirmColor="bg-red-600 hover:bg-red-700" requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />}
@@ -1271,8 +1405,8 @@ const AdminDashboard = () => {
                 <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6 flex flex-col">
                      <div className="border-b border-gray-700 mb-4">
                         <nav className="-mb-px flex gap-6" aria-label="Tabs">
-                            <button onClick={() => setCurrentTab('actives')} className={`${currentTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button>
-                            <button onClick={() => setCurrentTab('archived')} className={`${currentTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button>
+                            <button onClick={() => setDeliveryTab('actives')} className={`${deliveryTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button>
+                            <button onClick={() => setDeliveryTab('archived')} className={`${deliveryTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button>
                         </nav>
                     </div>
                     <div className="flex-grow">
@@ -1291,8 +1425,8 @@ const AdminDashboard = () => {
                                                 </div>
                                                 {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                                             </button>
-                                            {currentTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}
-                                            {currentTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}
+                                            {deliveryTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}
+                                            {deliveryTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}
                                         </div>
                                         {isExpanded && (
                                             <div className="p-4 border-t border-gray-600 animate-fade-in">
@@ -1308,7 +1442,7 @@ const AdminDashboard = () => {
                                 )
                             })}
                         </div>
-                    ) : <p className="text-center text-gray-400 pt-8">Aucune demande dans les {currentTab}.</p>}
+                    ) : <p className="text-center text-gray-400 pt-8">Aucune demande dans les {deliveryTab}.</p>}
                     </div>
                 </div>
                 <div className="space-y-6">
@@ -1326,7 +1460,7 @@ const AdminDashboard = () => {
                 <h3 className="text-xl font-bold text-white mb-4">Liste des Dépôts-Ventes</h3>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
-                        <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Commission</th><th className="p-3">Date de création</th><th className="p-3">Actions</th></tr></thead>
+                        <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead>
                         <tbody>
                             {combinedPointsOfSale.map(pos => (
                                 <tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50">
@@ -1334,8 +1468,8 @@ const AdminDashboard = () => {
                                         <span className={`h-2 w-2 rounded-full ${pos.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}></span>
                                         {pos.name}
                                     </td>
+                                    <td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td>
                                     <td className="p-3">{formatPercent(pos.commissionRate)}</td>
-                                    <td className="p-3">{formatDate(pos.createdAt)}</td>
                                     <td className="p-3 space-x-2">
                                         <button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button>
                                         <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Modifier</button>
