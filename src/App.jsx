@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useContext } from 'react';
 
 // Importations Firebase
 import { initializeApp, deleteApp, getApps } from 'firebase/app';
@@ -29,15 +29,11 @@ import {
     arrayRemove
 } from 'firebase/firestore';
 
-// Importations pour l'export PDF
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-
 // Importations des icônes Lucide React
 import {
-    Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, Bell, ArchiveRestore, Phone,
-    PlusCircle, MinusCircle, History, CheckCircle, Truck, ShoppingCart, BarChart2,
-    DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send, UserPlus, ToggleLeft, ToggleRight, Percent, Save, Download, Wrench, HandCoins, Book, CandlestickChart, Building2
+    Package, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Bell, ArchiveRestore, Phone, Mail,
+    PlusCircle, CheckCircle, Truck, DollarSign, Archive, ChevronDown, ChevronUp, Check, XCircle, Trash2, 
+    Send, UserPlus, Percent, Save, Wrench, HandCoins
 } from 'lucide-react';
 
 // =================================================================
@@ -66,7 +62,6 @@ const DELIVERY_STATUS_STEPS = {
 };
 const deliveryStatusOrder = ['pending', 'processing', 'shipping', 'delivered'];
 
-
 // =================================================================
 // INITIALISATION DE FIREBASE
 // =================================================================
@@ -81,12 +76,24 @@ const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
 
 // =================================================================
+// CONTEXTE DE L'APPLICATION
+// =================================================================
+const AppContext = React.createContext(null);
+
+// =================================================================
 // FONCTIONS UTILITAIRES ET COMPOSANTS UI
 // =================================================================
 
 const formatPrice = (price) => `${(price || 0).toFixed(2)} €`;
 const formatDate = (timestamp) => !timestamp?.toDate ? 'Date inconnue' : timestamp.toDate().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const formatPercent = (rate) => `${((rate || 0) * 100).toFixed(0)} %`;
+const formatPhone = (phoneStr) => {
+    if (!phoneStr) return '';
+    const cleaned = ('' + phoneStr).replace(/\D/g, '');
+    const match = cleaned.match(/.{1,2}/g);
+    return match ? match.join(' ') : '';
+};
+
 
 const formatRelativeTime = (timestamp) => {
     if (!timestamp?.toDate) return null;
@@ -228,14 +235,15 @@ const ReasonPromptModal = ({ title, message, onConfirm, onCancel }) => {
     );
 };
 
-const NotificationBell = ({ db, user }) => {
+const NotificationBell = () => {
+    const { db, loggedInUserData } = useContext(AppContext);
     const [notifications, setNotifications] = useState([]);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     useEffect(() => {
-        if (!user) return;
+        if (!loggedInUserData) return;
         
-        const recipientIds = user.role === 'admin' ? [user.uid, 'all_admins'] : [user.uid];
+        const recipientIds = loggedInUserData.role === 'admin' ? [loggedInUserData.uid, 'all_admins'] : [loggedInUserData.uid];
 
         const q = query(
             collection(db, 'notifications'), 
@@ -250,7 +258,7 @@ const NotificationBell = ({ db, user }) => {
         });
 
         return () => unsubscribe();
-    }, [db, user]);
+    }, [db, loggedInUserData]);
 
     const unreadCount = notifications.filter(n => !n.isRead).length;
 
@@ -309,12 +317,25 @@ const NotificationBell = ({ db, user }) => {
     );
 };
 
-
 const KpiCard = ({ title, value, icon: Icon, color }) => ( <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4"><div className={`p-3 rounded-lg ${color}`}><Icon size={28} className="text-white"/></div><div><p className="text-gray-400 text-sm font-medium">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div> );
+
 const LoginPage = ({ onLogin, error, isLoggingIn }) => { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); }; return <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4"><div className="text-center mb-8 animate-fade-in"><Package size={48} className="mx-auto text-indigo-400"/><h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1><p className="text-gray-400">Espace de connexion</p></div><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up"><form onSubmit={handleSubmit} className="space-y-6"><div><label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>{error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}<button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60">{isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}</button></form></div></div>;};
 
-// MODIFIÉ : Le formulaire de création de dépôt
-const CreatePosModal = ({ db, showToast, onClose }) => { 
+const InactiveAccountModal = ({ onLogout }) => (
+    <div className="fixed inset-0 bg-gray-900 flex items-center justify-center z-50 animate-fade-in">
+        <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 text-center animate-fade-in-up">
+            <AlertTriangle className="mx-auto h-12 w-12 text-yellow-400"/>
+            <h3 className="mt-4 text-xl font-semibold text-white">Compte Inactif</h3>
+            <p className="text-gray-400 mt-2">Votre compte a été désactivé. Veuillez contacter un administrateur pour plus d'informations.</p>
+            <div className="mt-8">
+                <button onClick={onLogout} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg">Déconnexion</button>
+            </div>
+        </div>
+    </div>
+);
+
+const CreatePosModal = ({ onClose }) => { 
+    const { db, showToast } = useContext(AppContext);
     const [depotName, setDepotName] = useState('');
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
@@ -340,7 +361,6 @@ const CreatePosModal = ({ db, showToast, onClose }) => {
             
             const batch = writeBatch(db);
             
-            // Créer le document utilisateur avec toutes les infos
             const userDocRef = doc(db, "users", newUser.uid);
             batch.set(userDocRef, {
                 displayName: depotName,
@@ -353,7 +373,6 @@ const CreatePosModal = ({ db, showToast, onClose }) => {
                 createdAt: serverTimestamp()
             });
 
-            // Créer le document du point de vente
             const posDocRef = doc(db, "pointsOfSale", newUser.uid);
             batch.set(posDocRef, {
                 name: depotName,
@@ -425,12 +444,12 @@ const CreatePosModal = ({ db, showToast, onClose }) => {
     );
 };
 
-// NOUVEAU : Modale pour éditer le profil client
-const ProfileModal = ({ user, db, showToast, onClose }) => {
+const ProfileModal = ({ onClose }) => {
+    const { loggedInUserData, db, showToast } = useContext(AppContext);
     const [formData, setFormData] = useState({
-        firstName: user.firstName || '',
-        lastName: user.lastName || '',
-        phone: user.phone || ''
+        firstName: loggedInUserData.firstName || '',
+        lastName: loggedInUserData.lastName || '',
+        phone: loggedInUserData.phone || ''
     });
     const [isLoading, setIsLoading] = useState(false);
 
@@ -447,7 +466,7 @@ const ProfileModal = ({ user, db, showToast, onClose }) => {
         }
         setIsLoading(true);
         try {
-            const userDocRef = doc(db, "users", user.uid);
+            const userDocRef = doc(db, "users", loggedInUserData.uid);
             await updateDoc(userDocRef, {
                 firstName: formData.firstName,
                 lastName: formData.lastName,
@@ -456,7 +475,7 @@ const ProfileModal = ({ user, db, showToast, onClose }) => {
 
             await addDoc(collection(db, 'notifications'), {
                 recipientUid: 'all_admins',
-                message: `Le dépôt "${user.displayName}" a mis à jour ses informations de contact.`,
+                message: `Le dépôt "${loggedInUserData.displayName}" a mis à jour ses informations de contact.`,
                 createdAt: serverTimestamp(),
                 isRead: false,
                 type: 'PROFILE_UPDATE'
@@ -493,7 +512,7 @@ const ProfileModal = ({ user, db, showToast, onClose }) => {
                     </div>
                      <div>
                         <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
-                        <input type="email" value={user.email} readOnly className="w-full bg-gray-900/50 p-3 rounded-lg cursor-not-allowed"/>
+                        <input type="email" value={loggedInUserData.email} readOnly className="w-full bg-gray-900/50 p-3 rounded-lg cursor-not-allowed"/>
                          <p className="text-xs text-gray-400 mt-1">Pour modifier votre email, veuillez contacter un administrateur.</p>
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
@@ -508,9 +527,62 @@ const ProfileModal = ({ user, db, showToast, onClose }) => {
     );
 };
 
-const EditPosModal = ({ db, pos, showToast, onClose, onSave }) => { const [name, setName] = useState(pos.name); const [commissionRate, setCommissionRate] = useState((pos.commissionRate || 0) * 100); const [isLoading, setIsLoading] = useState(false); const handleSave = async (event) => { event.preventDefault(); setIsLoading(true); const newRate = parseFloat(commissionRate) / 100; if (isNaN(newRate) || newRate < 0 || newRate > 1) { showToast("Le taux de commission doit être entre 0 et 100.", "error"); setIsLoading(false); return; } try { const posDocRef = doc(db, "pointsOfSale", pos.id); await updateDoc(posDocRef, { name: name, commissionRate: newRate, }); showToast("Dépôt mis à jour avec succès !", "success"); onSave(); onClose(); } catch (error) { console.error("Erreur de mise à jour du dépôt : ", error); showToast("Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}> <h2 className="text-2xl font-bold text-white mb-6">Modifier le Dépôt-Vente</h2> <form onSubmit={handleSave} className="space-y-4"> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label> <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Taux de Commission (%)</label> <input type="number" value={commissionRate} onChange={e => setCommissionRate(e.target.value)} required min="0" max="100" className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div className="flex justify-end gap-4 pt-4"> <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button> <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60"> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>} </button> </div> </form> </div> </div> ); };
+const EditPosModal = ({ pos, onClose, onSave }) => { 
+    const { db, showToast } = useContext(AppContext);
+    const [name, setName] = useState(pos.name); 
+    const [commissionRate, setCommissionRate] = useState((pos.commissionRate || 0) * 100); 
+    const [isLoading, setIsLoading] = useState(false); 
+    
+    const handleSave = async (event) => { 
+        event.preventDefault(); 
+        setIsLoading(true); 
+        const newRate = parseFloat(commissionRate) / 100; 
+        if (isNaN(newRate) || newRate < 0 || newRate > 1) { 
+            showToast("Le taux de commission doit être entre 0 et 100.", "error"); 
+            setIsLoading(false); 
+            return; 
+        } 
+        try { 
+            const posDocRef = doc(db, "pointsOfSale", pos.id); 
+            await updateDoc(posDocRef, { name: name, commissionRate: newRate, }); 
+            showToast("Dépôt mis à jour avec succès !", "success"); 
+            onSave(); 
+            onClose(); 
+        } catch (error) { 
+            console.error("Erreur de mise à jour du dépôt : ", error); 
+            showToast("Erreur lors de la mise à jour.", "error"); 
+        } finally { 
+            setIsLoading(false); 
+        } 
+    }; 
+    
+    return ( 
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> 
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}> 
+                <h2 className="text-2xl font-bold text-white mb-6">Modifier le Dépôt-Vente</h2> 
+                <form onSubmit={handleSave} className="space-y-4"> 
+                    <div> 
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label> 
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/> 
+                    </div> 
+                    <div> 
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Taux de Commission (%)</label> 
+                        <input type="number" value={commissionRate} onChange={e => setCommissionRate(e.target.value)} required min="0" max="100" className="w-full bg-gray-700 p-3 rounded-lg"/> 
+                    </div> 
+                    <div className="flex justify-end gap-4 pt-4"> 
+                        <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button> 
+                        <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60"> 
+                            {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>} 
+                        </button> 
+                    </div> 
+                </form> 
+            </div> 
+        </div> 
+    ); 
+};
 
-const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { 
+const DeliveryRequestModal = ({ posId, posName, onClose }) => { 
+    const { db, showToast, products, scents } = useContext(AppContext);
     const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); 
     const handleItemChange=(i,f,v)=>{const nI=[...items];nI[i][f]=v;if(f==='productId')nI[i].scent='';setItems(nI)}; 
     const handleAdd=()=>setItems([...items,{productId:'',scent:'',quantity:10}]); 
@@ -537,7 +609,8 @@ const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products
 <label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>
 };
 
-const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCancelRequest }) => { 
+const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => { 
+    const { db, products, showToast } = useContext(AppContext);
     const [isLoading, setIsLoading] = useState(false); 
     const [editableItems, setEditableItems] = useState(request.items); 
     const [showReasonModal, setShowReasonModal] = useState(false);
@@ -637,12 +710,16 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
     ); 
 };
 
-
 // =================================================================
 // TABLEAUX DE BORD (DASHBOARDS)
 // =================================================================
 
-const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = false }) => {
+const PosDashboard = ({ pos, isAdminView = false }) => {
+    const { db, products, scents, showToast, loggedInUserData } = useContext(AppContext);
+    
+    const currentUserData = isAdminView ? pos : loggedInUserData;
+    const posId = currentUserData.uid;
+
     const [stock, setStock] = useState([]);
     const [salesHistory, setSalesHistory] = useState([]);
     const [posData, setPosData] = useState(null);
@@ -655,16 +732,15 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
     const [currentTab, setCurrentTab] = useState('actives');
     const [requestToCancel, setRequestToCancel] = useState(null);
     const [showInfoModal, setShowInfoModal] = useState(false);
-    const posId = user.uid;
 
     const handleArchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
-        await updateDoc(reqDoc, { archivedBy: arrayUnion(user.uid) });
+        await updateDoc(reqDoc, { archivedBy: arrayUnion(posId) });
     };
 
     const handleUnarchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
-        await updateDoc(reqDoc, { archivedBy: arrayRemove(user.uid) });
+        await updateDoc(reqDoc, { archivedBy: arrayRemove(posId) });
     };
 
     const handleClientCancel = async () => {
@@ -691,10 +767,10 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
 
     const { activeDeliveries, archivedDeliveries } = useMemo(() => {
         return {
-            activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(user.uid)),
-            archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(user.uid))
+            activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(posId)),
+            archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(posId))
         };
-    }, [deliveryRequests, user.uid]);
+    }, [deliveryRequests, posId]);
     
     const deliveriesToDisplay = currentTab === 'actives' ? activeDeliveries : archivedDeliveries;
 
@@ -754,7 +830,7 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
             if (currentStockItem) { batch.update(stockDocRef, { quantity: newQuantity }); } 
             else { batch.set(stockDocRef, { productId: sale.productId, productName: sale.productName, scent: sale.scent, quantity: sale.quantity, price: sale.unitPrice }); }
             batch.delete(saleDocRef);
-            batch.set(logDocRef, { type: 'SALE_CANCELLED', reason, saleData: sale, cancelledAt: serverTimestamp(), by: user.email });
+            batch.set(logDocRef, { type: 'SALE_CANCELLED', reason, saleData: sale, cancelledAt: serverTimestamp(), by: currentUserData.email });
             await batch.commit();
             showToast("Vente annulée et stock restauré.", "success");
         } catch (error) { console.error("Erreur annulation vente: ", error); showToast("Erreur: impossible d'annuler la vente.", "error"); }
@@ -762,14 +838,14 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {showSaleModal && <SaleModal db={db} posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} showToast={showToast} products={products} scents={scents} />}
-            {showDeliveryModal && <DeliveryRequestModal db={db} posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} showToast={showToast} products={products} scents={scents}/>}
+            {showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
+            {showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {saleToDelete && <ConfirmationModal title="Confirmer l'annulation" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName} ${saleToDelete.scent || ''} ?\nLe stock sera automatiquement restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} confirmText="Annuler la Vente" requiresReason={true} />}
             {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message="Êtes-vous sûr de vouloir annuler cette commande ? Cette action est irréversible." onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler" confirmColor="bg-red-600 hover:bg-red-700"/>}
             {showInfoModal && <InfoModal title="Annulation Impossible" message="Cette commande est déjà en cours de traitement et ne peut plus être annulée. Veuillez contacter l'administrateur en cas de problème." onClose={() => setShowInfoModal(false)} />}
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
-                <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || user.displayName}</p></div>
+                <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
                 {!isAdminView && (
                     <div className="flex gap-4 mt-4 md:mt-0">
                         <button onClick={() => setShowDeliveryModal(true)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Truck size={20} /> Demander une Livraison</button>
@@ -778,14 +854,15 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                 )}
             </div>
 
-            {isAdminView && user && (
+            {isAdminView && currentUserData && (
                 <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
-                     <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
-                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                         <div className="flex items-center gap-3"><User className="text-indigo-400" size={20}/> <span>{user.firstName} {user.lastName}</span></div>
-                         <div className="flex items-center gap-3"><Store className="text-indigo-400" size={20}/> <span>{user.displayName}</span></div>
-                         <div className="flex items-center gap-3"><Phone className="text-indigo-400" size={20}/> <span>{user.phone}</span></div>
-                     </div>
+                    <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-base">
+                        <div className="flex items-center gap-3"><User className="text-indigo-400" size={22}/> <span>{currentUserData.firstName} {currentUserData.lastName}</span></div>
+                        <div className="flex items-center gap-3"><Store className="text-indigo-400" size={22}/> <span>{currentUserData.displayName}</span></div>
+                        <div className="flex items-center gap-3"><Phone className="text-indigo-400" size={22}/> <span>{formatPhone(currentUserData.phone)}</span></div>
+                        <div className="flex items-center gap-3"><Mail className="text-indigo-400" size={22}/> <span>{currentUserData.email}</span></div>
+                    </div>
                 </div>
             )}
 
@@ -874,9 +951,10 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
     );
 };
 
-const AdminDashboard = ({ db, user, showToast, products, scents }) => {
+const AdminDashboard = () => {
+    const { db, loggedInUserData, showToast } = useContext(AppContext);
     const [pointsOfSale, setPointsOfSale] = useState([]);
-    const [posUsers, setPosUsers] = useState([]); // CORRECTION: Ajout du state pour les utilisateurs
+    const [posUsers, setPosUsers] = useState([]); 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [selectedPos, setSelectedPos] = useState(null);
     const [posToEdit, setPosToEdit] = useState(null);
@@ -889,34 +967,31 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
     const [expandedRequestId, setExpandedRequestId] = useState(null);
     const [currentTab, setCurrentTab] = useState('actives');
 
-    // CORRECTION: Combinaison des données PoS et Utilisateurs
     const combinedPointsOfSale = useMemo(() => {
         return pointsOfSale.map(pos => {
             const posUser = posUsers.find(u => u.id === pos.id);
-            // On fusionne les deux objets. En cas de clé identique, la valeur de 'pos' sera conservée.
-            return { ...posUser, ...pos };
+            return { ...posUser, ...pos, uid: pos.id }; 
         });
     }, [pointsOfSale, posUsers]);
 
     const handleArchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
-        await updateDoc(reqDoc, { archivedBy: arrayUnion(user.uid) });
+        await updateDoc(reqDoc, { archivedBy: arrayUnion(loggedInUserData.uid) });
     };
 
     const handleUnarchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
-        await updateDoc(reqDoc, { archivedBy: arrayRemove(user.uid) });
+        await updateDoc(reqDoc, { archivedBy: arrayRemove(loggedInUserData.uid) });
     };
 
     const { activeDeliveries, archivedDeliveries } = useMemo(() => {
         return {
-            activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(user.uid)),
-            archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(user.uid))
+            activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(loggedInUserData.uid)),
+            archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(loggedInUserData.uid))
         };
-    }, [deliveryRequests, user.uid]);
+    }, [deliveryRequests, loggedInUserData.uid]);
 
     const deliveriesToDisplay = currentTab === 'actives' ? activeDeliveries : archivedDeliveries;
-
 
     const toggleExpand = (requestId) => {
         setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
@@ -955,7 +1030,6 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
         return unsub;
     }, [db]);
 
-    // CORRECTION: Ajout du listener pour la collection 'users'
     useEffect(() => {
         const q = query(collection(db, "users"), where("role", "==", "pos"));
         const unsub = onSnapshot(q, (snapshot) => {
@@ -1048,17 +1122,17 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
         return (
             <div>
                  <button onClick={() => setSelectedPos(null)} className="m-4 bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">← Retour à la liste</button>
-                 <PosDashboard db={db} user={{uid: selectedPos.id, ...selectedPos}} products={products} scents={scents} showToast={showToast} isAdminView={true} />
+                 <PosDashboard pos={selectedPos} isAdminView={true} />
             </div>
         );
     }
     
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {showCreateModal && <CreatePosModal db={db} showToast={showToast} onClose={() => setShowCreateModal(false)} />}
-            {posToEdit && <EditPosModal db={db} pos={posToEdit} showToast={showToast} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
+            {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
+            {posToEdit && <EditPosModal pos={posToEdit} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
             {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`} onConfirm={handleTogglePosStatus} onCancel={() => setPosToToggleStatus(null)} confirmText="Oui, confirmer" confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} />}
-            {requestToProcess && <ProcessDeliveryModal db={db} request={requestToProcess} products={products} showToast={showToast} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
+            {requestToProcess && <ProcessDeliveryModal request={requestToProcess} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
             {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Vous êtes sur le point d'annuler cette commande. Veuillez fournir un motif (obligatoire).`} confirmText="Confirmer l'Annulation" confirmColor="bg-red-600 hover:bg-red-700" requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />}
             
             <div className="flex justify-between items-center mb-8">
@@ -1068,7 +1142,7 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <KpiCard title="Chiffre d'Affaires Total" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
                 <KpiCard title="Commissions Totales" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
-                <KpiCard title="Total à Reverser" value={formatPrice(globalStats.toPay)} icon={Package} color="bg-pink-600" />
+                <KpiCard title="Revenu Net Dépôts" value={formatPrice(globalStats.toPay)} icon={Package} color="bg-pink-600" />
                 <KpiCard title="Dépôts Actifs" value={pointsOfSale.length} icon={Store} color="bg-purple-600" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
@@ -1132,7 +1206,6 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
                     <table className="w-full text-left">
                         <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Commission</th><th className="p-3">Date de création</th><th className="p-3">Actions</th></tr></thead>
                         <tbody>
-                            {/* CORRECTION: Utilisation des données combinées */}
                             {combinedPointsOfSale.map(pos => (
                                 <tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                                     <td className="p-3 font-medium flex items-center gap-2">
@@ -1165,8 +1238,8 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
 
 export default function App() {
     const [isLoading, setIsLoading] = useState(true);
-    const [user, setUser] = useState(null);
-    const [userData, setUserData] = useState(null);
+    const [loggedInUser, setLoggedInUser] = useState(null); 
+    const [loggedInUserData, setLoggedInUserData] = useState(null); 
     const [loginError, setLoginError] = useState(null);
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [toast, setToast] = useState(null);
@@ -1181,86 +1254,101 @@ export default function App() {
         const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), snap => setProducts(snap.docs.map(d=>({id:d.id, ...d.data()}))));
         const unsubScents = onSnapshot(query(collection(db, 'scents'), orderBy('name')), snap => setScents(snap.docs.map(d=>({id:d.id, ...d.data()}))));
         return () => { unsubProducts(); unsubScents(); };
-    }, [db]);
+    }, []);
     
     const showToast = useCallback((message, type = 'success') => { setToast({ id: Date.now(), message, type }); }, []);
     
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (authUser) => {
             if (authUser) {
+                setLoggedInUser(authUser);
                 const userDocRef = doc(db, 'users', authUser.uid);
                 const unsubUser = onSnapshot(userDocRef, (doc) => {
                     if (doc.exists()) {
-                        setUserData({ uid: authUser.uid, email: authUser.email, ...doc.data() });
-                        setUser(authUser);
-                    } else { signOut(auth); }
+                        setLoggedInUserData({ uid: authUser.uid, email: authUser.email, ...doc.data() });
+                    } else {
+                        signOut(auth);
+                    }
                     setIsLoading(false);
-                }, () => { setIsLoading(false); signOut(auth); });
+                }, () => { 
+                    setIsLoading(false); 
+                    signOut(auth); 
+                });
                 return () => unsubUser();
             } else {
-                setUser(null); setUserData(null); setIsLoading(false);
+                setLoggedInUser(null); 
+                setLoggedInUserData(null); 
+                setIsLoading(false);
             }
         });
         return () => unsubscribe();
-    }, [auth, db]);
+    }, []);
 
     const handleLogin = useCallback(async (email, password) => {
         setLoginError(null); setIsLoggingIn(true);
         try { await signInWithEmailAndPassword(auth, email, password); }
         catch (error) { setLoginError("Email ou mot de passe incorrect."); }
         finally { setIsLoggingIn(false); }
-    }, [auth]);
+    }, []);
     
-    const handleLogout = useCallback(() => { signOut(auth); }, [auth]);
+    const handleLogout = useCallback(() => { signOut(auth); }, []);
 
-    const renderContent = () => {
-        const catalogIsLoading = products.length === 0 || scents.length === 0;
-
-        if (isLoading) { return <div className="bg-gray-900 min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>; }
-        if (!user || !userData) { return <LoginPage onLogin={handleLogin} error={loginError} isLoggingIn={isLoggingIn} />; }
-        
-        if (userData.role === 'pos' && userData.status === 'inactive') {
-            return ( <InactiveAccountModal onLogout={handleLogout} /> );
-        }
-        
-        return (
-             <div className="bg-gray-900 text-white min-h-screen font-sans">
-                {showProfileModal && <ProfileModal user={userData} db={db} showToast={showToast} onClose={() => setShowProfileModal(false)} />}
-
-                 <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30 backdrop-blur-sm">
-                     <div className="flex items-center gap-2"><Package size={24} className="text-indigo-400"/><h1 className="text-xl font-bold">{APP_NAME}</h1></div>
-                     <div className="flex items-center gap-2 sm:gap-4">
-                         <span className="text-gray-300 text-sm hidden sm:block"><span className="font-semibold">{userData.displayName}</span> ({userData.role})</span>
-                         
-                         {userData.role === 'pos' && 
-                             <button onClick={() => setShowProfileModal(true)} title="Mon Profil" className="p-2 text-gray-400 hover:text-white">
-                                 <User size={22} />
-                             </button>
-                         }
-                         
-                         {userData && <NotificationBell db={db} user={userData} />}
-
-                         <button onClick={handleLogout} title="Déconnexion" className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"><LogOut size={20} /></button>
-                     </div>
-                 </header>
-                 <main>
-                     {catalogIsLoading ?
-                         <div className="p-8 text-center text-gray-400">Chargement du catalogue...</div>
-                         :
-                         userData.role === 'admin' ? 
-                         <AdminDashboard db={db} user={userData} showToast={showToast} products={products} scents={scents} /> : 
-                         <PosDashboard db={db} user={userData} showToast={showToast} products={products} scents={scents} />
-                     }
-                 </main>
-             </div>
-        );
+    const contextValue = {
+        db,
+        auth,
+        loggedInUserData,
+        products,
+        scents,
+        showToast
     };
 
+    if (isLoading) {
+        return (
+            <div className="bg-gray-900 min-h-screen flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
+            </div>
+        );
+    }
+    
     return (
-        <>
+        <AppContext.Provider value={contextValue}>
             <AnimationStyles />
             {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-            {renderContent()}
-        </>
+            
+            {!loggedInUser || !loggedInUserData ? (
+                <LoginPage onLogin={handleLogin} error={loginError} isLoggingIn={isLoggingIn} />
+            ) : (
+                <>
+                    {loggedInUserData.status === 'inactive' && loggedInUserData.role === 'pos' && (
+                        <InactiveAccountModal onLogout={handleLogout} />
+                    )}
+                    <div className="bg-gray-900 text-white min-h-screen font-sans">
+                        {showProfileModal && <ProfileModal onClose={() => setShowProfileModal(false)} />}
+
+                        <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30 backdrop-blur-sm">
+                            <div className="flex items-center gap-2"><Package size={24} className="text-indigo-400"/><h1 className="text-xl font-bold">{APP_NAME}</h1></div>
+                            <div className="flex items-center gap-2 sm:gap-4">
+                                <span className="text-gray-300 text-sm hidden sm:block">
+                                    <span className="font-semibold">{loggedInUserData.displayName}</span> ({loggedInUserData.role})
+                                </span>
+                                
+                                {loggedInUserData.role === 'pos' && 
+                                    <button onClick={() => setShowProfileModal(true)} title="Mon Profil" className="p-2 text-gray-400 hover:text-white">
+                                        <User size={22} />
+                                    </button>
+                                }
+                                
+                                <NotificationBell />
+
+                                <button onClick={handleLogout} title="Déconnexion" className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"><LogOut size={20} /></button>
+                            </div>
+                        </header>
+                        <main>
+                            {loggedInUserData.role === 'admin' ? <AdminDashboard /> : <PosDashboard />}
+                        </main>
+                    </div>
+                </>
+            )}
+        </AppContext.Provider>
     );
 }
