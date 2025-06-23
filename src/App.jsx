@@ -25,7 +25,6 @@ import {
     updateDoc,
     deleteDoc,
     runTransaction,
-    FieldValue,
     arrayUnion,
     arrayRemove
 } from 'firebase/firestore';
@@ -141,6 +140,23 @@ const Toast = ({ message, type, onClose }) => {
     );
 };
 
+// NOUVEAU : Modale simple pour afficher une information
+const InfoModal = ({ title, message, onClose }) => (
+    <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+        <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-fade-in-up" onClick={e => e.stopPropagation()}>
+            <div className="text-center">
+                <Info className="mx-auto h-12 w-12 text-blue-400"/>
+                <h3 className="mt-4 text-xl font-semibold text-white">{title}</h3>
+                <p className="text-gray-400 mt-2">{message}</p>
+            </div>
+            <div className="mt-8 flex justify-center">
+                <button onClick={onClose} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg">Fermer</button>
+            </div>
+        </div>
+    </div>
+);
+
+
 const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = "Confirmer", cancelText = "Annuler", confirmColor = "bg-red-600 hover:bg-red-700", requiresReason = false}) => { 
     const [reason, setReason] = useState('');
     const handleConfirm = () => {
@@ -167,9 +183,9 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
                 )}
                 <div className="mt-8 flex justify-center gap-4">
                     <button onClick={onCancel} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg">{cancelText}</button>
-                    <button onClick={handleConfirm} className={`${confirmColor} text-white font-bold py-2 px-6 rounded-lg disabled:opacity-50`} disabled={requiresReason && !reason.trim()}>
+                    {onConfirm && <button onClick={handleConfirm} className={`${confirmColor} text-white font-bold py-2 px-6 rounded-lg disabled:opacity-50`} disabled={requiresReason && !reason.trim()}>
                         {confirmText}
-                    </button>
+                    </button>}
                 </div>
             </div>
         </div>
@@ -220,7 +236,6 @@ const NotificationBell = ({ db, user }) => {
     useEffect(() => {
         if (!user) return;
         
-        // Admins listen to their own notifications AND 'all_admins' notifications
         const recipientIds = user.role === 'admin' ? [user.uid, 'all_admins'] : [user.uid];
 
         const q = query(
@@ -538,6 +553,8 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
     const [saleToDelete, setSaleToDelete] = useState(null);
     const [expandedRequestId, setExpandedRequestId] = useState(null);
     const [currentTab, setCurrentTab] = useState('actives');
+    const [requestToCancel, setRequestToCancel] = useState(null);
+    const [showInfoModal, setShowInfoModal] = useState(false);
     const posId = user.uid;
 
     const handleArchive = async (requestId) => {
@@ -548,6 +565,28 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
     const handleUnarchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
         await updateDoc(reqDoc, { archivedBy: arrayRemove(user.uid) });
+    };
+
+    const handleClientCancel = async () => {
+        if (!requestToCancel) return;
+        const reqDoc = doc(db, 'deliveryRequests', requestToCancel.id);
+        try {
+            await updateDoc(reqDoc, {
+                status: 'cancelled',
+                cancellationReason: 'Annulée par le client'
+            });
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: 'all_admins',
+                message: `La commande de ${posData.name} du ${formatDate(requestToCancel.createdAt)} a été annulée par le client.`,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                type: 'DELIVERY_CANCELLED'
+            });
+            showToast("Commande annulée avec succès", "success");
+            setRequestToCancel(null);
+        } catch(e) {
+            showToast("Erreur lors de l'annulation", "error");
+        }
     };
 
     const { activeDeliveries, archivedDeliveries } = useMemo(() => {
@@ -568,7 +607,21 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
     useEffect(() => { if (!db || !posId) return; const unsub = onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); }); return unsub; }, [db, posId]);
     useEffect(() => { if (!db || !posId) return; const q = query(collection(db, `pointsOfSale/${posId}/stock`)); const unsub = onSnapshot(q, (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [db, posId]);
     useEffect(() => { if (!db || !posId) return; const q = query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub;}, [db, posId]);
-    useEffect(() => { if (!db || !posId || isAdminView) return; const q = query(collection(db, `deliveryRequests`), where("posId", "==", posId), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => { setDeliveryRequests(snapshot.docs.map(d => ({id: d.id, ...d.data()})));}, (error) => {console.error("Erreur Firestore (pensez à l'index pour le dashboard client!) : ", error);}); return unsub;}, [db, posId, isAdminView]);
+    
+    useEffect(() => { 
+        if (!db || !posId || isAdminView) return; 
+        const q = query(
+            collection(db, `deliveryRequests`), 
+            where("posId", "==", posId), 
+            orderBy('createdAt', 'desc')
+        ); 
+        const unsub = onSnapshot(q, (snapshot) => { 
+            setDeliveryRequests(snapshot.docs.map(d => ({id: d.id, ...d.data()})));
+        }, (error) => {
+            console.error("Erreur Firestore (pensez à l'index pour le dashboard client!) : ", error);
+        }); 
+        return unsub;
+    }, [db, posId, isAdminView]);
 
     const kpis = useMemo(() => {
         const totalStock = stock.reduce((acc, item) => acc + item.quantity, 0);
@@ -612,6 +665,9 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
             {showSaleModal && <SaleModal db={db} posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} showToast={showToast} products={products} scents={scents} />}
             {showDeliveryModal && <DeliveryRequestModal db={db} posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} showToast={showToast} products={products} scents={scents}/>}
             {saleToDelete && <ConfirmationModal title="Confirmer l'annulation" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName} ${saleToDelete.scent || ''} ?\nLe stock sera automatiquement restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} confirmText="Annuler la Vente" requiresReason={true} />}
+            {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message="Êtes-vous sûr de vouloir annuler cette commande ? Cette action est irréversible." onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler" />}
+            {showInfoModal && <InfoModal title="Annulation Impossible" message="Cette commande est déjà en cours de traitement et ne peut plus être annulée. Veuillez contacter l'administrateur en cas de problème." onClose={() => setShowInfoModal(false)} />}
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || user.displayName}</p></div>
                 {!isAdminView && (
@@ -642,6 +698,7 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                             {deliveriesToDisplay.map(req => {
                                 const isExpanded = expandedRequestId === req.id;
                                 const isArchivable = (req.status === 'delivered' || req.status === 'cancelled');
+                                const isCancellable = req.status === 'pending';
                                 return (
                                     <div key={req.id} className="bg-gray-900/50 rounded-lg transition-all duration-300">
                                         <div className='flex'>
@@ -658,24 +715,22 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
 
                                         {isExpanded && (
                                             <div className="p-4 border-t border-gray-700 animate-fade-in">
-                                                <div className="mb-4">
-                                                    <DeliveryStatusTracker status={req.status} reason={req.cancellationReason} />
+                                                <div className="mb-4"><DeliveryStatusTracker status={req.status} reason={req.cancellationReason} /></div>
+                                                {req.modificationReason && (<div className="bg-yellow-500/10 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-4 text-sm"><div className="flex items-start gap-3"><Info className="h-5 w-5 text-yellow-300 flex-shrink-0 mt-0.5"/><div><h4 className="font-bold text-yellow-300">Cette commande a été modifiée :</h4><p className="text-gray-300 mt-1 italic">"{req.modificationReason}"</p></div></div></div>)}
+                                                {req.status !== 'cancelled' && (<div className="bg-gray-700/50 p-3 rounded-lg"><table className="w-full text-sm"><thead><tr className="border-b border-gray-600 text-gray-400"><th className="text-left p-2">Produit</th><th className="text-right p-2">Quantité</th></tr></thead><tbody>
+                                                    {req.items.map((item, index) => {
+                                                        const originalItem = req.originalItems?.find(oi => oi.productId === item.productId && oi.scent === item.scent);
+                                                        const wasModified = originalItem && originalItem.quantity !== item.quantity;
+                                                        const product = products.find(p => p.id === item.productId);
+                                                        return (<tr key={index} className="border-b border-gray-800 last:border-none"><td className="p-2">{product?.name || 'Produit inconnu'}{item.scent && <span className="text-gray-400 ml-2">({item.scent})</span>}</td><td className="p-2 text-right font-mono">{wasModified ? (<span><s className="text-red-400">{originalItem.quantity}</s><span className="ml-3 text-green-400 font-bold">{item.quantity}</span></span>) : (<span>{item.quantity}</span>)}</td></tr>);
+                                                    })}
+                                                </tbody></table></div>)}
+                                                <div className="mt-4 pt-4 border-t border-gray-700/50 flex justify-end">
+                                                    <button onClick={() => isCancellable ? setRequestToCancel(req) : setShowInfoModal(true)}
+                                                            className={`font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm ${isCancellable ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}>
+                                                        <XCircle size={16} /> Annuler la commande
+                                                    </button>
                                                 </div>
-                                                {req.modificationReason && (
-                                                    <div className="bg-yellow-500/10 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-4 text-sm"><div className="flex items-start gap-3"><Info className="h-5 w-5 text-yellow-300 flex-shrink-0 mt-0.5"/><div><h4 className="font-bold text-yellow-300">Cette commande a été modifiée :</h4><p className="text-gray-300 mt-1 italic">"{req.modificationReason}"</p></div></div></div>
-                                                )}
-                                                {req.status !== 'cancelled' && (
-                                                    <div className="bg-gray-700/50 p-3 rounded-lg"><table className="w-full text-sm"><thead><tr className="border-b border-gray-600 text-gray-400"><th className="text-left p-2">Produit</th><th className="text-right p-2">Quantité</th></tr></thead><tbody>
-                                                        {req.items.map((item, index) => {
-                                                            const originalItem = req.originalItems?.find(oi => oi.productId === item.productId && oi.scent === item.scent);
-                                                            const wasModified = originalItem && originalItem.quantity !== item.quantity;
-                                                            const product = products.find(p => p.id === item.productId);
-                                                            return (
-                                                                <tr key={index} className="border-b border-gray-800 last:border-none"><td className="p-2">{product?.name || 'Produit inconnu'}{item.scent && <span className="text-gray-400 ml-2">({item.scent})</span>}</td><td className="p-2 text-right font-mono">{wasModified ? (<span><s className="text-red-400">{originalItem.quantity}</s><span className="ml-3 text-green-400 font-bold">{item.quantity}</span></span>) : (<span>{item.quantity}</span>)}</td></tr>
-                                                            );
-                                                        })}
-                                                    </tbody></table></div>
-                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -739,6 +794,7 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
     }, [deliveryRequests, user.uid]);
 
     const deliveriesToDisplay = currentTab === 'actives' ? activeDeliveries : archivedDeliveries;
+
 
     const toggleExpand = (requestId) => {
         setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
@@ -884,7 +940,7 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
                 <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6 flex flex-col">
-                    <div className="border-b border-gray-700 mb-4">
+                     <div className="border-b border-gray-700 mb-4">
                         <nav className="-mb-px flex gap-6" aria-label="Tabs">
                             <button onClick={() => setCurrentTab('actives')} className={`${currentTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button>
                             <button onClick={() => setCurrentTab('archived')} className={`${currentTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button>
@@ -1039,7 +1095,7 @@ export default function App() {
                      <div className="flex items-center gap-4">
                          <span className="text-gray-300 text-sm hidden sm:block"><span className="font-semibold">{userData.displayName}</span> ({userData.role})</span>
                          
-                         <NotificationBell db={db} user={userData} />
+                         {userData && <NotificationBell db={db} user={userData} />}
 
                          <button onClick={handleLogout} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"><LogOut size={20} /></button>
                      </div>
