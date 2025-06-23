@@ -207,7 +207,6 @@ const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) =
             const stockId = product.hasScents !== false ? `${product.id}_${scent}` : product.id;
             const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, stockId);
             
-            // La quantité en stock est déjà dans la variable `maxQuantity`
             batch.update(stockDocRef, { quantity: maxQuantity - Number(quantity) });
             
             await batch.commit();
@@ -404,30 +403,19 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
         return unsub;
     }, [db]);
 
-    // ### DÉBUT DE LA MODIFICATION POUR LE TRI ###
     useEffect(() => {
-        // On garde la requête Firestore avec son tri par défaut (status, puis date)
-        // car le filtre '!=' l'exige.
         const q = query(collection(db, "deliveryRequests"), where('status', '!=', 'delivered'), orderBy('status'), orderBy('createdAt', 'desc'));
         
         const unsub = onSnapshot(q, (snapshot) => {
-            // 1. On récupère les données brutes de Firestore
             const requestsFromDb = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            
-            // 2. On effectue un NOUVEAU tri en Javascript pour forcer l'ordre chronologique
-            // On ignore le tri par statut pour ne garder que le tri par date (plus récent en premier).
             requestsFromDb.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
-            
-            // 3. On met à jour l'état avec la liste finale correctement triée
             setDeliveryRequests(requestsFromDb);
-
         }, (error) => {
             console.error("Erreur Firestore (pensez aux index!) : ", error);
         });
         
         return unsub;
     }, [db]);
-    // ### FIN DE LA MODIFICATION POUR LE TRI ###
 
     useEffect(() => {
         if (pointsOfSale.length === 0) return;
@@ -465,7 +453,7 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
             });
             showToast("Commande annulée avec succès.", "success");
             setRequestToCancel(null);
-            setRequestToProcess(null); // Ferme aussi la modale de gestion si elle est ouverte
+            setRequestToProcess(null);
         } catch (error) {
             showToast("Erreur lors de l'annulation.", "error");
         } finally {
