@@ -75,6 +75,9 @@ if (!getApps().length) {
     firebaseApp = getApps()[0];
 }
 
+const db = getFirestore(firebaseApp);
+const auth = getAuth(firebaseApp);
+
 // =================================================================
 // FONCTIONS UTILITAIRES ET COMPOSANTS UI
 // =================================================================
@@ -83,14 +86,175 @@ const formatPrice = (price) => `${(price || 0).toFixed(2)} €`;
 const formatDate = (timestamp) => !timestamp?.toDate ? 'Date inconnue' : timestamp.toDate().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 const formatPercent = (rate) => `${((rate || 0) * 100).toFixed(0)} %`;
 const AnimationStyles = () => ( <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}.animate-fade-in{animation:fadeIn .5s ease-in-out}@keyframes fadeInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.animate-fade-in-up{animation:fadeInUp .5s ease-out forwards}@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.animate-spin{animation:spin 1s linear infinite}.custom-scrollbar::-webkit-scrollbar{width:8px}.custom-scrollbar::-webkit-scrollbar-track{background:#1f2937}.custom-scrollbar::-webkit-scrollbar-thumb{background:#4f46e5;border-radius:10px}`}</style> );
-const Toast = ({ message, type, onClose }) => { const C = {s:'bg-green-600',e:'bg-red-600',i:'bg-blue-600'}, I = {s:CheckCircle,e:XCircle,i:Info}[type]||Info; useEffect(()=>{const t=setTimeout(onClose,4000);return()=>clearTimeout(t)},[onClose]); return <div className={`fixed bottom-5 right-5 p-4 rounded-lg shadow-2xl text-white flex items-center gap-3 z-[999] animate-fade-in-up ${C[type]}`}><I size={24}/><span>{message}</span><button onClick={onClose} className="ml-2 opacity-80 hover:opacity-100"><X size={20}/></button></div> };
-const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = "Confirmer", cancelText = "Annuler", confirmColor = "bg-red-600 hover:bg-red-700", requiresReason = false}) => { const [reason, setReason]=useState(''); const handleConfirm = () => {if(requiresReason&&!reason.trim()){alert("Veuillez fournir une raison.");return;} onConfirm(requiresReason?reason:undefined)}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onCancel}><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-fade-in-up" onClick={e=>e.stopPropagation()}><div className="text-center"><AlertTriangle className="mx-auto h-12 w-12 text-yellow-400"/><h3 className="mt-4 text-xl font-semibold text-white">{title}</h3><p className="text-gray-400 mt-2 whitespace-pre-line">{message}</p></div>{requiresReason&&<div className="mt-6"><label className="block text-sm font-medium text-gray-300 mb-2">Raison (obligatoire)</label><textarea value={reason} onChange={e=>setReason(e.target.value)} rows="3" className="w-full bg-gray-700 p-3 rounded-lg" placeholder="Ex: Rupture de stock, demande client..."></textarea></div>}<div className="mt-8 flex justify-center gap-4"><button onClick={onCancel} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg">{cancelText}</button><button onClick={handleConfirm} className={`${confirmColor} text-white font-bold py-2 px-6 rounded-lg disabled:opacity-50`} disabled={requiresReason&&!reason.trim()}>{confirmText}</button></div></div></div>};
+
+const Toast = ({ message, type, onClose }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 4000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    const getToastStyle = () => {
+        switch (type) {
+            case 'success': return 'bg-green-600';
+            case 'error': return 'bg-red-600';
+            case 'info':
+            default: return 'bg-blue-600';
+        }
+    };
+
+    const getToastIcon = () => {
+        const IconComponent = {
+            success: CheckCircle,
+            error: XCircle,
+            info: Info
+        }[type] || Info;
+        return <IconComponent size={24} />;
+    };
+
+    return (
+        <div className={`fixed bottom-5 right-5 p-4 rounded-lg shadow-2xl text-white flex items-center gap-3 z-[999] animate-fade-in-up ${getToastStyle()}`}>
+            {getToastIcon()}
+            <span>{message}</span>
+            <button onClick={onClose} className="ml-2 opacity-80 hover:opacity-100"><X size={20}/></button>
+        </div>
+    );
+};
+
+const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = "Confirmer", cancelText = "Annuler", confirmColor = "bg-red-600 hover:bg-red-700", requiresReason = false}) => { 
+    const [reason, setReason] = useState('');
+    const handleConfirm = () => {
+        if (requiresReason && !reason.trim()) {
+            alert("Veuillez fournir une raison.");
+            return;
+        }
+        onConfirm(requiresReason ? reason : undefined);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onCancel}>
+            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-fade-in-up" onClick={e => e.stopPropagation()}>
+                <div className="text-center">
+                    <AlertTriangle className="mx-auto h-12 w-12 text-yellow-400"/>
+                    <h3 className="mt-4 text-xl font-semibold text-white">{title}</h3>
+                    <p className="text-gray-400 mt-2 whitespace-pre-line">{message}</p>
+                </div>
+                {requiresReason && (
+                    <div className="mt-6">
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Raison (obligatoire)</label>
+                        <textarea value={reason} onChange={e=>setReason(e.target.value)} rows="3" className="w-full bg-gray-700 p-3 rounded-lg" placeholder="Ex: Rupture de stock, demande client..."></textarea>
+                    </div>
+                )}
+                <div className="mt-8 flex justify-center gap-4">
+                    <button onClick={onCancel} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg">{cancelText}</button>
+                    <button onClick={handleConfirm} className={`${confirmColor} text-white font-bold py-2 px-6 rounded-lg disabled:opacity-50`} disabled={requiresReason && !reason.trim()}>
+                        {confirmText}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const KpiCard = ({ title, value, icon: Icon, color }) => ( <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4"><div className={`p-3 rounded-lg ${color}`}><Icon size={28} className="text-white"/></div><div><p className="text-gray-400 text-sm font-medium">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div> );
 const LoginPage = ({ onLogin, error, isLoggingIn }) => { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); }; return <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4"><div className="text-center mb-8 animate-fade-in"><Package size={48} className="mx-auto text-indigo-400"/><h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1><p className="text-gray-400">Espace de connexion</p></div><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up"><form onSubmit={handleSubmit} className="space-y-6"><div><label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>{error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}<button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60">{isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}</button></form></div></div>;};
 const CreatePosModal = ({ db, showToast, onClose }) => { const [name, setName]=useState(''); const [email, setEmail]=useState(''); const [password, setPassword]=useState(''); const [isLoading, setIsLoading]=useState(false); const handleCreate=async(ev)=>{ev.preventDefault();if(!name||!email||password.length<6){showToast("Nom, email et mot de passe (6+ car.) requis.","error");return}setIsLoading(true);const appName=`secondary-app-${Date.now()}`;let secondaryApp;try{secondaryApp=initializeApp(firebaseConfig,appName);const secondaryAuth=getAuth(secondaryApp);const userCredential=await createUserWithEmailAndPassword(secondaryAuth,email,password);const nU=userCredential.user;const batch=writeBatch(db);batch.set(doc(db,"users",nU.uid),{displayName:name,email:email,role:"pos",status:"active",createdAt:serverTimestamp()});batch.set(doc(db,"pointsOfSale",nU.uid),{name:name,commissionRate:0.3,createdAt:serverTimestamp(),status:"active"});await batch.commit();showToast(`Compte pour ${name} créé !`,"success");onClose()}catch(err){if(err.code==='auth/email-already-in-use'){showToast("Email déjà utilisé.","error")}else{showToast("Erreur de création.","error")}}finally{setIsLoading(false);if(secondaryApp){signOut(getAuth(secondaryApp)).then(()=>deleteApp(secondaryApp))}}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2><form onSubmit={handleCreate} className="space-y-4"><div><label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label><input type="text" value={name} onChange={e=>setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Mot de passe initial</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">{isLoading?<div className="animate-spin rounded-full h-5 w-5 border-b-2"></div>:<><UserPlus size={18}/>Créer</>}</button></div></form></div></div>;};
 const EditPosModal = ({ db, pos, showToast, onClose, onSave }) => { const [name, setName] = useState(pos.name); const [commissionRate, setCommissionRate] = useState((pos.commissionRate || 0) * 100); const [isLoading, setIsLoading] = useState(false); const handleSave = async (event) => { event.preventDefault(); setIsLoading(true); const newRate = parseFloat(commissionRate) / 100; if (isNaN(newRate) || newRate < 0 || newRate > 1) { showToast("Le taux de commission doit être entre 0 et 100.", "error"); setIsLoading(false); return; } try { const posDocRef = doc(db, "pointsOfSale", pos.id); await updateDoc(posDocRef, { name: name, commissionRate: newRate, }); showToast("Dépôt mis à jour avec succès !", "success"); onSave(); onClose(); } catch (error) { console.error("Erreur de mise à jour du dépôt : ", error); showToast("Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}> <h2 className="text-2xl font-bold text-white mb-6">Modifier le Dépôt-Vente</h2> <form onSubmit={handleSave} className="space-y-4"> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label> <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Taux de Commission (%)</label> <input type="number" value={commissionRate} onChange={e => setCommissionRate(e.target.value)} required min="0" max="100" className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div className="flex justify-end gap-4 pt-4"> <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button> <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60"> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>} </button> </div> </form> </div> </div> ); };
 const InactiveAccountModal = ({ onLogout }) => { return ( <div className="fixed inset-0 bg-gray-900 bg-opacity-95 flex items-center justify-center z-[1000] animate-fade-in"> <div className="bg-gray-800 p-10 rounded-2xl shadow-2xl w-full max-w-lg border border-yellow-500/50 text-center animate-fade-in-up"> <AlertTriangle className="mx-auto h-16 w-16 text-yellow-400 mb-4"/> <h2 className="text-2xl font-bold text-white mb-3">Votre compte est actuellement inactif</h2> <p className="text-gray-300"> Vous pouvez toujours vous connecter, mais l'accès au tableau de bord a été suspendu. </p> <p className="text-gray-300 mt-4"> Pour réactiver votre compte ou pour toute question, veuillez contacter le support : </p> <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4"> <a href="mailto:jullien@bougienicole.fr" className="w-full sm:w-auto bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2"> <User size={18} /> Contacter Jullien </a> <button onClick={onLogout} className="w-full sm:w-auto bg-gray-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-500 flex items-center justify-center gap-2"> <LogOut size={18} /> Se déconnecter </button> </div> </div> </div> ); };
-const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) => { const [pId,setpId]=useState(''); const [s,setS]=useState(''); const [q,setQ]=useState(1); const aS=useMemo(()=>products.find(p=>p.id===pId)?.hasScents!==false?scents:[],[pId, products, scents]); const maxQ=useMemo(()=>(!pId?0:stock.find(i=>i.productId===pId&&(i.scent===s||aS.length===0))?.quantity||0),[stock,pId,s,aS]); const handleSave=async()=>{const p=products.find(pr=>pr.id===pId);if(!p||(p.hasScents!==false&&!s)||q<=0){showToast("Veuillez remplir tous les champs.","error");return}if(q>maxQ){showToast("Quantité > stock disponible.","error");return}try{const b=writeBatch(db);b.set(doc(collection(db,`pointsOfSale/${posId}/sales`)),{productId:p.id,productName:p.name,scent:p.hasScents!==false?s:null,quantity:Number(q),unitPrice:p.price,totalAmount:p.price*Number(q),createdAt:serverTimestamp()});const stockDocRef=doc(db,`pointsOfSale/${posId}/stock`,p.hasScents!==false?`${p.id}_${s}`:p.id);const currentStockItem=stock.find(i=>i.id===stockDocRef.id);if(currentStockItem){b.update(stockDocRef,{quantity:maxQ-Number(q)})}else{b.set(stockDocRef,{productId:p.id,productName:p.name,scent:p.hasScents!==false?s:null,quantity:-(Number(q)),price:p.price})}await b.commit();showToast("Vente enregistrée !","success");onClose()}catch(e){showToast("Échec de l'enregistrement.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg border-gray-700" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Enregistrer une Vente</h2><div className="space-y-4"><div><label className="block text-sm">Produit</label><select value={pId} onChange={e=>{setpId(e.target.value);setS('')}} className="w-full bg-gray-700 p-3 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>{aS.length>0&&<div><label className="block text-sm">Parfum</label><select value={s} onChange={e=>setS(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" disabled={!pId}><option value="">-- Choisir --</option>{aS.map(sc=><option key={sc.id} value={sc.name}>{sc.name}</option>)}</select></div>}<div><label className="block text-sm">Quantité</label><input type="number" value={q} onChange={e=>setQ(Number(e.target.value))} min="1" max={maxQ} className="w-full bg-gray-700 p-3 rounded-lg"/>{maxQ>0&&<p className="text-xs text-gray-400 mt-1">En stock: {maxQ}</p>}</div></div><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSave} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">Enregistrer</button></div></div></div>};
+
+const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) => {
+    const [productId, setProductId] = useState('');
+    const [scent, setScent] = useState('');
+    const [quantity, setQuantity] = useState(1);
+
+    const availableScents = useMemo(() => {
+        const selectedProduct = products.find(p => p.id === productId);
+        return selectedProduct?.hasScents !== false ? scents : [];
+    }, [productId, products, scents]);
+
+    const maxQuantity = useMemo(() => {
+        if (!productId) return 0;
+        const stockItem = stock.find(item => 
+            item.productId === productId && 
+            (item.scent === scent || availableScents.length === 0)
+        );
+        return stockItem?.quantity || 0;
+    }, [stock, productId, scent, availableScents]);
+
+    const handleSaveSale = async () => {
+        const product = products.find(p => p.id === productId);
+        if (!product || (product.hasScents !== false && !scent) || quantity <= 0) {
+            showToast("Veuillez remplir tous les champs correctement.", "error");
+            return;
+        }
+        if (quantity > maxQuantity) {
+            showToast("La quantité demandée est supérieure au stock disponible.", "error");
+            return;
+        }
+
+        try {
+            const batch = writeBatch(db);
+            const newSaleRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
+            batch.set(newSaleRef, {
+                productId: product.id,
+                productName: product.name,
+                scent: product.hasScents !== false ? scent : null,
+                quantity: Number(quantity),
+                unitPrice: product.price,
+                totalAmount: product.price * Number(quantity),
+                createdAt: serverTimestamp()
+            });
+
+            const stockId = product.hasScents !== false ? `${product.id}_${scent}` : product.id;
+            const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, stockId);
+            
+            // La quantité en stock est déjà dans la variable `maxQuantity`
+            batch.update(stockDocRef, { quantity: maxQuantity - Number(quantity) });
+            
+            await batch.commit();
+            showToast("Vente enregistrée avec succès !", "success");
+            onClose();
+        } catch (error) {
+            console.error("Erreur lors de l'enregistrement de la vente: ", error);
+            showToast("Échec de l'enregistrement de la vente.", "error");
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}>
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg border-gray-700" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-white mb-6">Enregistrer une Vente</h2>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-1">Produit</label>
+                        <select value={productId} onChange={e => { setProductId(e.target.value); setScent(''); }} className="w-full bg-gray-700 p-3 rounded-lg">
+                            <option value="">-- Choisir un produit --</option>
+                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                    </div>
+                    {availableScents.length > 0 && (
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">Parfum</label>
+                            <select value={scent} onChange={e => setScent(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" disabled={!productId}>
+                                <option value="">-- Choisir un parfum --</option>
+                                {availableScents.map(sc => <option key={sc.id} value={sc.name}>{sc.name}</option>)}
+                            </select>
+                        </div>
+                    )}
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-1">Quantité</label>
+                        <input type="number" value={quantity} onChange={e => setQuantity(Number(e.target.value))} min="1" max={maxQuantity} className="w-full bg-gray-700 p-3 rounded-lg" />
+                        {maxQuantity > 0 && <p className="text-xs text-gray-400 mt-1">Stock disponible : {maxQuantity}</p>}
+                    </div>
+                </div>
+                <div className="mt-8 flex justify-end gap-4">
+                    <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
+                    <button onClick={handleSaveSale} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">Enregistrer</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); const handleItemChange=(i,f,v)=>{const nI=[...items];nI[i][f]=v;if(f==='productId')nI[i].scent='';setItems(nI)}; const handleAdd=()=>setItems([...items,{productId:'',scent:'',quantity:10}]); const handleRemove=(i)=>setItems(items.filter((_,idx)=>i!==idx)); const handleSend=async()=>{const vI=items.filter(i=>{const p=products.find(pr=>pr.id===i.productId);if(!p||(p.hasScents!==false&&!i.scent)||i.quantity<=0)return false;return true});if(vI.length===0){showToast("Ajoutez au moins un article valide.","error");return}try{await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp()});showToast("Demande de livraison envoyée !","success");onClose()}catch(e){showToast("Échec de l'envoi.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2><div className="space-y-4">{items.map((item,i)=>{const p=products.find(pr=>pr.id===item.productId);const sS=p&&p.hasScents!==false;return(<div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"><div className="sm:col-span-1"><label className="text-sm">Produit</label><select value={item.productId} onChange={e=>handleItemChange(i,'productId',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="sm:col-span-1">{sS&&<>
 <label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>};
 const StockAdjustmentModal = ({ item, onClose, onAdjust }) => { const [adjustment, setAdjustment] = useState(0); const [reason, setReason] = useState(''); const handleAdjust = () => { if(adjustment !== 0 && reason) onAdjust(item, adjustment, reason); }; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-2">Ajuster le stock de :</h2><p className="text-gray-400 mb-6">{item.productName} {item.scent || ''}</p><div className="space-y-4"><div><label>Ajustement (ex: -1 pour casse)</label><input type="number" value={adjustment} onChange={e=>setAdjustment(Number(e.target.value))} className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label>Motif (obligatoire)</label><textarea value={reason} onChange={e=>setReason(e.target.value)} rows="3" className="w-full bg-gray-700 p-3 rounded-lg" placeholder="Ex: Produit cassé en rayon"></textarea></div></div><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleAdjust} disabled={!reason.trim() || adjustment === 0} className="bg-indigo-600 font-bold py-2 px-4 rounded-lg disabled:opacity-50">Ajuster</button></div></div></div>};
@@ -196,7 +360,7 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
             <div className="grid grid-cols-1 gap-6 mt-8">
                  <div className="bg-gray-800 rounded-2xl p-6">
                     <h3 className="text-xl font-bold mb-4">Vos meilleures ventes</h3>
-                     {salesStats.length > 0 ? <ul>{salesStats.map(([name, qty])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{qty}</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente enregistrée.</p>}
+                        {salesStats.length > 0 ? <ul>{salesStats.map(([name, qty])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{qty}</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente enregistrée.</p>}
                 </div>
                 <div className="bg-gray-800 rounded-2xl p-6">
                     <h3 className="text-xl font-bold mb-6">Suivi de vos livraisons</h3>
@@ -240,15 +404,30 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
         return unsub;
     }, [db]);
 
+    // ### DÉBUT DE LA MODIFICATION POUR LE TRI ###
     useEffect(() => {
+        // On garde la requête Firestore avec son tri par défaut (status, puis date)
+        // car le filtre '!=' l'exige.
         const q = query(collection(db, "deliveryRequests"), where('status', '!=', 'delivered'), orderBy('status'), orderBy('createdAt', 'desc'));
+        
         const unsub = onSnapshot(q, (snapshot) => {
-            setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            // 1. On récupère les données brutes de Firestore
+            const requestsFromDb = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            
+            // 2. On effectue un NOUVEAU tri en Javascript pour forcer l'ordre chronologique
+            // On ignore le tri par statut pour ne garder que le tri par date (plus récent en premier).
+            requestsFromDb.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+            
+            // 3. On met à jour l'état avec la liste finale correctement triée
+            setDeliveryRequests(requestsFromDb);
+
         }, (error) => {
             console.error("Erreur Firestore (pensez aux index!) : ", error);
         });
+        
         return unsub;
     }, [db]);
+    // ### FIN DE LA MODIFICATION POUR LE TRI ###
 
     useEffect(() => {
         if (pointsOfSale.length === 0) return;
@@ -286,7 +465,7 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
             });
             showToast("Commande annulée avec succès.", "success");
             setRequestToCancel(null);
-            setRequestToProcess(null);
+            setRequestToProcess(null); // Ferme aussi la modale de gestion si elle est ouverte
         } catch (error) {
             showToast("Erreur lors de l'annulation.", "error");
         } finally {
@@ -400,6 +579,7 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
     );
 };
 
+
 // =================================================================
 // COMPOSANT PRINCIPAL DE L'APPLICATION
 // =================================================================
@@ -413,9 +593,6 @@ export default function App() {
     const [toast, setToast] = useState(null);
     const [products, setProducts] = useState([]);
     const [scents, setScents] = useState([]);
-    
-    const db = useMemo(() => getFirestore(firebaseApp), []);
-    const auth = useMemo(() => getAuth(firebaseApp), []);
     
     useEffect(() => { document.title = APP_TITLE; }, []);
 
@@ -476,7 +653,7 @@ export default function App() {
                      </div>
                  </header>
                  <main>
-                     {catalogIsLoading && (!products.length || !scents.length) ?
+                     {catalogIsLoading ?
                          <div className="p-8 text-center text-gray-400">Chargement du catalogue...</div>
                          :
                          userData.role === 'admin' ? 
