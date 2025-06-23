@@ -23,7 +23,7 @@ import {
 
 // Importations des icônes Lucide React
 import {
-    Package, LogIn, LogOut, Shield, Building, AlertTriangle, X, CheckCircle, Info, UserPlus, Eye
+    Package, LogIn, LogOut, Shield, Building, UserPlus, Eye
 } from 'lucide-react';
 
 // =================================================================
@@ -53,23 +53,10 @@ if (!getApps().length) {
 }
 
 // =================================================================
-// COMPOSANTS UI GÉNÉRIQUES
+// COMPOSANTS UI
 // =================================================================
 
-const AnimationStyles = () => ( <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}.animate-fade-in{animation:fadeIn .5s ease-in-out}@keyframes fadeInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.animate-fade-in-up{animation:fadeInUp .5s ease-out forwards}@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.animate-spin{animation:spin 1s linear infinite}`}</style> );
-
-const Toast = ({ message, type, onClose }) => {
-    const typeClasses = { success: 'bg-green-600', error: 'bg-red-600', info: 'bg-blue-600' };
-    const Icon = { success: CheckCircle, error: XCircle, info: Info }[type] || Info;
-    useEffect(() => { const timer = setTimeout(onClose, 4000); return () => clearTimeout(timer); }, [onClose]);
-
-    return (
-        <div className={`fixed bottom-5 right-5 p-4 rounded-lg shadow-2xl text-white flex items-center gap-3 z-[999] animate-fade-in-up ${typeClasses[type]}`}>
-            <Icon size={24} /> <span>{message}</span>
-            <button onClick={onClose} className="ml-2 opacity-80 hover:opacity-100"><X size={20} /></button>
-        </div>
-    );
-};
+const AnimationStyles = () => ( <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style> );
 
 const LoginPage = ({ onLogin, error, isLoggingIn }) => {
     const [email, setEmail] = useState('');
@@ -77,25 +64,23 @@ const LoginPage = ({ onLogin, error, isLoggingIn }) => {
     const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); };
 
     return (
-        <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4">
-             <div className="text-center mb-8 animate-fade-in">
-                <Package size={48} className="mx-auto text-indigo-400"/>
-                <h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1>
-                <p className="text-gray-400">Espace de connexion</p>
-            </div>
-            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up">
-                <form onSubmit={handleSubmit} className="space-y-6">
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#111827', color: 'white' }}>
+            <Package size={48} style={{ color: '#6366F1' }}/>
+            <h1 style={{ fontSize: '2.25rem', fontWeight: 'bold', marginTop: '1rem' }}>{APP_NAME}</h1>
+            <p style={{ color: '#9CA3AF' }}>Espace de connexion</p>
+            <div style={{ backgroundColor: '#1F2937', padding: '2rem', borderRadius: '1rem', marginTop: '2rem', width: '100%', maxWidth: '24rem', border: '1px solid #374151' }}>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                     <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label>
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg text-white border-gray-600 focus:ring-indigo-500 focus:border-indigo-500" />
+                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>Adresse Email</label>
+                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: '#374151', border: '1px solid #4B5563', color: 'white' }} />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label>
-                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg text-white border-gray-600 focus:ring-indigo-500 focus:border-indigo-500" />
+                        <label style={{ display: 'block', marginBottom: '0.5rem' }}>Mot de passe</label>
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: '#374151', border: '1px solid #4B5563', color: 'white' }} />
                     </div>
-                    {error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}
-                    <button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-60">
-                        {isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}
+                    {error && (<p style={{ color: '#F87171', textAlign: 'center' }}>{error}</p>)}
+                    <button type="submit" disabled={isLoggingIn} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', width: '100%', padding: '0.75rem', borderRadius: '0.5rem', backgroundColor: '#4F46E5', fontWeight: 'bold', cursor: 'pointer', opacity: isLoggingIn ? 0.6 : 1 }}>
+                        {isLoggingIn ? <div style={{width:'24px', height:'24px', border:'2px solid white', borderBottomColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite'}}></div> : <><LogIn size={20} /> Se connecter</>}
                     </button>
                 </form>
             </div>
@@ -155,16 +140,16 @@ const CreatePosModal = ({ db, showToast, onClose }) => {
     };
     
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 animate-fade-in" onClick={onClose}>
-            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-lg border-gray-700" onClick={e => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2>
-                <form onSubmit={handleCreateUser} className="space-y-4">
-                    <div><label className="block text-sm">Nom du Dépôt</label><input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div>
-                    <div><label className="block text-sm">Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div>
-                    <div><label className="block text-sm">Mot de passe initial</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div>
-                    <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
-                        <button type="submit" disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">{isLoading?<div className="animate-spin rounded-full h-5 w-5 border-b-2"></div>:<><UserPlus size={18}/>Créer</>}</button>
+        <div style={{position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.75)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:40}} onClick={onClose}>
+            <div style={{backgroundColor:'#1F2937', padding:'2rem', borderRadius:'1rem', width:'100%', maxWidth:'32rem', border:'1px solid #374151'}} onClick={e => e.stopPropagation()}>
+                <h2 style={{fontSize:'1.5rem', fontWeight:'bold', color:'white', marginBottom:'1.5rem'}}>Ajouter un Dépôt-Vente</h2>
+                <form onSubmit={handleCreateUser} style={{display:'flex', flexDirection:'column', gap:'1rem'}}>
+                    <div><label style={{display:'block', marginBottom:'0.5rem'}}>Nom du Dépôt</label><input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} required style={{width:'100%', padding:'0.75rem', borderRadius:'0.5rem', backgroundColor:'#374151', border:'1px solid #4B5563', color:'white'}}/></div>
+                    <div><label style={{display:'block', marginBottom:'0.5rem'}}>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} required style={{width:'100%', padding:'0.75rem', borderRadius:'0.5rem', backgroundColor:'#374151', border:'1px solid #4B5563', color:'white'}}/></div>
+                    <div><label style={{display:'block', marginBottom:'0.5rem'}}>Mot de passe initial</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} required style={{width:'100%', padding:'0.75rem', borderRadius:'0.5rem', backgroundColor:'#374151', border:'1px solid #4B5563', color:'white'}}/></div>
+                    <div style={{display:'flex', justifyContent:'flex-end', gap:'1rem', paddingTop:'1rem'}}>
+                        <button type="button" onClick={onClose} style={{backgroundColor:'#4B5563', fontWeight:'bold', padding:'0.5rem 1rem', borderRadius:'0.5rem'}}>Annuler</button>
+                        <button type="submit" disabled={isLoading} style={{backgroundColor:'#4F46E5', fontWeight:'bold', padding:'0.5rem 1rem', borderRadius:'0.5rem', display:'flex', alignItems:'center', gap:'0.5rem', opacity:isLoading?0.6:1}}>{isLoading?<div style={{width:'20px',height:'20px',border:'2px solid white',borderBottomColor:'transparent',borderRadius:'50%',animation:'spin 1s linear infinite'}}></div>:<><UserPlus size={18}/>Créer</>}</button>
                     </div>
                 </form>
             </div>
@@ -178,7 +163,7 @@ const CreatePosModal = ({ db, showToast, onClose }) => {
 
 const AdminDashboard = ({ db, user, showToast }) => {
     const [pointsOfSale, setPointsOfSale] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingList, setIsLoadingList] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
 
     useEffect(() => {
@@ -187,48 +172,47 @@ const AdminDashboard = ({ db, user, showToast }) => {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const posData = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
             setPointsOfSale(posData);
-            setIsLoading(false);
+            setIsLoadingList(false);
         }, (error) => {
-            console.error("Erreur de lecture des dépôts:", error);
-            setIsLoading(false);
-            showToast("Impossible de charger la liste des dépôts.", "error");
+            console.error("Erreur lecture dépôts:", error);
+            setIsLoadingList(false);
         });
         return () => unsubscribe();
-    }, [db, showToast]);
+    }, [db]);
 
     return (
-        <div className="p-4 sm:p-8 animate-fade-in">
+        <div style={{padding:'2rem'}}>
             {showCreateModal && <CreatePosModal db={db} showToast={showToast} onClose={() => setShowCreateModal(false)} />}
             
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+            <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'2rem'}}>
                 <div>
-                    <h2 className="text-3xl font-bold text-white">Tableau de Bord Administrateur</h2>
-                    <p className="text-gray-400">Bienvenue, {user.displayName || user.email}.</p>
+                    <h2 style={{fontSize:'1.875rem', fontWeight:'bold'}}>Tableau de Bord Administrateur</h2>
+                    <p style={{color:'#9CA3AF'}}>Bienvenue, {user.displayName || user.email}.</p>
                 </div>
-                <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-full sm:w-auto">
+                <button onClick={() => setShowCreateModal(true)} style={{backgroundColor:'#4F46E5', fontWeight:'bold', padding:'0.5rem 1rem', borderRadius:'0.5rem', display:'flex', alignItems:'center', gap:'0.5rem'}}>
                     <UserPlus size={18}/> Ajouter un Dépôt-Vente
                 </button>
             </div>
 
-            <div className="bg-gray-800 rounded-2xl p-6">
-                <h3 className="text-xl font-bold text-white mb-4">Liste des Dépôts-Ventes</h3>
-                <div className="space-y-3">
-                    {isLoading ? (
-                        <p className="text-center text-gray-400">Chargement...</p>
+            <div style={{backgroundColor:'#1F2937', borderRadius:'1rem', padding:'1.5rem'}}>
+                <h3 style={{fontSize:'1.25rem', fontWeight:'bold', marginBottom:'1rem'}}>Liste des Dépôts-Ventes</h3>
+                <div style={{display:'flex', flexDirection:'column', gap:'0.75rem'}}>
+                    {isLoadingList ? (
+                        <p style={{textAlign:'center', color:'#9CA3AF'}}>Chargement...</p>
                     ) : pointsOfSale.length > 0 ? (
                         pointsOfSale.map(pos => (
-                            <div key={pos.uid} className="bg-gray-700/50 p-4 rounded-lg flex justify-between items-center">
+                            <div key={pos.uid} style={{backgroundColor:'#374151', padding:'1rem', borderRadius:'0.5rem', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                 <div>
-                                    <p className="font-bold">{pos.displayName}</p>
-                                    <p className="text-sm text-gray-400">{pos.email}</p>
+                                    <p style={{fontWeight:'bold'}}>{pos.displayName}</p>
+                                    <p style={{fontSize:'0.875rem', color:'#9CA3AF'}}>{pos.email}</p>
                                 </div>
-                                <div className="text-sm px-3 py-1 rounded-full bg-green-500/20 text-green-300">
+                                <div style={{fontSize:'0.875rem', padding:'0.25rem 0.75rem', borderRadius:'9999px', backgroundColor: pos.status === 'active' ? 'rgba(52, 211, 153, 0.2)' : 'rgba(251, 191, 36, 0.2)', color: pos.status === 'active' ? '#6EE7B7' : '#FBBF24'}}>
                                     {pos.status === 'active' ? 'Actif' : 'Inactif'}
                                 </div>
                             </div>
                         ))
                     ) : (
-                        <p className="text-center text-gray-400">Aucun dépôt-vente créé pour le moment.</p>
+                        <p style={{textAlign:'center', color:'#9CA3AF'}}>Aucun dépôt-vente créé.</p>
                     )}
                 </div>
             </div>
@@ -238,10 +222,13 @@ const AdminDashboard = ({ db, user, showToast }) => {
 
 const PosDashboard = ({ user }) => {
     return (
-        <div className="p-4 sm:p-8 animate-fade-in">
-            <h2 className="text-3xl font-bold text-white">Tableau de Bord Dépôt-Vente</h2>
-            <p className="text-gray-400">Bienvenue, {user.displayName || user.email}.</p>
-            <p className="mt-4 text-center text-gray-500">(Les fonctionnalités de gestion de stock et de ventes seront ajoutées ici)</p>
+        <div style={{padding:'2rem'}}>
+            <div style={{display:'flex', alignItems:'center', gap:'1rem', fontSize:'1.875rem', fontWeight:'bold'}}>
+                <Building size={32} />
+                <h1>Tableau de Bord Dépôt-Vente</h1>
+            </div>
+            <p style={{marginTop:'0.5rem', color:'#9CA3AF'}}>Bienvenue, {user.displayName || user.email}.</p>
+            <p style={{marginTop:'1rem', textAlign:'center', color:'#6B7280'}}>(Les fonctionnalités arriveront ici)</p>
         </div>
     );
 };
@@ -297,15 +284,19 @@ export default function App() {
     const handleLogout = useCallback(() => { signOut(auth); }, [auth]);
 
     const renderContent = () => {
-        if (isLoading) { return <div className="bg-gray-900 min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>; }
+        if (isLoading) { return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#111827'}}><div style={{width:'48px', height:'48px', border:'2px solid white', borderBottomColor:'transparent', borderRadius:'50%', animation:'spin 1s linear infinite'}}></div></div>; }
         if (!user || !userData) { return <LoginPage onLogin={handleLogin} error={loginError} isLoggingIn={isLoggingIn} />; }
+        
         return (
-             <div className="bg-gray-900 text-white min-h-screen font-sans">
-                 <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30">
-                    <div className="flex items-center gap-2"><Package size={24} className="text-indigo-400"/><h1 className="text-xl font-bold">{APP_NAME}</h1></div>
-                    <div className="flex items-center gap-4">
-                        <span className="text-gray-300 text-sm"><span className="font-semibold">{userData.displayName}</span> ({userData.role})</span>
-                        <button onClick={handleLogout} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"><LogOut size={20} /></button>
+             <div style={{backgroundColor:'#111827', color:'white', minHeight:'100vh'}}>
+                 <header style={{backgroundColor:'#1F2937', padding:'1rem', display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid #374151', position:'sticky', top:0, zIndex:30}}>
+                    <div style={{display:'flex', alignItems:'center', gap:'0.75rem'}}>
+                        <Package size={24} style={{color:'#6366F1'}}/>
+                        <h1 style={{fontWeight:'bold', fontSize:'1.25rem'}}>{APP_NAME}</h1>
+                    </div>
+                    <div style={{display:'flex', alignItems:'center', gap:'1rem'}}>
+                        <span style={{fontSize:'0.875rem'}}><span style={{fontWeight:'600'}}>{userData.displayName}</span> ({userData.role})</span>
+                        <button onClick={handleLogout} title="Déconnexion"><LogOut size={20} /></button>
                     </div>
                 </header>
                 <main>
