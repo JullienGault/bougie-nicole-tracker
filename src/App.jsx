@@ -45,7 +45,7 @@ const firebaseConfig = {
 };
 
 const APP_NAME = "Bougie Nicole - Gestion Dépôts";
-const ADMIN_EMAIL = "jullien@bougienicole.com"; // Email de l'administrateur
+const ADMIN_EMAIL = "jullien@bougienicole.fr"; // Email de l'administrateur
 
 // --- Catalogue Produits ---
 const PRODUCTS = [
