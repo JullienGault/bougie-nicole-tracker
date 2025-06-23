@@ -24,7 +24,10 @@ import {
     getDocs,
     updateDoc,
     deleteDoc,
-    runTransaction
+    runTransaction,
+    FieldValue,
+    arrayUnion,
+    arrayRemove
 } from 'firebase/firestore';
 
 // Importations pour l'export PDF
@@ -33,7 +36,7 @@ import 'jspdf-autotable';
 
 // Importations des icônes Lucide React
 import {
-    Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, Bell,
+    Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, Bell, ArchiveRestore,
     PlusCircle, MinusCircle, History, CheckCircle, Truck, ShoppingCart, BarChart2,
     DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send, UserPlus, ToggleLeft, ToggleRight, Percent, Save, Download, Wrench, HandCoins, Book, CandlestickChart
 } from 'lucide-react';
@@ -210,14 +213,14 @@ const ReasonPromptModal = ({ title, message, onConfirm, onCancel }) => {
     );
 };
 
-// NOUVEAU : Composant pour le système de notifications
 const NotificationBell = ({ db, user }) => {
     const [notifications, setNotifications] = useState([]);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     useEffect(() => {
         if (!user) return;
-
+        
+        // Admins listen to their own notifications AND 'all_admins' notifications
         const recipientIds = user.role === 'admin' ? [user.uid, 'all_admins'] : [user.uid];
 
         const q = query(
@@ -228,6 +231,8 @@ const NotificationBell = ({ db, user }) => {
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }, (error) => {
+            console.error("Erreur de lecture des notifications (vérifiez les index Firestore): ", error);
         });
 
         return () => unsubscribe();
@@ -241,6 +246,7 @@ const NotificationBell = ({ db, user }) => {
     };
     
     const handleMarkAllAsRead = async () => {
+        if (unreadCount === 0) return;
         const batch = writeBatch(db);
         notifications.forEach(notif => {
             if (!notif.isRead) {
@@ -398,8 +404,7 @@ const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products
         const vI=items.filter(i=>{const p=products.find(pr=>pr.id===i.productId);if(!p||(p.hasScents!==false&&!i.scent)||i.quantity<=0)return false;return true});
         if(vI.length===0){showToast("Ajoutez au moins un article valide.","error");return}
         try{
-            await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp()});
-            // Créer une notification pour les admins
+            await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp(), archivedBy: []});
             await addDoc(collection(db, 'notifications'), {
                 recipientUid: 'all_admins',
                 message: `Nouvelle demande de livraison reçue de ${posName}.`,
@@ -409,7 +414,9 @@ const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products
             });
             showToast("Demande de livraison envoyée !","success");
             onClose();
-        }catch(e){showToast("Échec de l'envoi.","error")}
+        }catch(e){
+            console.error("Erreur d'envoi de la demande: ", e);
+            showToast("Échec de l'envoi.","error")}
     }; 
     return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2><div className="space-y-4">{items.map((item,i)=>{const p=products.find(pr=>pr.id===item.productId);const sS=p&&p.hasScents!==false;return(<div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"><div className="sm:col-span-1"><label className="text-sm">Produit</label><select value={item.productId} onChange={e=>handleItemChange(i,'productId',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="sm:col-span-1">{sS&&<>
 <label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>
@@ -438,7 +445,6 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
                 dataToUpdate.originalItems = request.items; 
             } 
             await updateDoc(requestDocRef, dataToUpdate);
-            // Notifier le client de la modification
             await addDoc(collection(db, 'notifications'), {
                 recipientUid: request.posId,
                 message: `Votre demande de livraison du ${formatDate(request.createdAt)} a été modifiée.`,
@@ -468,7 +474,6 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
                 await updateDoc(requestDocRef, { status: nextStatus }); 
                 showToast(`Statut mis à jour : ${DELIVERY_STATUS_STEPS[nextStatus]}`, "success"); 
             }
-            // Notifier le client du changement de statut
             await addDoc(collection(db, 'notifications'), {
                 recipientUid: request.posId,
                 message: `Le statut de votre commande est maintenant : "${DELIVERY_STATUS_STEPS[nextStatus]}".`,
@@ -532,7 +537,27 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
     const [showHistory, setShowHistory] = useState(false);
     const [saleToDelete, setSaleToDelete] = useState(null);
     const [expandedRequestId, setExpandedRequestId] = useState(null);
+    const [currentTab, setCurrentTab] = useState('actives');
     const posId = user.uid;
+
+    const handleArchive = async (requestId) => {
+        const reqDoc = doc(db, 'deliveryRequests', requestId);
+        await updateDoc(reqDoc, { archivedBy: arrayUnion(user.uid) });
+    };
+
+    const handleUnarchive = async (requestId) => {
+        const reqDoc = doc(db, 'deliveryRequests', requestId);
+        await updateDoc(reqDoc, { archivedBy: arrayRemove(user.uid) });
+    };
+
+    const { activeDeliveries, archivedDeliveries } = useMemo(() => {
+        return {
+            activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(user.uid)),
+            archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(user.uid))
+        };
+    }, [deliveryRequests, user.uid]);
+    
+    const deliveriesToDisplay = currentTab === 'actives' ? activeDeliveries : archivedDeliveries;
 
     const toggleExpand = (requestId) => {
         setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
@@ -604,77 +629,52 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-                <div className="bg-gray-800 rounded-2xl p-6">
-                    <h3 className="text-xl font-bold mb-6">Suivi de vos livraisons</h3>
-                    {deliveryRequests.length > 0 ? (
+                <div className="bg-gray-800 rounded-2xl p-6 flex flex-col">
+                    <div className="border-b border-gray-700 mb-4">
+                        <nav className="-mb-px flex gap-6" aria-label="Tabs">
+                            <button onClick={() => setCurrentTab('actives')} className={`${currentTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button>
+                            <button onClick={() => setCurrentTab('archived')} className={`${currentTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button>
+                        </nav>
+                    </div>
+                    <div className="flex-grow">
+                    {deliveriesToDisplay.length > 0 ? (
                         <div className="space-y-4">
-                            {deliveryRequests.map(req => {
+                            {deliveriesToDisplay.map(req => {
                                 const isExpanded = expandedRequestId === req.id;
+                                const isArchivable = (req.status === 'delivered' || req.status === 'cancelled');
                                 return (
                                     <div key={req.id} className="bg-gray-900/50 rounded-lg transition-all duration-300">
-                                        <button onClick={() => toggleExpand(req.id)} className="w-full p-4 flex justify-between items-center text-left">
-                                            <div>
-                                                <p className="font-bold">Demande du {formatDate(req.createdAt)}</p>
-                                                <p className="text-sm text-gray-400">{req.items.length} article(s) - <span className={`font-semibold ${req.status === 'delivered' ? 'text-green-400' : 'text-blue-400'}`}>{DELIVERY_STATUS_STEPS[req.status]}</span></p>
-                                            </div>
-                                            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                                        </button>
+                                        <div className='flex'>
+                                            <button onClick={() => toggleExpand(req.id)} className="flex-grow w-full p-4 flex justify-between items-center text-left">
+                                                <div>
+                                                    <p className="font-bold">Demande du {formatDate(req.createdAt)}</p>
+                                                    <p className="text-sm text-gray-400">{req.items.length} article(s) - <span className={`font-semibold ${req.status === 'delivered' ? 'text-green-400' : 'text-blue-400'}`}>{DELIVERY_STATUS_STEPS[req.status]}</span></p>
+                                                </div>
+                                                {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                            </button>
+                                            {currentTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}
+                                            {currentTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}
+                                        </div>
 
                                         {isExpanded && (
                                             <div className="p-4 border-t border-gray-700 animate-fade-in">
                                                 <div className="mb-4">
                                                     <DeliveryStatusTracker status={req.status} reason={req.cancellationReason} />
                                                 </div>
-                                                
                                                 {req.modificationReason && (
-                                                    <div className="bg-yellow-500/10 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-4 text-sm">
-                                                        <div className="flex items-start gap-3">
-                                                            <Info className="h-5 w-5 text-yellow-300 flex-shrink-0 mt-0.5"/>
-                                                            <div>
-                                                                <h4 className="font-bold text-yellow-300">Cette commande a été modifiée :</h4>
-                                                                <p className="text-gray-300 mt-1 italic">"{req.modificationReason}"</p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                    <div className="bg-yellow-500/10 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-4 text-sm"><div className="flex items-start gap-3"><Info className="h-5 w-5 text-yellow-300 flex-shrink-0 mt-0.5"/><div><h4 className="font-bold text-yellow-300">Cette commande a été modifiée :</h4><p className="text-gray-300 mt-1 italic">"{req.modificationReason}"</p></div></div></div>
                                                 )}
-
                                                 {req.status !== 'cancelled' && (
-                                                    <div className="bg-gray-700/50 p-3 rounded-lg">
-                                                        <table className="w-full text-sm">
-                                                            <thead>
-                                                                <tr className="border-b border-gray-600 text-gray-400">
-                                                                    <th className="text-left p-2">Produit</th>
-                                                                    <th className="text-right p-2">Quantité</th>
-                                                                </tr>
-                                                            </thead>
-                                                            <tbody>
-                                                                {req.items.map((item, index) => {
-                                                                    const originalItem = req.originalItems?.find(oi => oi.productId === item.productId && oi.scent === item.scent);
-                                                                    const wasModified = originalItem && originalItem.quantity !== item.quantity;
-                                                                    const product = products.find(p => p.id === item.productId);
-
-                                                                    return (
-                                                                        <tr key={index} className="border-b border-gray-800 last:border-none">
-                                                                            <td className="p-2">
-                                                                                {product?.name || 'Produit inconnu'}
-                                                                                {item.scent && <span className="text-gray-400 ml-2">({item.scent})</span>}
-                                                                            </td>
-                                                                            <td className="p-2 text-right font-mono">
-                                                                                {wasModified ? (
-                                                                                    <span>
-                                                                                        <s className="text-red-400">{originalItem.quantity}</s>
-                                                                                        <span className="ml-3 text-green-400 font-bold">{item.quantity}</span>
-                                                                                    </span>
-                                                                                ) : (
-                                                                                    <span>{item.quantity}</span>
-                                                                                )}
-                                                                            </td>
-                                                                        </tr>
-                                                                    );
-                                                                })}
-                                                            </tbody>
-                                                        </table>
-                                                    </div>
+                                                    <div className="bg-gray-700/50 p-3 rounded-lg"><table className="w-full text-sm"><thead><tr className="border-b border-gray-600 text-gray-400"><th className="text-left p-2">Produit</th><th className="text-right p-2">Quantité</th></tr></thead><tbody>
+                                                        {req.items.map((item, index) => {
+                                                            const originalItem = req.originalItems?.find(oi => oi.productId === item.productId && oi.scent === item.scent);
+                                                            const wasModified = originalItem && originalItem.quantity !== item.quantity;
+                                                            const product = products.find(p => p.id === item.productId);
+                                                            return (
+                                                                <tr key={index} className="border-b border-gray-800 last:border-none"><td className="p-2">{product?.name || 'Produit inconnu'}{item.scent && <span className="text-gray-400 ml-2">({item.scent})</span>}</td><td className="p-2 text-right font-mono">{wasModified ? (<span><s className="text-red-400">{originalItem.quantity}</s><span className="ml-3 text-green-400 font-bold">{item.quantity}</span></span>) : (<span>{item.quantity}</span>)}</td></tr>
+                                                            );
+                                                        })}
+                                                    </tbody></table></div>
                                                 )}
                                             </div>
                                         )}
@@ -682,7 +682,8 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                                 );
                             })}
                         </div>
-                    ) : <p className="text-gray-400">Aucune demande de livraison en cours.</p>}
+                    ) : <p className="text-center text-gray-400 pt-8">Aucune demande dans les {currentTab === 'actives' ? 'actives' : 'archives'}.</p>}
+                    </div>
                 </div>
                 <div className="bg-gray-800 rounded-2xl p-6">
                     <div className="flex justify-between items-center mb-4">
@@ -718,6 +719,26 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [expandedRequestId, setExpandedRequestId] = useState(null);
+    const [currentTab, setCurrentTab] = useState('actives');
+
+    const handleArchive = async (requestId) => {
+        const reqDoc = doc(db, 'deliveryRequests', requestId);
+        await updateDoc(reqDoc, { archivedBy: arrayUnion(user.uid) });
+    };
+
+    const handleUnarchive = async (requestId) => {
+        const reqDoc = doc(db, 'deliveryRequests', requestId);
+        await updateDoc(reqDoc, { archivedBy: arrayRemove(user.uid) });
+    };
+
+    const { activeDeliveries, archivedDeliveries } = useMemo(() => {
+        return {
+            activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(user.uid)),
+            archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(user.uid))
+        };
+    }, [deliveryRequests, user.uid]);
+
+    const deliveriesToDisplay = currentTab === 'actives' ? activeDeliveries : archivedDeliveries;
 
     const toggleExpand = (requestId) => {
         setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
@@ -757,16 +778,12 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
     }, [db]);
 
     useEffect(() => {
-        const q = query(collection(db, "deliveryRequests"), where('status', '!=', 'delivered'), orderBy('status'), orderBy('createdAt', 'desc'));
-        
+        const q = query(collection(db, "deliveryRequests"), orderBy('createdAt', 'desc'));
         const unsub = onSnapshot(q, (snapshot) => {
-            const requestsFromDb = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            requestsFromDb.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
-            setDeliveryRequests(requestsFromDb);
+            setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         }, (error) => {
             console.error("Erreur Firestore (pensez aux index!) : ", error);
         });
-        
         return unsub;
     }, [db]);
 
@@ -801,7 +818,6 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
         const requestDocRef = doc(db, 'deliveryRequests', requestToCancel.id);
         try {
             await updateDoc(requestDocRef, { status: 'cancelled', cancellationReason: reason });
-            // Notifier le client de l'annulation
             await addDoc(collection(db, 'notifications'), {
                 recipientUid: requestToCancel.posId,
                 message: `Votre commande du ${formatDate(requestToCancel.createdAt)} a été annulée.`,
@@ -867,21 +883,32 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
                 <KpiCard title="Dépôts Actifs" value={pointsOfSale.length} icon={Store} color="bg-purple-600" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-                <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6">
-                    <h3 className="text-xl font-bold text-white mb-4">Demandes de livraison à traiter</h3>
-                    {deliveryRequests.length > 0 ? (
+                <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6 flex flex-col">
+                    <div className="border-b border-gray-700 mb-4">
+                        <nav className="-mb-px flex gap-6" aria-label="Tabs">
+                            <button onClick={() => setCurrentTab('actives')} className={`${currentTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button>
+                            <button onClick={() => setCurrentTab('archived')} className={`${currentTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button>
+                        </nav>
+                    </div>
+                    <div className="flex-grow">
+                    {deliveriesToDisplay.length > 0 ? (
                         <div className="space-y-4">
-                            {deliveryRequests.map(req => {
+                            {deliveriesToDisplay.map(req => {
                                 const isExpanded = expandedRequestId === req.id;
+                                const isArchivable = (req.status === 'delivered' || req.status === 'cancelled');
                                 return (
                                     <div key={req.id} className="bg-gray-700/50 rounded-lg transition-all duration-300">
-                                        <button onClick={() => toggleExpand(req.id)} className="w-full p-4 flex justify-between items-center text-left">
-                                            <div>
-                                                <p className="font-bold">{req.posName}</p>
-                                                <p className="text-sm text-gray-400">{formatDate(req.createdAt)} - <span className="font-semibold text-blue-400">{DELIVERY_STATUS_STEPS[req.status]}</span></p>
-                                            </div>
-                                            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                                        </button>
+                                        <div className='flex'>
+                                            <button onClick={() => toggleExpand(req.id)} className="w-full p-4 flex justify-between items-center text-left flex-grow">
+                                                <div>
+                                                    <p className="font-bold">{req.posName}</p>
+                                                    <p className="text-sm text-gray-400">{formatDate(req.createdAt)} - <span className="font-semibold text-blue-400">{DELIVERY_STATUS_STEPS[req.status]}</span></p>
+                                                </div>
+                                                {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                            </button>
+                                            {currentTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}
+                                            {currentTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}
+                                        </div>
                                         {isExpanded && (
                                             <div className="p-4 border-t border-gray-600 animate-fade-in">
                                                 <DeliveryStatusTracker status={req.status} />
@@ -896,7 +923,8 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
                                 )
                             })}
                         </div>
-                    ) : <p className="text-gray-400">Aucune demande de livraison à traiter.</p>}
+                    ) : <p className="text-center text-gray-400 pt-8">Aucune demande dans les {currentTab}.</p>}
+                    </div>
                 </div>
                 <div className="space-y-6">
                     <div className="bg-gray-800 rounded-2xl p-6">
