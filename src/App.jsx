@@ -26,7 +26,7 @@ import {
 
 // Importations des icônes Lucide React
 import {
-    Candle, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, 
+    Torch, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, 
     PlusCircle, MinusCircle, History, CheckCircle, Truck, ShoppingCart, BarChart2,
     DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send
 } from 'lucide-react';
@@ -45,11 +45,11 @@ const firebaseConfig = {
 };
 
 const APP_NAME = "Bougie Nicole - Gestion Dépôts";
-const ADMIN_EMAIL = "jullien@bougienicole.fr"; // Email de l'administrateur
+const ADMIN_EMAIL = "jullien@bougienicole.com"; // Email de l'administrateur
 
 // --- Catalogue Produits ---
 const PRODUCTS = [
-    { id: 'bougie', name: 'Bougie', price: 15.00, icon: Candle },
+    { id: 'bougie', name: 'Bougie', price: 15.00, icon: Torch }, // Icône corrigée
     { id: 'fondant', name: 'Fondant', price: 2.50, icon: Flame },
     { id: 'bruleur', name: 'Brûleur', price: 12.00, icon: Store, hasScents: false }
 ];
@@ -106,6 +106,12 @@ const Toast = ({ message, type, onClose }) => {
         info: 'bg-blue-600',
     };
     const Icon = type === 'success' ? CheckCircle : type === 'error' ? XCircle : Info;
+
+    useEffect(() => {
+        const timer = setTimeout(onClose, 4000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
 
     return (
         <div className={`${baseClasses} ${typeClasses[type]}`}>
@@ -175,7 +181,7 @@ const LoginPage = ({ onLogin, error }) => {
     return (
         <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4">
              <div className="text-center mb-8">
-                <Candle size={48} className="mx-auto text-indigo-400"/>
+                <Torch size={48} className="mx-auto text-indigo-400"/>
                 <h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1>
                 <p className="text-gray-400">Espace de connexion pour les dépôts-ventes</p>
             </div>
@@ -204,11 +210,11 @@ const LoginPage = ({ onLogin, error }) => {
 // =================================================================
 
 const KpiCard = ({ title, value, icon, color }) => {
-    const Icon = icon;
+    const IconComponent = icon;
     return (
         <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4">
             <div className={`p-3 rounded-lg ${color}`}>
-                <Icon size={28} className="text-white"/>
+                <IconComponent size={28} className="text-white"/>
             </div>
             <div>
                 <p className="text-gray-400 text-sm font-medium">{title}</p>
@@ -475,10 +481,11 @@ const PosDashboard = ({ db, user, showToast }) => {
         try {
             const batch = writeBatch(db);
             const saleDocRef = doc(db, `pointsOfSale/${posId}/sales`, saleToDelete.id);
-            const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, saleToDelete.scent ? `${saleToDelete.productId}_${saleToDelete.scent}` : saleToDelete.productId);
+            const stockId = saleToDelete.scent ? `${saleToDelete.productId}_${saleToDelete.scent}` : saleToDelete.productId;
+            const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, stockId);
             
             // Re-créditer le stock
-            const currentStockItem = stock.find(s => s.id === (saleToDelete.scent ? `${saleToDelete.productId}_${saleToDelete.scent}` : saleToDelete.productId));
+            const currentStockItem = stock.find(s => s.id === stockId);
             if (currentStockItem) {
                 batch.update(stockDocRef, {
                     quantity: currentStockItem.quantity + saleToDelete.quantity
@@ -487,9 +494,6 @@ const PosDashboard = ({ db, user, showToast }) => {
             
             // Supprimer la vente
             batch.delete(saleDocRef);
-
-            // Ajouter une note à l'historique global (ou un log d'audit) - Simplifié pour l'instant
-            console.log(`Vente ${saleToDelete.id} supprimée par ${user.email} pour la raison : ${reason}`);
 
             await batch.commit();
             showToast("Vente supprimée et stock restauré.", "success");
@@ -534,7 +538,7 @@ const PosDashboard = ({ db, user, showToast }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <KpiCard title="Stock Total Restant" value={kpis.totalStock} icon={Archive} color="bg-blue-600" />
                 <KpiCard title="Chiffre d'Affaires" value={formatPrice(kpis.totalRevenue)} icon={DollarSign} color="bg-green-600" />
-                <KpiCard title="À reverser à Bougie Nicole" value={formatPrice(kpis.netToBePaid)} icon={Candle} color="bg-pink-600" />
+                <KpiCard title="À reverser à Bougie Nicole" value={formatPrice(kpis.netToBePaid)} icon={Torch} color="bg-pink-600" />
             </div>
 
              {/* Alertes Stock Bas */}
@@ -659,20 +663,15 @@ const AdminDashboard = ({ db, user, showToast }) => {
     const handleFulfillRequest = async (request) => {
          try {
             const batch = writeBatch(db);
-
+            const posStockRef = collection(db, `pointsOfSale/${request.posId}/stock`);
+            const posStockSnapshot = await getDocs(posStockRef);
+            const currentStockMap = new Map(posStockSnapshot.docs.map(doc => [doc.id, doc.data().quantity]));
+            
             // Mettre à jour le stock du point de vente
             for (const item of request.items) {
                  const stockId = item.scent ? `${item.productId}_${item.scent}` : item.productId;
                  const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId);
-                 
-                 // On doit d'abord lire le stock actuel pour l'incrémenter. C'est une limite, idéalement on utiliserait FieldValue.increment().
-                 // Pour la simplicité de ce code unique, on suppose que l'article existe déjà. Une version robuste vérifierait son existence.
-                 // Une transaction serait plus sûre ici.
-                 const currentStockSnapshot = await getDocs(query(collection(db, `pointsOfSale/${request.posId}/stock`), where('id', '==', stockId)));
-                 let currentQuantity = 0;
-                 if(!currentStockSnapshot.empty) {
-                    currentQuantity = currentStockSnapshot.docs[0].data().quantity || 0;
-                 }
+                 const currentQuantity = currentStockMap.get(stockId) || 0;
                  
                  batch.set(stockDocRef, {
                      productId: item.productId,
@@ -766,6 +765,9 @@ const AdminDashboard = ({ db, user, showToast }) => {
 // COMPOSANT PRINCIPAL DE L'APPLICATION
 // =================================================================
 
+// Initialisation de Firebase en dehors du composant pour éviter les re-créations
+const firebaseApp = initializeApp(firebaseConfig);
+
 export default function App() {
     const [user, setUser] = useState(null);
     const [userData, setUserData] = useState(null); // Contient le rôle, etc.
@@ -773,27 +775,24 @@ export default function App() {
     const [loginError, setLoginError] = useState(null);
     const [toast, setToast] = useState(null);
 
-    const db = useMemo(() => getFirestore(initializeApp(firebaseConfig)), []);
-    const auth = useMemo(() => getAuth(app), []);
+    const db = useMemo(() => getFirestore(firebaseApp), []);
+    const auth = useMemo(() => getAuth(firebaseApp), []);
     
     const showToast = useCallback((message, type = 'success') => {
-        setToast({ message, type });
-        setTimeout(() => setToast(null), 4000);
+        setToast({ id: Date.now(), message, type });
     }, []);
     
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (authUser) => {
             if (authUser) {
-                // Utilisateur connecté, récupérer son rôle depuis Firestore
                 const userDocRef = doc(db, 'users', authUser.uid);
                 const unsubscribeUser = onSnapshot(userDocRef, (doc) => {
                     if (doc.exists()) {
-                        setUserData({ uid: authUser.uid, email: authUser.email, displayName: doc.data().displayName, ...doc.data() });
+                        setUserData({ uid: authUser.uid, email: authUser.email, ...doc.data() });
                     } else {
-                        // Cas où l'utilisateur existe dans Auth mais pas dans la BDD
-                        // Vous pourriez vouloir le créer ici ou gérer l'erreur
                         console.error("Utilisateur non trouvé dans Firestore!");
                         setUserData(null);
+                        signOut(auth);
                     }
                     setUser(authUser);
                     setIsLoading(false);
@@ -801,7 +800,6 @@ export default function App() {
                 return () => unsubscribeUser();
 
             } else {
-                // Utilisateur déconnecté
                 setUser(null);
                 setUserData(null);
                 setIsLoading(false);
@@ -837,9 +835,9 @@ export default function App() {
         
         return (
             <div className="bg-gray-900 text-white min-h-screen font-sans">
-                 <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md">
+                 <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30">
                     <div className="flex items-center gap-2">
-                        <Candle size={24} className="text-indigo-400"/>
+                        <Torch size={24} className="text-indigo-400"/>
                         <h1 className="text-xl font-bold">{APP_NAME}</h1>
                     </div>
                     <div className="flex items-center gap-4">
@@ -865,7 +863,7 @@ export default function App() {
     return (
         <>
             <AnimationStyles />
-            {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+            {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
             {renderContent()}
         </>
     );
