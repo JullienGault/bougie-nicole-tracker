@@ -27,12 +27,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 
 
 const firebaseConfig = {
-    apiKey: "AIzaSyBn-xE-Zf4JvIKKQNZBus8AvNmJLMeKPdg",
-    authDomain: "aod-tracker-os.firebaseapp.com",
-    projectId: "aod-tracker-os",
-    storageBucket: "aod-tracker-os.appspot.com",
-    messagingSenderId: "429289937311",
-    appId: "1:429289937311:web:1ab993b09899afc2b245aa",
+    apiKey: "AIzaSyDUmxNBMQ2gWvCHWMrk0iowFpYVE1wMpMo",
+    authDomain: "bougienicole.firebaseapp.com",
+    projectId: "bougienicole",
+    storageBucket: "bougienicole.appspot.com",
+    messagingSenderId: "319062939476",
+    appId: "1:319062939476:web:VOTRE_HASH_UNIQUE_ICI" // IMPORTANT: Assurez-vous de copier la fin de cet ID depuis votre console Firebase.
 };
 
 const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'default-aod-app';
@@ -540,21 +540,21 @@ export default function App() {
     const filteredAndSortedOrders = useMemo(() => {
         let currentOrders = [...orders];
         const finalStatuses = [ORDER_STATUS.ARCHIVED, ORDER_STATUS.COMPLETE_CANCELLED];
-       
+        
         if (viewMode === 'active') {
             currentOrders = currentOrders.filter(order => !finalStatuses.includes(getEffectiveOrderStatus(order)));
         } else {
             currentOrders = currentOrders.filter(order => finalStatuses.includes(getEffectiveOrderStatus(order)));
         }
-       
+        
         if (selectedStatusFilter !== 'All' && viewMode === 'active') {
             currentOrders = currentOrders.filter(order => getEffectiveOrderStatus(order) === selectedStatusFilter); 
         }
-       
+        
         if (selectedAdvisorFilter !== 'All') {
             currentOrders = currentOrders.filter(order => order.orderedBy?.email?.toLowerCase() === selectedAdvisorFilter.toLowerCase());
         }
-       
+        
         if (searchTerm.trim()) {
             const lowerCaseSearchTerm = searchTerm.trim().toLowerCase();
             currentOrders = currentOrders.filter(order => 
@@ -569,7 +569,7 @@ export default function App() {
                 ))
             );
         }
-       
+        
         return currentOrders;
     }, [orders, selectedStatusFilter, selectedAdvisorFilter, searchTerm, viewMode]);
 
@@ -582,7 +582,7 @@ export default function App() {
     const handleLogin = useCallback(async (email, password) => { setLoginError(null); if (!auth) return; try { await signInWithEmailAndPassword(auth, email, password); setShowLogin(false); } catch (error) { setLoginError("Email ou mot de passe incorrect."); showToast("Échec de la connexion.", 'error'); } }, [auth, showToast]);
     const handleLogout = useCallback(() => { if(auth) signOut(auth).then(() => showToast("Déconnexion réussie.", "success")); }, [auth, showToast]);
     const getCurrentUserInfo = useCallback(() => { if (!currentUser) return null; return { uid: currentUser.uid, email: currentUser.email, name: getUserDisplayName(currentUser.email), role: ADMIN_EMAILS.includes(currentUser.email) ? 'admin' : 'counselor' }; }, [currentUser]);
-   
+    
     const handleSaveOrder = useCallback(async (orderData) => {
         if (!db || !currentUser) return;
 
@@ -660,7 +660,7 @@ export default function App() {
             setIsSaving(false);
         }
     }, [db, currentUser, editingOrder, orders, showToast, getCurrentUserInfo, isAdmin, allUsers]);
-   
+    
     const handleUpdateItemStatus = useCallback(async (orderId, itemId, newStatus, itemName) => { if (!db || !currentUser) return; const orderRef = doc(db, `artifacts/${APP_ID}/public/data/orders`, orderId); const orderToUpdate = orders.find(o => o.id === orderId); if (!orderToUpdate) return; const newItems = orderToUpdate.items.map(item => item.itemId === itemId ? { ...item, status: newStatus } : item); const updatedOrder = { ...orderToUpdate, items: newItems }; const newGlobalStatus = getDerivedOrderStatus(updatedOrder); const userInfo = getCurrentUserInfo(); const now = new Date().toISOString(); const historyEvent = { timestamp: now, action: `Article '${itemName}' marqué comme **${newStatus}**`, by: userInfo }; await updateDoc(orderRef, { items: newItems, currentStatus: newGlobalStatus, history: [...(orderToUpdate.history || []), historyEvent]}); showToast(`'${itemName}' mis à jour !`, 'success'); }, [db, currentUser, orders, getCurrentUserInfo, showToast]);
     const handleConfirmCancelItem = useCallback(async (note) => { if (!itemToCancel) return; const { orderId, itemId, itemName } = itemToCancel; const orderRef = doc(db, `artifacts/${APP_ID}/public/data/orders`, orderId); const orderToUpdate = orders.find(o => o.id === orderId); if (!orderToUpdate) return; const newItems = orderToUpdate.items.map(item => item.itemId === itemId ? { ...item, status: ITEM_STATUS.CANCELLED } : item); const updatedOrder = { ...orderToUpdate, items: newItems }; const newGlobalStatus = getDerivedOrderStatus(updatedOrder); const userInfo = getCurrentUserInfo(); const now = new Date().toISOString(); const historyEvent = { timestamp: now, action: `Article '${itemName}' **annulé**`, by: userInfo, note: note.trim() }; await updateDoc(orderRef, { items: newItems, currentStatus: newGlobalStatus, history: [...(orderToUpdate.history || []), historyEvent]}); showToast(`'${itemName}' annulé.`, 'success'); setShowItemCancelModal(false); setItemToCancel(null); }, [db, orders, itemToCancel, getCurrentUserInfo, showToast]);
     const handleConfirmRestore = useCallback(async (reason) => { if (!db || !currentUser || !orderToRestore) return; const orderRef = doc(db, `artifacts/${APP_ID}/public/data/orders`, orderToRestore.id); const restoredItems = orderToRestore.items.map(item => ({ ...item, status: ITEM_STATUS.ORDERED })); const newStatus = getDerivedOrderStatus({ ...orderToRestore, items: restoredItems }); const userInfo = getCurrentUserInfo(); const now = new Date().toISOString(); const historyEvent = { timestamp: now, action: "Commande **restaurée** depuis l'état annulé", by: userInfo, note: reason.trim() }; try { await updateDoc(orderRef, { items: restoredItems, currentStatus: newStatus, history: [...(orderToRestore.history || []), historyEvent] }); showToast("Commande restaurée avec succès !", 'success'); } catch (error) { console.error("Erreur lors de la restauration :", error); showToast("Échec de la restauration.", 'error'); } finally { setShowRestoreModal(false); setOrderToRestore(null); } }, [db, currentUser, orderToRestore, showToast, getCurrentUserInfo]);
