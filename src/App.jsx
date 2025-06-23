@@ -35,9 +35,9 @@ import 'jspdf-autotable';
 
 // Importations des icônes Lucide React
 import {
-    Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, Bell, ArchiveRestore,
+    Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, Bell, ArchiveRestore, Phone,
     PlusCircle, MinusCircle, History, CheckCircle, Truck, ShoppingCart, BarChart2,
-    DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send, UserPlus, ToggleLeft, ToggleRight, Percent, Save, Download, Wrench, HandCoins, Book, CandlestickChart
+    DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send, UserPlus, ToggleLeft, ToggleRight, Percent, Save, Download, Wrench, HandCoins, Book, CandlestickChart, Building2
 } from 'lucide-react';
 
 // =================================================================
@@ -140,7 +140,6 @@ const Toast = ({ message, type, onClose }) => {
     );
 };
 
-// NOUVEAU : Modale simple pour afficher une information
 const InfoModal = ({ title, message, onClose }) => (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
         <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-fade-in-up" onClick={e => e.stopPropagation()}>
@@ -313,102 +312,203 @@ const NotificationBell = ({ db, user }) => {
 
 const KpiCard = ({ title, value, icon: Icon, color }) => ( <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4"><div className={`p-3 rounded-lg ${color}`}><Icon size={28} className="text-white"/></div><div><p className="text-gray-400 text-sm font-medium">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div> );
 const LoginPage = ({ onLogin, error, isLoggingIn }) => { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); }; return <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4"><div className="text-center mb-8 animate-fade-in"><Package size={48} className="mx-auto text-indigo-400"/><h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1><p className="text-gray-400">Espace de connexion</p></div><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up"><form onSubmit={handleSubmit} className="space-y-6"><div><label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>{error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}<button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60">{isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}</button></form></div></div>;};
-const CreatePosModal = ({ db, showToast, onClose }) => { const [name, setName]=useState(''); const [email, setEmail]=useState(''); const [password, setPassword]=useState(''); const [isLoading, setIsLoading]=useState(false); const handleCreate=async(ev)=>{ev.preventDefault();if(!name||!email||password.length<6){showToast("Nom, email et mot de passe (6+ car.) requis.","error");return}setIsLoading(true);const appName=`secondary-app-${Date.now()}`;let secondaryApp;try{secondaryApp=initializeApp(firebaseConfig,appName);const secondaryAuth=getAuth(secondaryApp);const userCredential=await createUserWithEmailAndPassword(secondaryAuth,email,password);const nU=userCredential.user;const batch=writeBatch(db);batch.set(doc(db,"users",nU.uid),{displayName:name,email:email,role:"pos",status:"active",createdAt:serverTimestamp()});batch.set(doc(db,"pointsOfSale",nU.uid),{name:name,commissionRate:0.3,createdAt:serverTimestamp(),status:"active"});await batch.commit();showToast(`Compte pour ${name} créé !`,"success");onClose()}catch(err){if(err.code==='auth/email-already-in-use'){showToast("Email déjà utilisé.","error")}else{showToast("Erreur de création.","error")}}finally{setIsLoading(false);if(secondaryApp){signOut(getAuth(secondaryApp)).then(()=>deleteApp(secondaryApp))}}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2><form onSubmit={handleCreate} className="space-y-4"><div><label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label><input type="text" value={name} onChange={e=>setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Mot de passe initial</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">{isLoading?<div className="animate-spin rounded-full h-5 w-5 border-b-2"></div>:<><UserPlus size={18}/>Créer</>}</button></div></form></div></div>;};
-const EditPosModal = ({ db, pos, showToast, onClose, onSave }) => { const [name, setName] = useState(pos.name); const [commissionRate, setCommissionRate] = useState((pos.commissionRate || 0) * 100); const [isLoading, setIsLoading] = useState(false); const handleSave = async (event) => { event.preventDefault(); setIsLoading(true); const newRate = parseFloat(commissionRate) / 100; if (isNaN(newRate) || newRate < 0 || newRate > 1) { showToast("Le taux de commission doit être entre 0 et 100.", "error"); setIsLoading(false); return; } try { const posDocRef = doc(db, "pointsOfSale", pos.id); await updateDoc(posDocRef, { name: name, commissionRate: newRate, }); showToast("Dépôt mis à jour avec succès !", "success"); onSave(); onClose(); } catch (error) { console.error("Erreur de mise à jour du dépôt : ", error); showToast("Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}> <h2 className="text-2xl font-bold text-white mb-6">Modifier le Dépôt-Vente</h2> <form onSubmit={handleSave} className="space-y-4"> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label> <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Taux de Commission (%)</label> <input type="number" value={commissionRate} onChange={e => setCommissionRate(e.target.value)} required min="0" max="100" className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div className="flex justify-end gap-4 pt-4"> <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button> <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60"> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>} </button> </div> </form> </div> </div> ); };
-const InactiveAccountModal = ({ onLogout }) => { return ( <div className="fixed inset-0 bg-gray-900 bg-opacity-95 flex items-center justify-center z-[1000] animate-fade-in"> <div className="bg-gray-800 p-10 rounded-2xl shadow-2xl w-full max-w-lg border border-yellow-500/50 text-center animate-fade-in-up"> <AlertTriangle className="mx-auto h-16 w-16 text-yellow-400 mb-4"/> <h2 className="text-2xl font-bold text-white mb-3">Votre compte est actuellement inactif</h2> <p className="text-gray-300"> Vous pouvez toujours vous connecter, mais l'accès au tableau de bord a été suspendu. </p> <p className="text-gray-300 mt-4"> Pour réactiver votre compte ou pour toute question, veuillez contacter le support : </p> <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4"> <a href="mailto:jullien@bougienicole.fr" className="w-full sm:w-auto bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 flex items-center justify-center gap-2"> <User size={18} /> Contacter Jullien </a> <button onClick={onLogout} className="w-full sm:w-auto bg-gray-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-gray-500 flex items-center justify-center gap-2"> <LogOut size={18} /> Se déconnecter </button> </div> </div> </div> ); };
 
-const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) => {
-    const [productId, setProductId] = useState('');
-    const [scent, setScent] = useState('');
-    const [quantity, setQuantity] = useState(1);
+// MODIFIÉ : Le formulaire de création de dépôt
+const CreatePosModal = ({ db, showToast, onClose }) => { 
+    const [depotName, setDepotName] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [email, setEmail] = useState(''); 
+    const [phone, setPhone] = useState('');
+    const [password, setPassword] = useState(''); 
+    const [isLoading, setIsLoading] = useState(false); 
 
-    const availableScents = useMemo(() => {
-        const selectedProduct = products.find(p => p.id === productId);
-        return selectedProduct?.hasScents !== false ? scents : [];
-    }, [productId, products, scents]);
-
-    const maxQuantity = useMemo(() => {
-        if (!productId) return 0;
-        const stockItem = stock.find(item => 
-            item.productId === productId && 
-            (item.scent === scent || availableScents.length === 0)
-        );
-        return stockItem?.quantity || 0;
-    }, [stock, productId, scent, availableScents]);
-
-    const handleSaveSale = async () => {
-        const product = products.find(p => p.id === productId);
-        if (!product || (product.hasScents !== false && !scent) || quantity <= 0) {
-            showToast("Veuillez remplir tous les champs correctement.", "error");
+    const handleCreate = async (ev) => {
+        ev.preventDefault();
+        if(!depotName || !firstName || !lastName || !email || !phone || password.length < 6){
+            showToast("Tous les champs sont obligatoires. Le mot de passe doit faire 6+ caractères.", "error");
             return;
         }
-        if (quantity > maxQuantity) {
-            showToast("La quantité demandée est supérieure au stock disponible.", "error");
-            return;
-        }
-
+        setIsLoading(true);
+        const appName = `secondary-app-${Date.now()}`;
+        let secondaryApp;
         try {
+            secondaryApp = initializeApp(firebaseConfig, appName);
+            const secondaryAuth = getAuth(secondaryApp);
+            const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+            const newUser = userCredential.user;
+            
             const batch = writeBatch(db);
-            const newSaleRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
-            batch.set(newSaleRef, {
-                productId: product.id,
-                productName: product.name,
-                scent: product.hasScents !== false ? scent : null,
-                quantity: Number(quantity),
-                unitPrice: product.price,
-                totalAmount: product.price * Number(quantity),
+            
+            // Créer le document utilisateur avec toutes les infos
+            const userDocRef = doc(db, "users", newUser.uid);
+            batch.set(userDocRef, {
+                displayName: depotName,
+                email: email,
+                firstName: firstName,
+                lastName: lastName,
+                phone: phone,
+                role: "pos",
+                status: "active",
                 createdAt: serverTimestamp()
             });
 
-            const stockId = product.hasScents !== false ? `${product.id}_${scent}` : product.id;
-            const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, stockId);
-            
-            batch.update(stockDocRef, { quantity: maxQuantity - Number(quantity) });
-            
+            // Créer le document du point de vente
+            const posDocRef = doc(db, "pointsOfSale", newUser.uid);
+            batch.set(posDocRef, {
+                name: depotName,
+                commissionRate: 0.3,
+                createdAt: serverTimestamp(),
+                status: "active"
+            });
+
             await batch.commit();
-            showToast("Vente enregistrée avec succès !", "success");
+            showToast(`Compte pour ${depotName} créé avec succès !`, "success");
             onClose();
-        } catch (error) {
-            console.error("Erreur lors de l'enregistrement de la vente: ", error);
-            showToast("Échec de l'enregistrement de la vente.", "error");
+        } catch(err) {
+            if (err.code === 'auth/email-already-in-use') {
+                showToast("Cette adresse email est déjà utilisée.", "error");
+            } else {
+                console.error(err);
+                showToast("Erreur lors de la création du compte.", "error");
+            }
+        } finally {
+            setIsLoading(false);
+            if (secondaryApp) {
+                signOut(getAuth(secondaryApp)).then(() => deleteApp(secondaryApp));
+            }
         }
     };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}>
-            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg border-gray-700" onClick={e => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold text-white mb-6">Enregistrer une Vente</h2>
-                <div className="space-y-4">
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2>
+                <form onSubmit={handleCreate} className="space-y-4">
                     <div>
-                        <label className="block text-sm text-gray-300 mb-1">Produit</label>
-                        <select value={productId} onChange={e => { setProductId(e.target.value); setScent(''); }} className="w-full bg-gray-700 p-3 rounded-lg">
-                            <option value="">-- Choisir un produit --</option>
-                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt-Vente</label>
+                        <input type="text" value={depotName} onChange={e=>setDepotName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/>
                     </div>
-                    {availableScents.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">Parfum</label>
-                            <select value={scent} onChange={e => setScent(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" disabled={!productId}>
-                                <option value="">-- Choisir un parfum --</option>
-                                {availableScents.map(sc => <option key={sc.id} value={sc.name}>{sc.name}</option>)}
-                            </select>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Prénom du Contact</label>
+                            <input type="text" value={firstName} onChange={e=>setFirstName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/>
                         </div>
-                    )}
-                    <div>
-                        <label className="block text-sm text-gray-300 mb-1">Quantité</label>
-                        <input type="number" value={quantity} onChange={e => setQuantity(Number(e.target.value))} min="1" max={maxQuantity} className="w-full bg-gray-700 p-3 rounded-lg" />
-                        {maxQuantity > 0 && <p className="text-xs text-gray-400 mt-1">Stock disponible : {maxQuantity}</p>}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Contact</label>
+                            <input type="text" value={lastName} onChange={e=>setLastName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                        </div>
                     </div>
-                </div>
-                <div className="mt-8 flex justify-end gap-4">
-                    <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
-                    <button onClick={handleSaveSale} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">Enregistrer</button>
-                </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Téléphone</label>
+                            <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                        </div>
+                    </div>
+                     <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Mot de passe initial</label>
+                        <input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                    </div>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
+                        <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">
+                            {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><UserPlus size={18}/>Créer</>}
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     );
 };
+
+// NOUVEAU : Modale pour éditer le profil client
+const ProfileModal = ({ user, db, showToast, onClose }) => {
+    const [formData, setFormData] = useState({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        phone: user.phone || ''
+    });
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!formData.firstName || !formData.lastName || !formData.phone) {
+            showToast("Tous les champs sont obligatoires.", "error");
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const userDocRef = doc(db, "users", user.uid);
+            await updateDoc(userDocRef, {
+                firstName: formData.firstName,
+                lastName: formData.lastName,
+                phone: formData.phone,
+            });
+
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: 'all_admins',
+                message: `Le dépôt "${user.displayName}" a mis à jour ses informations de contact.`,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                type: 'PROFILE_UPDATE'
+            });
+
+            showToast("Profil mis à jour avec succès !", "success");
+            onClose();
+        } catch (error) {
+            console.error("Erreur de mise à jour du profil: ", error);
+            showToast("Erreur lors de la mise à jour.", "error");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-white mb-6">Mon Profil</h2>
+                <form onSubmit={handleSave} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Prénom</label>
+                            <input type="text" name="firstName" value={formData.firstName} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Nom</label>
+                            <input type="text" name="lastName" value={formData.lastName} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                        </div>
+                    </div>
+                     <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Téléphone</label>
+                        <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                    </div>
+                     <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                        <input type="email" value={user.email} readOnly className="w-full bg-gray-900/50 p-3 rounded-lg cursor-not-allowed"/>
+                         <p className="text-xs text-gray-400 mt-1">Pour modifier votre email, veuillez contacter un administrateur.</p>
+                    </div>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
+                        <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">
+                            {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+const EditPosModal = ({ db, pos, showToast, onClose, onSave }) => { const [name, setName] = useState(pos.name); const [commissionRate, setCommissionRate] = useState((pos.commissionRate || 0) * 100); const [isLoading, setIsLoading] = useState(false); const handleSave = async (event) => { event.preventDefault(); setIsLoading(true); const newRate = parseFloat(commissionRate) / 100; if (isNaN(newRate) || newRate < 0 || newRate > 1) { showToast("Le taux de commission doit être entre 0 et 100.", "error"); setIsLoading(false); return; } try { const posDocRef = doc(db, "pointsOfSale", pos.id); await updateDoc(posDocRef, { name: name, commissionRate: newRate, }); showToast("Dépôt mis à jour avec succès !", "success"); onSave(); onClose(); } catch (error) { console.error("Erreur de mise à jour du dépôt : ", error); showToast("Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}> <h2 className="text-2xl font-bold text-white mb-6">Modifier le Dépôt-Vente</h2> <form onSubmit={handleSave} className="space-y-4"> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label> <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div> <label className="block text-sm font-medium text-gray-300 mb-1">Taux de Commission (%)</label> <input type="number" value={commissionRate} onChange={e => setCommissionRate(e.target.value)} required min="0" max="100" className="w-full bg-gray-700 p-3 rounded-lg"/> </div> <div className="flex justify-end gap-4 pt-4"> <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button> <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60"> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>} </button> </div> </form> </div> </div> ); };
 
 const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { 
     const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); 
@@ -665,7 +765,7 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
             {showSaleModal && <SaleModal db={db} posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} showToast={showToast} products={products} scents={scents} />}
             {showDeliveryModal && <DeliveryRequestModal db={db} posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} showToast={showToast} products={products} scents={scents}/>}
             {saleToDelete && <ConfirmationModal title="Confirmer l'annulation" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName} ${saleToDelete.scent || ''} ?\nLe stock sera automatiquement restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} confirmText="Annuler la Vente" requiresReason={true} />}
-            {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message="Êtes-vous sûr de vouloir annuler cette commande ? Cette action est irréversible." onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler" />}
+            {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message="Êtes-vous sûr de vouloir annuler cette commande ? Cette action est irréversible." onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler" confirmColor="bg-red-600 hover:bg-red-700"/>}
             {showInfoModal && <InfoModal title="Annulation Impossible" message="Cette commande est déjà en cours de traitement et ne peut plus être annulée. Veuillez contacter l'administrateur en cas de problème." onClose={() => setShowInfoModal(false)} />}
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
@@ -677,6 +777,18 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                     </div>
                 )}
             </div>
+
+            {isAdminView && user && (
+                <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
+                     <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div className="flex items-center gap-3"><User className="text-indigo-400" size={20}/> <span>{user.firstName} {user.lastName}</span></div>
+                        <div className="flex items-center gap-3"><Store className="text-indigo-400" size={20}/> <span>{user.displayName}</span></div>
+                        <div className="flex items-center gap-3"><Phone className="text-indigo-400" size={20}/> <span>{user.phone}</span></div>
+                     </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <KpiCard title="Stock Total" value={kpis.totalStock} icon={Archive} color="bg-blue-600" />
                 <KpiCard title="Chiffre d'Affaires Brut" value={formatPrice(kpis.totalRevenue)} icon={DollarSign} color="bg-green-600" />
@@ -1038,6 +1150,7 @@ export default function App() {
     const [toast, setToast] = useState(null);
     const [products, setProducts] = useState([]);
     const [scents, setScents] = useState([]);
+    const [showProfileModal, setShowProfileModal] = useState(false);
     
     useEffect(() => { document.title = APP_TITLE; }, []);
 
@@ -1090,14 +1203,22 @@ export default function App() {
         
         return (
              <div className="bg-gray-900 text-white min-h-screen font-sans">
+                {showProfileModal && <ProfileModal user={userData} db={db} showToast={showToast} onClose={() => setShowProfileModal(false)} />}
+
                  <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30 backdrop-blur-sm">
                      <div className="flex items-center gap-2"><Package size={24} className="text-indigo-400"/><h1 className="text-xl font-bold">{APP_NAME}</h1></div>
-                     <div className="flex items-center gap-4">
+                     <div className="flex items-center gap-2 sm:gap-4">
                          <span className="text-gray-300 text-sm hidden sm:block"><span className="font-semibold">{userData.displayName}</span> ({userData.role})</span>
+                         
+                         {userData.role === 'pos' && 
+                            <button onClick={() => setShowProfileModal(true)} title="Mon Profil" className="p-2 text-gray-400 hover:text-white">
+                                <User size={22} />
+                            </button>
+                         }
                          
                          {userData && <NotificationBell db={db} user={userData} />}
 
-                         <button onClick={handleLogout} className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"><LogOut size={20} /></button>
+                         <button onClick={handleLogout} title="Déconnexion" className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"><LogOut size={20} /></button>
                      </div>
                  </header>
                  <main>
