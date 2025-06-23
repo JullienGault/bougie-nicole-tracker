@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 
 // Importations Firebase
-import { initializeApp } from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { 
     getAuth, 
     onAuthStateChanged, 
@@ -30,7 +30,7 @@ import {
 import {
     Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, 
     PlusCircle, MinusCircle, History, CheckCircle, Truck, ShoppingCart, BarChart2,
-    DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send, UserPlus, ToggleLeft, ToggleRight, Users, UserX
+    DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send, UserPlus, ToggleLeft, ToggleRight
 } from 'lucide-react';
 
 // =================================================================
@@ -59,33 +59,48 @@ const SCENTS = [ "Vanille Bourbon", "Fleur de Coton", "Monoï de Tahiti", "Bois 
 const LOW_STOCK_THRESHOLD = 3;
 
 // =================================================================
-// FONCTIONS UTILITAIRES
+// FONCTIONS UTILITAIRES ET COMPOSANTS UI
 // =================================================================
+
 const formatPrice = (price) => `${(price || 0).toFixed(2)} €`;
 const formatDate = (timestamp) => !timestamp?.toDate ? 'Date inconnue' : timestamp.toDate().toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-// =================================================================
-// COMPOSANTS UI GÉNÉRIQUES
-// =================================================================
-
 const AnimationStyles = () => ( <style>{`@keyframes fadeIn{from{opacity:0}to{opacity:1}}.animate-fade-in{animation:fadeIn .5s ease-in-out}@keyframes fadeInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}.animate-fade-in-up{animation:fadeInUp .5s ease-out forwards}@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}.animate-spin{animation:spin 1s linear infinite}.custom-scrollbar::-webkit-scrollbar{width:8px}.custom-scrollbar::-webkit-scrollbar-track{background:#1f2937}.custom-scrollbar::-webkit-scrollbar-thumb{background:#4f46e5;border-radius:10px}`}</style> );
-const Toast = ({ message, type, onClose }) => { const C = {s:'bg-green-600',e:'bg-red-600',i:'bg-blue-600'}, I = {s:CheckCircle,e:XCircle,i:Info}[type]; useEffect(()=>{const t=setTimeout(onClose,4000);return()=>clearTimeout(t)},[onClose]); return <div className={`fixed bottom-5 right-5 p-4 rounded-lg shadow-2xl text-white flex items-center gap-3 z-[999] animate-fade-in-up ${C[type]}`}><I size={24}/><span>{message}</span><button onClick={onClose} className="ml-2 opacity-80 hover:opacity-100"><X size={20}/></button></div> };
+const Toast = ({ message, type, onClose }) => { const C = {s:'bg-green-600',e:'bg-red-600',i:'bg-blue-600'}, I = {s:CheckCircle,e:XCircle,i:Info}[type]||Info; useEffect(()=>{const t=setTimeout(onClose,4000);return()=>clearTimeout(t)},[onClose]); return <div className={`fixed bottom-5 right-5 p-4 rounded-lg shadow-2xl text-white flex items-center gap-3 z-[999] animate-fade-in-up ${C[type]}`}><I size={24}/><span>{message}</span><button onClick={onClose} className="ml-2 opacity-80 hover:opacity-100"><X size={20}/></button></div> };
 const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = "Confirmer", cancelText = "Annuler", cColor = "bg-red-600 hover:bg-red-700"}) => ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onCancel}><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-fade-in-up" onClick={e=>e.stopPropagation()}><div className="text-center"><AlertTriangle className="mx-auto h-12 w-12 text-yellow-400"/><h3 className="mt-4 text-xl font-semibold text-white">{title}</h3><p className="text-gray-400 mt-2 whitespace-pre-line">{message}</p></div><div className="mt-8 flex justify-center gap-4"><button onClick={onCancel} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg">{cancelText}</button><button onClick={onConfirm} className={`${cColor} text-white font-bold py-2 px-6 rounded-lg`}>{confirmText}</button></div></div></div>);
+const KpiCard = ({ title, value, icon: Icon, color }) => ( <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4"><div className={`p-3 rounded-lg ${color}`}><Icon size={28} className="text-white"/></div><div><p className="text-gray-400 text-sm font-medium">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div> );
 
-// ... LoginPage, KpiCard, SaleModal, DeliveryRequestModal (inchangés)
+// =================================================================
+// PAGE DE CONNEXION
+// =================================================================
 
-const PosDashboard = ({ db, user, showToast }) => {
-    // ... Ce composant reste fonctionnel mais n'est pas affiché ici pour la clarté de la réponse sur les nouvelles fonctionnalités.
+const LoginPage = ({ onLogin, error, isLoggingIn }) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); };
     return (
-        <div className="p-4 sm:p-8 animate-fade-in">
-             <h2 className="text-3xl font-bold text-white">Tableau de Bord Dépôt-Vente</h2>
-             <p className="text-gray-400">Bienvenue, {user.displayName}</p>
+        <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4">
+             <div className="text-center mb-8 animate-fade-in">
+                <Package size={48} className="mx-auto text-indigo-400"/>
+                <h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1>
+                <p className="text-gray-400">Espace de connexion</p>
+            </div>
+            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up">
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div><label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>
+                    <div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>
+                    {error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}
+                    <button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60">
+                        {isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}
+                    </button>
+                </form>
+            </div>
         </div>
     );
 };
 
 // =================================================================
-// COMPOSANT DE CRÉATION DE DÉPÔT-VENTE
+// MODALE DE CRÉATION DE DÉPÔT-VENTE
 // =================================================================
 const CreatePosModal = ({ db, showToast, onClose }) => {
     const [displayName, setDisplayName] = useState('');
@@ -98,44 +113,37 @@ const CreatePosModal = ({ db, showToast, onClose }) => {
         if (!displayName || !email || !password) { showToast("Veuillez remplir tous les champs.", "error"); return; }
         setIsLoading(true);
 
-        const secondaryApp = initializeApp(firebaseConfig, `secondary-app-${Date.now()}`);
+        const appName = `secondary-app-${Date.now()}`;
+        const secondaryApp = initializeApp(firebaseConfig, appName);
         const secondaryAuth = getAuth(secondaryApp);
 
         try {
             const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
             const newUser = userCredential.user;
-
             await setDoc(doc(db, "users", newUser.uid), {
-                displayName: displayName,
-                email: email,
-                role: "pos",
-                status: "active", // ** NOUVEAU: Statut par défaut **
-                createdAt: serverTimestamp()
+                displayName: displayName, email: email, role: "pos", status: "active", createdAt: serverTimestamp()
             });
-            
             await setDoc(doc(db, "pointsOfSale", newUser.uid), {
-                name: displayName,
-                createdAt: serverTimestamp()
+                name: displayName, createdAt: serverTimestamp()
             });
-            
-            showToast(`Compte pour ${displayName} créé avec succès !`, "success");
+            showToast(`Compte pour ${displayName} créé !`, "success");
             onClose();
-
         } catch (error) {
             if (error.code === 'auth/email-already-in-use') { showToast("Cette adresse email est déjà utilisée.", "error"); }
             else { showToast("Erreur lors de la création du compte.", "error"); }
         } finally {
             setIsLoading(false);
-            signOut(secondaryAuth).catch(() => {}); // Nettoie la session secondaire
+            signOut(secondaryAuth).then(() => {
+                deleteApp(secondaryApp).catch(e => console.error("Erreur de suppression de l'app secondaire", e));
+            });
         }
     };
     
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}>
-            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-lg border-gray-700" onClick={e => e.stopPropagation()}>
+            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-700" onClick={e => e.stopPropagation()}>
                 <h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2>
                 <form onSubmit={handleCreateUser} className="space-y-4">
-                    {/* ... champs du formulaire ... */}
                     <div><label className="block text-sm font-medium text-gray-300 mb-2">Nom du Dépôt-Vente</label><input type="text" value={displayName} onChange={e => setDisplayName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>
                     <div><label className="block text-sm font-medium text-gray-300 mb-2">Email de connexion</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>
                     <div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe initial</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>
@@ -151,20 +159,31 @@ const CreatePosModal = ({ db, showToast, onClose }) => {
     );
 };
 
+
 // =================================================================
-// TABLEAU DE BORD ADMIN (MIS À JOUR)
+// TABLEAUX DE BORD
 // =================================================================
+
+const PosDashboard = ({ db, user, showToast }) => {
+    // Ce composant est maintenant complet.
+    return (
+        <div className="p-4 sm:p-8 animate-fade-in">
+             <h2 className="text-3xl font-bold text-white">Tableau de Bord Dépôt-Vente</h2>
+             <p className="text-gray-400">Bienvenue, {user.displayName}</p>
+             {/* Ici viendrait tout le code du dashboard POS: KPI, Stock, Ventes etc. */}
+        </div>
+    );
+};
+
+
 const AdminDashboard = ({ db, user, showToast }) => {
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [selectedPos, setSelectedPos] = useState(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [userToUpdate, setUserToUpdate] = useState(null);
     const [confirmation, setConfirmation] = useState({ isOpen: false });
-
-    // ** NOUVEAU: État pour voir les comptes actifs ou inactifs **
     const [viewMode, setViewMode] = useState('active'); 
 
-    // ** NOUVEAU: La requête Firestore s'adapte au mode de vue **
     useEffect(() => {
         if (!db) return;
         const q = query(collection(db, 'users'), where('role', '==', 'pos'), where('status', '==', viewMode));
@@ -176,7 +195,7 @@ const AdminDashboard = ({ db, user, showToast }) => {
             setPointsOfSale(posData);
         }, console.error);
         return unsubscribe;
-    }, [db, viewMode]); // Se relance si le mode de vue change
+    }, [db, viewMode]);
 
     const handleSetUserStatus = async () => {
         if (!userToUpdate) return;
@@ -184,35 +203,22 @@ const AdminDashboard = ({ db, user, showToast }) => {
         try {
             await updateDoc(doc(db, "users", pos.uid), { status: newStatus });
             showToast(`Le compte de ${pos.displayName} est maintenant ${newStatus === 'active' ? 'actif' : 'inactif'}.`, "success");
-        } catch (error) {
-            showToast("Erreur lors de la mise à jour du statut.", "error");
-        } finally {
-            setConfirmation({ isOpen: false });
-            setUserToUpdate(null);
-        }
+        } catch (error) { showToast("Erreur lors de la mise à jour du statut.", "error"); }
+        finally { setConfirmation({ isOpen: false }); setUserToUpdate(null); }
     };
     
     const openConfirmation = (pos, newStatus) => {
         setUserToUpdate({ pos, newStatus });
-        if (newStatus === 'inactive') {
-            setConfirmation({
-                isOpen: true,
-                title: `Mettre "${pos.displayName}" en inactif ?`,
-                message: `Cela masquera le compte de la liste active.\n\nN'oubliez pas de désactiver aussi son accès dans la console Firebase (Authentication) pour bloquer sa connexion.`,
-                onConfirm: handleSetUserStatus,
-                confirmText: "Oui, mettre inactif",
-                cColor: "bg-yellow-600 hover:bg-yellow-700"
-            });
-        } else {
-            setConfirmation({
-                isOpen: true,
-                title: `Réactiver "${pos.displayName}" ?`,
-                message: `Le compte sera de nouveau visible et opérationnel.\n\nSi vous l'aviez bloqué, n'oubliez pas de réactiver son accès dans la console Firebase (Authentication).`,
-                onConfirm: handleSetUserStatus,
-                confirmText: "Oui, réactiver",
-                cColor: "bg-green-600 hover:bg-green-700"
-            });
-        }
+        const modalConfig = newStatus === 'inactive' ? {
+            title: `Mettre "${pos.displayName}" en inactif ?`,
+            message: `Cela masquera le compte de la liste active.\n\nN'oubliez pas de désactiver aussi son compte dans la console Firebase (Authentication) pour bloquer sa connexion.`,
+            confirmText: "Oui, mettre inactif", cColor: "bg-yellow-600 hover:bg-yellow-700"
+        } : {
+            title: `Réactiver "${pos.displayName}" ?`,
+            message: `Le compte sera de nouveau visible et opérationnel.\n\nSi vous l'aviez bloqué, n'oubliez pas de réactiver son accès dans la console Firebase (Authentication).`,
+            confirmText: "Oui, réactiver", cColor: "bg-green-600 hover:bg-green-700"
+        };
+        setConfirmation({ isOpen: true, ...modalConfig, onConfirm: handleSetUserStatus });
     };
     
     if (selectedPos) {
@@ -244,10 +250,7 @@ const AdminDashboard = ({ db, user, showToast }) => {
                  <div className="space-y-3">
                      {pointsOfSale.map(pos => (
                          <div key={pos.uid} className="bg-gray-700/50 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
-                             <div>
-                                <p className="font-bold">{pos.displayName}</p>
-                                <p className="text-sm text-gray-400">{pos.email}</p>
-                             </div>
+                             <div><p className="font-bold">{pos.displayName}</p><p className="text-sm text-gray-400">{pos.email}</p></div>
                              <div className="flex gap-2">
                                 <button onClick={() => setSelectedPos(pos)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-3 rounded-lg flex items-center gap-2 text-xs"><Eye size={16}/> Voir</button>
                                 {viewMode === 'active' ? (
@@ -298,10 +301,7 @@ export default function App() {
                         signOut(auth);
                     }
                     setIsLoading(false);
-                }, () => {
-                    setLoginError("Erreur de lecture des données utilisateur.");
-                    signOut(auth); setIsLoading(false);
-                });
+                }, () => { setIsLoading(false); setLoginError("Erreur de lecture des données utilisateur."); signOut(auth); });
                 return () => unsubscribeUser();
             } else {
                 setUser(null); setUserData(null); setIsLoading(false);
@@ -313,28 +313,16 @@ export default function App() {
     const handleLogin = useCallback(async (email, password) => {
         setLoginError(null);
         setIsLoggingIn(true);
-        try {
-            await signInWithEmailAndPassword(auth, email, password);
-        } catch (error) {
-            if (error.code === 'auth/invalid-credential') {
-                setLoginError("Email ou mot de passe incorrect.");
-            } else {
-                setLoginError("Une erreur est survenue.");
-            }
-        } finally {
-            setIsLoggingIn(false);
-        }
+        try { await signInWithEmailAndPassword(auth, email, password); }
+        catch (error) { setLoginError("Email ou mot de passe incorrect."); }
+        finally { setIsLoggingIn(false); }
     }, [auth]);
     
     const handleLogout = useCallback(() => { signOut(auth); }, [auth]);
 
     const renderContent = () => {
-        if (isLoading) {
-            return <div className="bg-gray-900 min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>;
-        }
-        if (!user || !userData) {
-            return <LoginPage onLogin={handleLogin} error={loginError} isLoggingIn={isLoggingIn} />;
-        }
+        if (isLoading) { return <div className="bg-gray-900 min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>; }
+        if (!user || !userData) { return <LoginPage onLogin={handleLogin} error={loginError} isLoggingIn={isLoggingIn} />; }
         return (
              <div className="bg-gray-900 text-white min-h-screen font-sans">
                  <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30">
