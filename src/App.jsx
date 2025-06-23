@@ -155,6 +155,44 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
     );
 };
 
+// NOUVEAU: Modale générique pour demander un motif à l'administrateur
+const ReasonPromptModal = ({ title, message, onConfirm, onCancel }) => {
+    const [reason, setReason] = useState('');
+    
+    const handleConfirm = () => {
+        if (!reason.trim()) {
+            alert("Le motif est obligatoire.");
+            return;
+        }
+        onConfirm(reason);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60]" onClick={onCancel}>
+            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-lg border border-gray-700 animate-fade-in-up" onClick={e => e.stopPropagation()}>
+                <h3 className="text-xl font-semibold text-white">{title}</h3>
+                <p className="text-gray-400 mt-2">{message}</p>
+                <div className="mt-6">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Motif (obligatoire)</label>
+                    <textarea 
+                        value={reason} 
+                        onChange={e => setReason(e.target.value)} 
+                        rows="4" 
+                        className="w-full bg-gray-700 p-3 rounded-lg" 
+                        placeholder="Ex: Rupture de stock sur un produit...">
+                    </textarea>
+                </div>
+                <div className="mt-8 flex justify-end gap-4">
+                    <button onClick={onCancel} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg">Annuler</button>
+                    <button onClick={handleConfirm} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded-lg disabled:opacity-50" disabled={!reason.trim()}>
+                        Valider et Enregistrer
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const KpiCard = ({ title, value, icon: Icon, color }) => ( <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4"><div className={`p-3 rounded-lg ${color}`}><Icon size={28} className="text-white"/></div><div><p className="text-gray-400 text-sm font-medium">{title}</p><p className="text-2xl font-bold text-white">{value}</p></div></div> );
 const LoginPage = ({ onLogin, error, isLoggingIn }) => { const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const handleSubmit = (e) => { e.preventDefault(); if (!isLoggingIn) onLogin(email, password); }; return <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4"><div className="text-center mb-8 animate-fade-in"><Package size={48} className="mx-auto text-indigo-400"/><h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1><p className="text-gray-400">Espace de connexion</p></div><div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-gray-700 animate-fade-in-up"><form onSubmit={handleSubmit} className="space-y-6"><div><label className="block text-sm font-medium text-gray-300 mb-2">Adresse Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div><div><label className="block text-sm font-medium text-gray-300 mb-2">Mot de passe</label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" /></div>{error && (<p className="text-red-400 text-sm text-center bg-red-500/10 p-3 rounded-lg">{error}</p>)}<button type="submit" disabled={isLoggingIn} className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60">{isLoggingIn ? <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div> : <><LogIn size={20} /> Se connecter</>}</button></form></div></div>;};
 const CreatePosModal = ({ db, showToast, onClose }) => { const [name, setName]=useState(''); const [email, setEmail]=useState(''); const [password, setPassword]=useState(''); const [isLoading, setIsLoading]=useState(false); const handleCreate=async(ev)=>{ev.preventDefault();if(!name||!email||password.length<6){showToast("Nom, email et mot de passe (6+ car.) requis.","error");return}setIsLoading(true);const appName=`secondary-app-${Date.now()}`;let secondaryApp;try{secondaryApp=initializeApp(firebaseConfig,appName);const secondaryAuth=getAuth(secondaryApp);const userCredential=await createUserWithEmailAndPassword(secondaryAuth,email,password);const nU=userCredential.user;const batch=writeBatch(db);batch.set(doc(db,"users",nU.uid),{displayName:name,email:email,role:"pos",status:"active",createdAt:serverTimestamp()});batch.set(doc(db,"pointsOfSale",nU.uid),{name:name,commissionRate:0.3,createdAt:serverTimestamp(),status:"active"});await batch.commit();showToast(`Compte pour ${name} créé !`,"success");onClose()}catch(err){if(err.code==='auth/email-already-in-use'){showToast("Email déjà utilisé.","error")}else{showToast("Erreur de création.","error")}}finally{setIsLoading(false);if(secondaryApp){signOut(getAuth(secondaryApp)).then(()=>deleteApp(secondaryApp))}}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Ajouter un Dépôt-Vente</h2><form onSubmit={handleCreate} className="space-y-4"><div><label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label><input type="text" value={name} onChange={e=>setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Email</label><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div><label className="block text-sm font-medium text-gray-300 mb-1">Mot de passe initial</label><input type="password" value={password} onChange={e=>setPassword(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div><div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">{isLoading?<div className="animate-spin rounded-full h-5 w-5 border-b-2"></div>:<><UserPlus size={18}/>Créer</>}</button></div></form></div></div>;};
@@ -256,7 +294,77 @@ const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) =
 
 const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); const handleItemChange=(i,f,v)=>{const nI=[...items];nI[i][f]=v;if(f==='productId')nI[i].scent='';setItems(nI)}; const handleAdd=()=>setItems([...items,{productId:'',scent:'',quantity:10}]); const handleRemove=(i)=>setItems(items.filter((_,idx)=>i!==idx)); const handleSend=async()=>{const vI=items.filter(i=>{const p=products.find(pr=>pr.id===i.productId);if(!p||(p.hasScents!==false&&!i.scent)||i.quantity<=0)return false;return true});if(vI.length===0){showToast("Ajoutez au moins un article valide.","error");return}try{await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp()});showToast("Demande de livraison envoyée !","success");onClose()}catch(e){showToast("Échec de l'envoi.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2><div className="space-y-4">{items.map((item,i)=>{const p=products.find(pr=>pr.id===item.productId);const sS=p&&p.hasScents!==false;return(<div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"><div className="sm:col-span-1"><label className="text-sm">Produit</label><select value={item.productId} onChange={e=>handleItemChange(i,'productId',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="sm:col-span-1">{sS&&<>
 <label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>};
-const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCancelRequest }) => { const [isLoading, setIsLoading] = useState(false); const [editableItems, setEditableItems] = useState(request.items); const DeliveryStatusTracker = ({ status }) => { if (status === 'cancelled') { return ( <div className="flex items-center gap-4 bg-red-500/10 p-3 rounded-lg"> <AlertTriangle className="h-8 w-8 text-red-500"/> <div> <h4 className="font-bold text-red-400">Commande Annulée</h4> <p className="text-xs text-gray-400">Cette commande ne sera pas traitée.</p> </div> </div> ); } const currentIndex = deliveryStatusOrder.indexOf(status); return ( <div className="flex items-center space-x-4"> {deliveryStatusOrder.map((step, index) => { const isCompleted = index < currentIndex; const isActive = index === currentIndex; return ( <React.Fragment key={step}> <div className="flex flex-col items-center text-center"> <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${isCompleted ? 'bg-green-600' : isActive ? 'bg-blue-600 animate-pulse' : 'bg-gray-600'}`}> {isCompleted ? <Check size={16} /> : <span className="text-xs font-bold">{index + 1}</span>} </div> <p className={`mt-2 text-xs w-20 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{DELIVERY_STATUS_STEPS[step]}</p> </div> {index < deliveryStatusOrder.length - 1 && (<div className={`flex-1 h-1 rounded-full ${isCompleted ? 'bg-green-600' : 'bg-gray-600'}`}></div>)} </React.Fragment> ); })} </div> ); }; const handleQuantityChange = (index, quantity) => { const newItems = [...editableItems]; newItems[index].quantity = Math.max(0, Number(quantity)); setEditableItems(newItems); }; const handleRemoveItem = (index) => { setEditableItems(editableItems.filter((_, i) => i !== index)); }; const handleSaveChanges = async () => { setIsLoading(true); try { const requestDocRef = doc(db, 'deliveryRequests', request.id); const dataToUpdate = { items: editableItems }; if (!request.originalItems) { dataToUpdate.originalItems = request.items; } await updateDoc(requestDocRef, dataToUpdate); showToast("Modifications enregistrées !", "success"); } catch (error) { showToast("Erreur lors de la sauvegarde.", "error"); } finally { setIsLoading(false); } }; const handleAdvanceStatus = async () => { setIsLoading(true); const currentIndex = deliveryStatusOrder.indexOf(request.status); if (currentIndex >= deliveryStatusOrder.length - 1) { setIsLoading(false); return; } const nextStatus = deliveryStatusOrder[currentIndex + 1]; try { if (nextStatus === 'delivered') { await runTransaction(db, async (transaction) => { const requestDocRef = doc(db, "deliveryRequests", request.id); for (const item of editableItems) { const product = products.find(p => p.id === item.productId); if (!product) throw new Error(`Produit ID ${item.productId} non trouvé.`); const stockId = product.hasScents !== false ? `${item.productId}_${item.scent}` : item.productId; const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId); const stockDoc = await transaction.get(stockDocRef); if (stockDoc.exists()) { const newQuantity = (stockDoc.data().quantity || 0) + item.quantity; transaction.update(stockDocRef, { quantity: newQuantity }); } else { transaction.set(stockDocRef, { productId: item.productId, productName: product.name, price: product.price, scent: item.scent || null, quantity: item.quantity }); } } transaction.update(requestDocRef, { status: 'delivered', items: editableItems }); }); showToast("Livraison confirmée et stock mis à jour !", "success"); } else { const requestDocRef = doc(db, 'deliveryRequests', request.id); await updateDoc(requestDocRef, { status: nextStatus }); showToast(`Statut mis à jour : ${DELIVERY_STATUS_STEPS[nextStatus]}`, "success"); } onClose(); } catch (error) { console.error("Erreur: ", error); showToast(error.message || "Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; const isLastStep = request.status === 'shipping'; const canAdvance = request.status !== 'delivered' && request.status !== 'cancelled'; return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl" onClick={e=>e.stopPropagation()}> <div className="flex justify-between items-start mb-6"> <div> <h2 className="text-2xl font-bold text-white mb-2">Gérer la livraison pour :</h2> <p className="text-indigo-400 text-xl font-semibold">{request.posName}</p> </div> {request.status !== 'delivered' && request.status !== 'cancelled' && <button onClick={() => onCancelRequest(request)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"> <XCircle size={18}/> Annuler la Commande </button>} </div> <div className="mb-8"> <DeliveryStatusTracker status={request.status} /> </div> <div className="bg-gray-700/50 p-4 rounded-lg max-h-64 overflow-y-auto custom-scrollbar"> <table className="w-full text-left"> <thead><tr className="border-b border-gray-600"><th className="p-2">Produit / Parfum</th><th className="p-2 w-32">Quantité</th><th className="p-2 w-16">Actions</th></tr></thead> <tbody> {editableItems.map((item, index) => { const product = products.find(p => p.id === item.productId); return ( <tr key={index} className="border-b border-gray-700/50"> <td className="p-2">{product?.name || 'Inconnu'} <span className="text-gray-400">{item.scent || ''}</span></td> <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(index, e.target.value)} className="w-20 bg-gray-600 p-1 rounded-md text-center" disabled={!canAdvance} /></td> <td className="p-2">{canAdvance ? <button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button> : null}</td> </tr> ); })} </tbody> </table> </div> <div className="mt-8 flex justify-between items-center"> {canAdvance ? <button onClick={handleSaveChanges} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"> <Save size={18}/> Enregistrer Modifications </button> : <div></div>} <div className="flex gap-4"> <button type="button" onClick={onClose} className="bg-gray-600 font-bold py-2 px-4 rounded-lg">Fermer</button> {canAdvance && ( <button onClick={handleAdvanceStatus} disabled={isLoading} className={`${isLastStep ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50`}> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : isLastStep ? <><CheckCircle size={18}/>Confirmer la Livraison</> : <><Truck size={18}/>Étape Suivante</>} </button> )} </div> </div> </div> </div> ); };
+
+// MODIFIÉ: Le composant de gestion de livraison
+const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCancelRequest }) => { 
+    const [isLoading, setIsLoading] = useState(false); 
+    const [editableItems, setEditableItems] = useState(request.items); 
+    // NOUVEAU: État pour contrôler l'affichage de la modale de motif
+    const [showReasonModal, setShowReasonModal] = useState(false);
+
+    const DeliveryStatusTracker = ({ status }) => { if (status === 'cancelled') { return ( <div className="flex items-center gap-4 bg-red-500/10 p-3 rounded-lg"> <AlertTriangle className="h-8 w-8 text-red-500"/> <div> <h4 className="font-bold text-red-400">Commande Annulée</h4> <p className="text-xs text-gray-400">Cette commande ne sera pas traitée.</p> </div> </div> ); } const currentIndex = deliveryStatusOrder.indexOf(status); return ( <div className="flex items-center space-x-4"> {deliveryStatusOrder.map((step, index) => { const isCompleted = index < currentIndex; const isActive = index === currentIndex; return ( <React.Fragment key={step}> <div className="flex flex-col items-center text-center"> <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${isCompleted ? 'bg-green-600' : isActive ? 'bg-blue-600 animate-pulse' : 'bg-gray-600'}`}> {isCompleted ? <Check size={16} /> : <span className="text-xs font-bold">{index + 1}</span>} </div> <p className={`mt-2 text-xs w-20 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{DELIVERY_STATUS_STEPS[step]}</p> </div> {index < deliveryStatusOrder.length - 1 && (<div className={`flex-1 h-1 rounded-full ${isCompleted ? 'bg-green-600' : 'bg-gray-600'}`}></div>)} </React.Fragment> ); })} </div> ); }; 
+    
+    const handleQuantityChange = (index, quantity) => { const newItems = [...editableItems]; newItems[index].quantity = Math.max(0, Number(quantity)); setEditableItems(newItems); }; 
+    const handleRemoveItem = (index) => { setEditableItems(editableItems.filter((_, i) => i !== index)); }; 
+    
+    // MODIFIÉ: La fonction de sauvegarde accepte maintenant un motif
+    const handleSaveChanges = async (reason) => { 
+        setShowReasonModal(false);
+        setIsLoading(true); 
+        try { 
+            const requestDocRef = doc(db, 'deliveryRequests', request.id); 
+            const dataToUpdate = { 
+                items: editableItems,
+                modificationReason: reason // On sauvegarde le motif
+            }; 
+            if (!request.originalItems) { 
+                dataToUpdate.originalItems = request.items; 
+            } 
+            await updateDoc(requestDocRef, dataToUpdate); 
+            showToast("Modifications enregistrées !", "success"); 
+        } catch (error) { 
+            showToast("Erreur lors de la sauvegarde.", "error"); 
+        } finally { 
+            setIsLoading(false); 
+        } 
+    }; 
+
+    const handleAdvanceStatus = async () => { setIsLoading(true); const currentIndex = deliveryStatusOrder.indexOf(request.status); if (currentIndex >= deliveryStatusOrder.length - 1) { setIsLoading(false); return; } const nextStatus = deliveryStatusOrder[currentIndex + 1]; try { if (nextStatus === 'delivered') { await runTransaction(db, async (transaction) => { const requestDocRef = doc(db, "deliveryRequests", request.id); for (const item of editableItems) { const product = products.find(p => p.id === item.productId); if (!product) throw new Error(`Produit ID ${item.productId} non trouvé.`); const stockId = product.hasScents !== false ? `${item.productId}_${item.scent}` : item.productId; const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId); const stockDoc = await transaction.get(stockDocRef); if (stockDoc.exists()) { const newQuantity = (stockDoc.data().quantity || 0) + item.quantity; transaction.update(stockDocRef, { quantity: newQuantity }); } else { transaction.set(stockDocRef, { productId: item.productId, productName: product.name, price: product.price, scent: item.scent || null, quantity: item.quantity }); } } transaction.update(requestDocRef, { status: 'delivered', items: editableItems }); }); showToast("Livraison confirmée et stock mis à jour !", "success"); } else { const requestDocRef = doc(db, 'deliveryRequests', request.id); await updateDoc(requestDocRef, { status: nextStatus }); showToast(`Statut mis à jour : ${DELIVERY_STATUS_STEPS[nextStatus]}`, "success"); } onClose(); } catch (error) { console.error("Erreur: ", error); showToast(error.message || "Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; 
+    const isLastStep = request.status === 'shipping'; const canAdvance = request.status !== 'delivered' && request.status !== 'cancelled'; 
+    
+    return ( 
+    <>
+        {/* NOUVEAU: Affichage conditionnel de la modale pour le motif */}
+        {showReasonModal && (
+            <ReasonPromptModal 
+                title="Justifier les modifications"
+                message="Veuillez expliquer pourquoi la commande est modifiée. Ce motif sera visible par le client."
+                onConfirm={handleSaveChanges}
+                onCancel={() => setShowReasonModal(false)}
+            />
+        )}
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> 
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl" onClick={e=>e.stopPropagation()}> 
+                <div className="flex justify-between items-start mb-6"> 
+                    <div> <h2 className="text-2xl font-bold text-white mb-2">Gérer la livraison pour :</h2> <p className="text-indigo-400 text-xl font-semibold">{request.posName}</p> </div> 
+                    {request.status !== 'delivered' && request.status !== 'cancelled' && <button onClick={() => onCancelRequest(request)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"> <XCircle size={18}/> Annuler la Commande </button>} 
+                </div> 
+                <div className="mb-8"> <DeliveryStatusTracker status={request.status} /> </div> 
+                <div className="bg-gray-700/50 p-4 rounded-lg max-h-64 overflow-y-auto custom-scrollbar"> <table className="w-full text-left"> <thead><tr className="border-b border-gray-600"><th className="p-2">Produit / Parfum</th><th className="p-2 w-32">Quantité</th><th className="p-2 w-16">Actions</th></tr></thead> <tbody> {editableItems.map((item, index) => { const product = products.find(p => p.id === item.productId); return ( <tr key={index} className="border-b border-gray-700/50"> <td className="p-2">{product?.name || 'Inconnu'} <span className="text-gray-400">{item.scent || ''}</span></td> <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(index, e.target.value)} className="w-20 bg-gray-600 p-1 rounded-md text-center" disabled={!canAdvance} /></td> <td className="p-2">{canAdvance ? <button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button> : null}</td> </tr> ); })} </tbody> </table> </div> 
+                <div className="mt-8 flex justify-between items-center"> 
+                    {/* MODIFIÉ: Le bouton de sauvegarde ouvre maintenant la modale de motif */}
+                    {canAdvance ? <button onClick={() => setShowReasonModal(true)} disabled={isLoading} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/> Enregistrer Modifications</>} </button> : <div></div>} 
+                    <div className="flex gap-4"> 
+                        <button type="button" onClick={onClose} className="bg-gray-600 font-bold py-2 px-4 rounded-lg">Fermer</button> 
+                        {canAdvance && ( <button onClick={handleAdvanceStatus} disabled={isLoading} className={`${isLastStep ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50`}> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : isLastStep ? <><CheckCircle size={18}/>Confirmer la Livraison</> : <><Truck size={18}/>Étape Suivante</>} </button> )} 
+                    </div> 
+                </div> 
+            </div> 
+        </div>
+    </>
+    ); 
+};
+
 
 // =================================================================
 // TABLEAUX DE BORD (DASHBOARDS)
@@ -342,11 +450,8 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                 <KpiCard title="Votre Commission" value={formatPercent(posData?.commissionRate)} icon={Percent} color="bg-purple-600" />
                 <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Package} color="bg-pink-600" />
             </div>
-            <div className="grid grid-cols-1 gap-6 mt-8">
-                 <div className="bg-gray-800 rounded-2xl p-6">
-                    <h3 className="text-xl font-bold mb-4">Vos meilleures ventes</h3>
-                        {salesStats.length > 0 ? <ul>{salesStats.map(([name, qty])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{qty}</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente enregistrée.</p>}
-                </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
                 <div className="bg-gray-800 rounded-2xl p-6">
                     <h3 className="text-xl font-bold mb-6">Suivi de vos livraisons</h3>
                     {deliveryRequests.length > 0 ? (
@@ -368,6 +473,20 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                                                 <div className="mb-4">
                                                     <DeliveryStatusTracker status={req.status} reason={req.cancellationReason} />
                                                 </div>
+                                                
+                                                {/* NOUVEAU: Affichage du motif de modification */}
+                                                {req.modificationReason && (
+                                                    <div className="bg-yellow-500/10 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-4 text-sm">
+                                                        <div className="flex items-start gap-3">
+                                                            <Info className="h-5 w-5 text-yellow-300 flex-shrink-0 mt-0.5"/>
+                                                            <div>
+                                                                <h4 className="font-bold text-yellow-300">Cette commande a été modifiée :</h4>
+                                                                <p className="text-gray-300 mt-1 italic">"{req.modificationReason}"</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {req.status !== 'cancelled' && (
                                                     <div className="bg-gray-700/50 p-3 rounded-lg">
                                                         <table className="w-full text-sm">
@@ -381,7 +500,6 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                                                                 {req.items.map((item, index) => {
                                                                     const originalItem = req.originalItems?.find(oi => oi.productId === item.productId && oi.scent === item.scent);
                                                                     const wasModified = originalItem && originalItem.quantity !== item.quantity;
-                                                                    
                                                                     const product = products.find(p => p.id === item.productId);
 
                                                                     return (
@@ -415,19 +533,23 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                         </div>
                     ) : <p className="text-gray-400">Aucune demande de livraison en cours.</p>}
                 </div>
-            </div>
-            <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-white">Gestion du Stock Actuel</h3>
-                    <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
-                        <> {showHistory ? "Masquer l'historique" : "Voir l'historique"} {showHistory ? <ChevronUp/> : <ChevronDown/>} </>
-                    </button>
+                <div className="bg-gray-800 rounded-2xl p-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-xl font-bold text-white">Gestion du Stock Actuel</h3>
+                        <button onClick={() => setShowHistory(!showHistory)} className="flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
+                            <> {showHistory ? "Masquer l'historique" : "Voir l'historique"} {showHistory ? <ChevronUp/> : <ChevronDown/>} </>
+                        </button>
+                    </div>
+                    {showHistory ? (
+                        <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Actions</th></tr></thead><tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName} <span className="text-gray-400">{sale.scent || ''}</span></td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3"><button onClick={() => setSaleToDelete(sale)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button></td></tr>))}</tbody></table></div>
+                    ) : (
+                        <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Produit</th><th className="p-3">Parfum</th><th className="p-3">Stock</th><th className="p-3">Prix Unitaire</th></tr></thead><tbody>{stock.map(item => (<tr key={item.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3 font-medium">{item.productName}</td><td className="p-3 text-gray-300">{item.scent || 'N/A'}</td><td className={`p-3 font-bold ${item.quantity <= LOW_STOCK_THRESHOLD ? 'text-yellow-400' : 'text-white'}`}>{item.quantity}</td><td className="p-3">{formatPrice(item.price)}</td></tr>))}</tbody></table></div>
+                    )}
                 </div>
-                {showHistory ? (
-                    <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Actions</th></tr></thead><tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName} <span className="text-gray-400">{sale.scent || ''}</span></td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3"><button onClick={() => setSaleToDelete(sale)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button></td></tr>))}</tbody></table></div>
-                ) : (
-                    <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Produit</th><th className="p-3">Parfum</th><th className="p-3">Stock</th><th className="p-3">Prix Unitaire</th></tr></thead><tbody>{stock.map(item => (<tr key={item.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3 font-medium">{item.productName}</td><td className="p-3 text-gray-300">{item.scent || 'N/A'}</td><td className={`p-3 font-bold ${item.quantity <= LOW_STOCK_THRESHOLD ? 'text-yellow-400' : 'text-white'}`}>{item.quantity}</td><td className="p-3">{formatPrice(item.price)}</td></tr>))}</tbody></table></div>
-                )}
+            </div>
+             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
+                <h3 className="text-xl font-bold mb-4">Vos meilleures ventes</h3>
+                {salesStats.length > 0 ? <ul>{salesStats.map(([name, qty])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{qty}</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente enregistrée.</p>}
             </div>
         </div>
     );
@@ -444,6 +566,36 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
     const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0, topPos: [], topProducts: [] });
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [expandedRequestId, setExpandedRequestId] = useState(null);
+
+    const toggleExpand = (requestId) => {
+        setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
+    };
+    
+    const DeliveryStatusTracker = ({ status }) => {
+      const currentIndex = deliveryStatusOrder.indexOf(status);
+      return (
+        <div className="flex items-center space-x-2 sm:space-x-4 p-2">
+          {deliveryStatusOrder.map((step, index) => {
+            const isCompleted = index < currentIndex;
+            const isActive = index === currentIndex;
+            return (
+              <React.Fragment key={step}>
+                <div className="flex flex-col items-center flex-shrink-0">
+                  <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white ${ isCompleted ? 'bg-green-600' : isActive ? 'bg-blue-600 animate-pulse' : 'bg-gray-600'}`}>
+                    {isCompleted ? <Check size={16} /> : <span className="text-xs">{index + 1}</span>}
+                  </div>
+                  <p className={`mt-2 text-xs text-center w-20 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{DELIVERY_STATUS_STEPS[step]}</p>
+                </div>
+                {index < deliveryStatusOrder.length - 1 && (
+                  <div className={`flex-1 h-1 rounded-full ${isCompleted ? 'bg-green-600' : 'bg-gray-600'}`}></div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      );
+    };
 
     useEffect(() => {
         const q = query(collection(db, "pointsOfSale"), orderBy('name'));
@@ -562,17 +714,32 @@ const AdminDashboard = ({ db, user, showToast, products, scents }) => {
                 <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6">
                     <h3 className="text-xl font-bold text-white mb-4">Demandes de livraison à traiter</h3>
                     {deliveryRequests.length > 0 ? (
-                        <ul className="space-y-3">
-                            {deliveryRequests.map(req => (
-                                <li key={req.id} className="bg-gray-700/50 p-3 rounded-lg flex justify-between items-center">
-                                    <div>
-                                        <p className="font-bold">{req.posName}</p>
-                                        <p className="text-sm text-gray-400">{formatDate(req.createdAt)} - <span className="font-semibold text-blue-400">{DELIVERY_STATUS_STEPS[req.status]}</span></p>
+                        <div className="space-y-4">
+                            {deliveryRequests.map(req => {
+                                const isExpanded = expandedRequestId === req.id;
+                                return (
+                                    <div key={req.id} className="bg-gray-700/50 rounded-lg transition-all duration-300">
+                                        <button onClick={() => toggleExpand(req.id)} className="w-full p-4 flex justify-between items-center text-left">
+                                            <div>
+                                                <p className="font-bold">{req.posName}</p>
+                                                <p className="text-sm text-gray-400">{formatDate(req.createdAt)} - <span className="font-semibold text-blue-400">{DELIVERY_STATUS_STEPS[req.status]}</span></p>
+                                            </div>
+                                            {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                        </button>
+                                        {isExpanded && (
+                                            <div className="p-4 border-t border-gray-600 animate-fade-in">
+                                                <DeliveryStatusTracker status={req.status} />
+                                                <div className="mt-4 flex justify-end">
+                                                     <button onClick={() => setRequestToProcess(req)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm">
+                                                        <Wrench size={16}/> Gérer la Demande
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                    <button onClick={() => setRequestToProcess(req)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded-lg flex items-center gap-2 text-sm"><Wrench size={16}/> Gérer</button>
-                                </li>
-                            ))}
-                        </ul>
+                                )
+                            })}
+                        </div>
                     ) : <p className="text-gray-400">Aucune demande de livraison à traiter.</p>}
                 </div>
                 <div className="space-y-6">
