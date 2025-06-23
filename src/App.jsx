@@ -26,7 +26,7 @@ import {
 
 // Importations des icônes Lucide React
 import {
-    Torch, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, 
+    Package, Flame, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Edit, 
     PlusCircle, MinusCircle, History, CheckCircle, Truck, ShoppingCart, BarChart2,
     DollarSign, Archive, Eye, ChevronDown, ChevronUp, Check, XCircle, Trash2, Send
 } from 'lucide-react';
@@ -49,7 +49,7 @@ const ADMIN_EMAIL = "jullien@bougienicole.com"; // Email de l'administrateur
 
 // --- Catalogue Produits ---
 const PRODUCTS = [
-    { id: 'bougie', name: 'Bougie', price: 15.00, icon: Torch }, // Icône corrigée
+    { id: 'bougie', name: 'Bougie', price: 15.00, icon: Package }, // Icône corrigée
     { id: 'fondant', name: 'Fondant', price: 2.50, icon: Flame },
     { id: 'bruleur', name: 'Brûleur', price: 12.00, icon: Store, hasScents: false }
 ];
@@ -181,7 +181,7 @@ const LoginPage = ({ onLogin, error }) => {
     return (
         <div className="bg-gray-900 min-h-screen flex flex-col items-center justify-center p-4">
              <div className="text-center mb-8">
-                <Torch size={48} className="mx-auto text-indigo-400"/>
+                <Package size={48} className="mx-auto text-indigo-400"/>
                 <h1 className="text-4xl font-bold text-white mt-4">{APP_NAME}</h1>
                 <p className="text-gray-400">Espace de connexion pour les dépôts-ventes</p>
             </div>
@@ -538,7 +538,7 @@ const PosDashboard = ({ db, user, showToast }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                 <KpiCard title="Stock Total Restant" value={kpis.totalStock} icon={Archive} color="bg-blue-600" />
                 <KpiCard title="Chiffre d'Affaires" value={formatPrice(kpis.totalRevenue)} icon={DollarSign} color="bg-green-600" />
-                <KpiCard title="À reverser à Bougie Nicole" value={formatPrice(kpis.netToBePaid)} icon={Torch} color="bg-pink-600" />
+                <KpiCard title="À reverser à Bougie Nicole" value={formatPrice(kpis.netToBePaid)} icon={Package} color="bg-pink-600" />
             </div>
 
              {/* Alertes Stock Bas */}
@@ -678,7 +678,7 @@ const AdminDashboard = ({ db, user, showToast }) => {
                      productName: PRODUCTS.find(p => p.id === item.productId).name,
                      price: PRODUCTS.find(p => p.id === item.productId).price,
                      scent: item.scent || null,
-                     quantity: currentQuantity + item.quantity,
+                     quantity: currentQuantity + Number(item.quantity),
                  }, { merge: true });
             }
             
@@ -837,7 +837,7 @@ export default function App() {
             <div className="bg-gray-900 text-white min-h-screen font-sans">
                  <header className="bg-gray-800/50 p-4 flex justify-between items-center shadow-md sticky top-0 z-30">
                     <div className="flex items-center gap-2">
-                        <Torch size={24} className="text-indigo-400"/>
+                        <Package size={24} className="text-indigo-400"/>
                         <h1 className="text-xl font-bold">{APP_NAME}</h1>
                     </div>
                     <div className="flex items-center gap-4">
