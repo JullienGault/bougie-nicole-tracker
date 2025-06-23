@@ -155,7 +155,6 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
     );
 };
 
-// NOUVEAU: Modale générique pour demander un motif à l'administrateur
 const ReasonPromptModal = ({ title, message, onConfirm, onCancel }) => {
     const [reason, setReason] = useState('');
     
@@ -295,11 +294,9 @@ const SaleModal = ({ db, posId, stock, onClose, showToast, products, scents }) =
 const DeliveryRequestModal = ({ db, posId, posName, onClose, showToast, products, scents }) => { const [items,setItems]=useState([{productId:'',scent:'',quantity:10}]); const handleItemChange=(i,f,v)=>{const nI=[...items];nI[i][f]=v;if(f==='productId')nI[i].scent='';setItems(nI)}; const handleAdd=()=>setItems([...items,{productId:'',scent:'',quantity:10}]); const handleRemove=(i)=>setItems(items.filter((_,idx)=>i!==idx)); const handleSend=async()=>{const vI=items.filter(i=>{const p=products.find(pr=>pr.id===i.productId);if(!p||(p.hasScents!==false&&!i.scent)||i.quantity<=0)return false;return true});if(vI.length===0){showToast("Ajoutez au moins un article valide.","error");return}try{await addDoc(collection(db,'deliveryRequests'),{posId,posName,items:vI,status:'pending',createdAt:serverTimestamp()});showToast("Demande de livraison envoyée !","success");onClose()}catch(e){showToast("Échec de l'envoi.","error")}}; return <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}><div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e=>e.stopPropagation()}><h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2><div className="space-y-4">{items.map((item,i)=>{const p=products.find(pr=>pr.id===item.productId);const sS=p&&p.hasScents!==false;return(<div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end"><div className="sm:col-span-1"><label className="text-sm">Produit</label><select value={item.productId} onChange={e=>handleItemChange(i,'productId',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="sm:col-span-1">{sS&&<>
 <label className="text-sm">Parfum</label><select value={item.scent} onChange={e=>handleItemChange(i,'scent',e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg"><option value="">-- Choisir --</option>{scents.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></>}</div><div className="flex items-center gap-2"><div className="flex-grow"><label className="text-sm">Quantité</label><input type="number" value={item.quantity} onChange={e=>handleItemChange(i,'quantity',Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/></div>{items.length>1&&<button onClick={()=>handleRemove(i)} className="p-2 bg-red-600 rounded-lg text-white self-end mb-px"><Trash2 size={20}/></button>}</div></div>)})}</div><button type="button" onClick={handleAdd} className="mt-4 flex items-center gap-2 text-indigo-400"><PlusCircle size={20}/>Ajouter un article</button><div className="mt-8 flex justify-end gap-4"><button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button><button onClick={handleSend} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Send size={18}/>Envoyer</button></div></div></div>};
 
-// MODIFIÉ: Le composant de gestion de livraison
 const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCancelRequest }) => { 
     const [isLoading, setIsLoading] = useState(false); 
     const [editableItems, setEditableItems] = useState(request.items); 
-    // NOUVEAU: État pour contrôler l'affichage de la modale de motif
     const [showReasonModal, setShowReasonModal] = useState(false);
 
     const DeliveryStatusTracker = ({ status }) => { if (status === 'cancelled') { return ( <div className="flex items-center gap-4 bg-red-500/10 p-3 rounded-lg"> <AlertTriangle className="h-8 w-8 text-red-500"/> <div> <h4 className="font-bold text-red-400">Commande Annulée</h4> <p className="text-xs text-gray-400">Cette commande ne sera pas traitée.</p> </div> </div> ); } const currentIndex = deliveryStatusOrder.indexOf(status); return ( <div className="flex items-center space-x-4"> {deliveryStatusOrder.map((step, index) => { const isCompleted = index < currentIndex; const isActive = index === currentIndex; return ( <React.Fragment key={step}> <div className="flex flex-col items-center text-center"> <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white ${isCompleted ? 'bg-green-600' : isActive ? 'bg-blue-600 animate-pulse' : 'bg-gray-600'}`}> {isCompleted ? <Check size={16} /> : <span className="text-xs font-bold">{index + 1}</span>} </div> <p className={`mt-2 text-xs w-20 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{DELIVERY_STATUS_STEPS[step]}</p> </div> {index < deliveryStatusOrder.length - 1 && (<div className={`flex-1 h-1 rounded-full ${isCompleted ? 'bg-green-600' : 'bg-gray-600'}`}></div>)} </React.Fragment> ); })} </div> ); }; 
@@ -307,7 +304,6 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
     const handleQuantityChange = (index, quantity) => { const newItems = [...editableItems]; newItems[index].quantity = Math.max(0, Number(quantity)); setEditableItems(newItems); }; 
     const handleRemoveItem = (index) => { setEditableItems(editableItems.filter((_, i) => i !== index)); }; 
     
-    // MODIFIÉ: La fonction de sauvegarde accepte maintenant un motif
     const handleSaveChanges = async (reason) => { 
         setShowReasonModal(false);
         setIsLoading(true); 
@@ -315,7 +311,7 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
             const requestDocRef = doc(db, 'deliveryRequests', request.id); 
             const dataToUpdate = { 
                 items: editableItems,
-                modificationReason: reason // On sauvegarde le motif
+                modificationReason: reason 
             }; 
             if (!request.originalItems) { 
                 dataToUpdate.originalItems = request.items; 
@@ -334,7 +330,6 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
     
     return ( 
     <>
-        {/* NOUVEAU: Affichage conditionnel de la modale pour le motif */}
         {showReasonModal && (
             <ReasonPromptModal 
                 title="Justifier les modifications"
@@ -352,7 +347,6 @@ const ProcessDeliveryModal = ({ db, request, products, showToast, onClose, onCan
                 <div className="mb-8"> <DeliveryStatusTracker status={request.status} /> </div> 
                 <div className="bg-gray-700/50 p-4 rounded-lg max-h-64 overflow-y-auto custom-scrollbar"> <table className="w-full text-left"> <thead><tr className="border-b border-gray-600"><th className="p-2">Produit / Parfum</th><th className="p-2 w-32">Quantité</th><th className="p-2 w-16">Actions</th></tr></thead> <tbody> {editableItems.map((item, index) => { const product = products.find(p => p.id === item.productId); return ( <tr key={index} className="border-b border-gray-700/50"> <td className="p-2">{product?.name || 'Inconnu'} <span className="text-gray-400">{item.scent || ''}</span></td> <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(index, e.target.value)} className="w-20 bg-gray-600 p-1 rounded-md text-center" disabled={!canAdvance} /></td> <td className="p-2">{canAdvance ? <button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button> : null}</td> </tr> ); })} </tbody> </table> </div> 
                 <div className="mt-8 flex justify-between items-center"> 
-                    {/* MODIFIÉ: Le bouton de sauvegarde ouvre maintenant la modale de motif */}
                     {canAdvance ? <button onClick={() => setShowReasonModal(true)} disabled={isLoading} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"> {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/> Enregistrer Modifications</>} </button> : <div></div>} 
                     <div className="flex gap-4"> 
                         <button type="button" onClick={onClose} className="bg-gray-600 font-bold py-2 px-4 rounded-lg">Fermer</button> 
@@ -451,7 +445,8 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                 <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Package} color="bg-pink-600" />
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8">
+            {/* MODIFIÉ: La classe de la grille est passée à `md:grid-cols-2` */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
                 <div className="bg-gray-800 rounded-2xl p-6">
                     <h3 className="text-xl font-bold mb-6">Suivi de vos livraisons</h3>
                     {deliveryRequests.length > 0 ? (
@@ -474,7 +469,6 @@ const PosDashboard = ({ db, user, products, scents, showToast, isAdminView = fal
                                                     <DeliveryStatusTracker status={req.status} reason={req.cancellationReason} />
                                                 </div>
                                                 
-                                                {/* NOUVEAU: Affichage du motif de modification */}
                                                 {req.modificationReason && (
                                                     <div className="bg-yellow-500/10 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-4 text-sm">
                                                         <div className="flex items-start gap-3">
