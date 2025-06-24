@@ -254,7 +254,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
         if (field === 'stockId') {
             const selectedStock = stock.find(s => s.id === value);
             newItems[index].maxQuantity = selectedStock ? selectedStock.quantity : 0;
-            newItems[index].quantity = 1; // reset quantity
+            newItems[index].quantity = 1;
         }
         if (field === 'quantity') {
             newItems[index].quantity = Math.max(1, Math.min(Number(value), newItems[index].maxQuantity));
@@ -288,8 +288,10 @@ const SaleModal = ({ posId, stock, onClose }) => {
             batch.update(stockDocRef, { quantity: stockItem.quantity - item.quantity });
 
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
+            
+            // SOLUTION POUR LE FUTUR : On s'assure que posId est toujours inclus
             batch.set(saleDocRef, {
-                posId: posId, // AJOUT IMPORTANT pour l'analyse future
+                posId: posId, 
                 productId: stockItem.productId,
                 productName: stockItem.productName,
                 scent: stockItem.scent,
@@ -297,7 +299,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
                 unitPrice: stockItem.price,
                 totalAmount: stockItem.price * item.quantity,
                 createdAt: serverTimestamp(),
-                payoutId: null // Initialiser à null pour marquer comme non réglé
+                payoutId: null
             });
         }
 
@@ -348,7 +350,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
     );
 };
 
-const NotificationBell = () => {
+const NotificationBell = ({ onLogout }) => {
     const { db, loggedInUserData } = useContext(AppContext);
     const [notifications, setNotifications] = useState([]);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
@@ -675,7 +677,6 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
             const posDocRef = doc(db, "pointsOfSale", pos.id);
             await updateDoc(posDocRef, { name: name, commissionRate: newRate });
 
-            // Notification pour le client
             await addDoc(collection(db, 'notifications'), {
                 recipientUid: pos.id,
                 message: `Le taux de votre commission a été mis à jour à ${formatPercent(newRate)}.`,
@@ -998,7 +999,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
 // TABLEAUX DE BORD (DASHBOARDS)
 // =================================================================
 
-const PosDashboard = ({ pos, isAdminView = false }) => {
+const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) => {
     const { db, products, showToast, loggedInUserData } = useContext(AppContext);
 
     const currentUserData = isAdminView ? pos : loggedInUserData;
@@ -1010,13 +1011,12 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [showSaleModal, setShowSaleModal] = useState(false);
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
-    const [showHistory, setShowHistory] = useState('stock'); // 'stock', 'sales', 'payouts'
+    const [showHistory, setShowHistory] = useState('stock');
     const [saleToDelete, setSaleToDelete] = useState(null);
     const [expandedRequestId, setExpandedRequestId] = useState(null);
     const [deliveryTab, setDeliveryTab] = useState('actives');
     const [requestToCancel, setRequestToCancel] = useState(null);
     const [showInfoModal, setShowInfoModal] = useState(false);
-
     const [payouts, setPayouts] = useState([]);
     const [payoutToConfirm, setPayoutToConfirm] = useState(null);
     const [isUpdatingPayout, setIsUpdatingPayout] = useState(null);
@@ -1209,6 +1209,7 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
         try {
             await batch.commit();
             showToast("Période de paiement clôturée avec succès !", "success");
+            onActionSuccess(); // SOLUTION : On déclenche le rafraîchissement du parent
         } catch(error) {
             console.error("Erreur lors de la clôture de la période: ", error);
             showToast("Erreur lors de la création du paiement.", "error");
@@ -1419,13 +1420,10 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
     );
 };
 
-// =================================================================
-// COMPOSANT D'ANALYSE DES VENTES
-// =================================================================
 const SalesAnalytics = () => {
     const { db } = useContext(AppContext);
     const [year, setYear] = useState(new Date().getFullYear());
-    const [month, setMonth] = useState(new Date().getMonth()); // 0 = Janvier, 11 = Décembre
+    const [month, setMonth] = useState(new Date().getMonth());
     const [isLoading, setIsLoading] = useState(false);
     const [monthlyData, setMonthlyData] = useState({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] });
 
@@ -1435,12 +1433,10 @@ const SalesAnalytics = () => {
     useEffect(() => {
         const fetchMonthlySales = async () => {
             setIsLoading(true);
-            
             const startDate = new Date(year, month, 1);
             const endDate = new Date(year, month + 1, 1);
 
             try {
-                // Requête Collection Group : nécessite un index dans Firestore
                 const salesQuery = query(
                     collectionGroup(db, 'sales'),
                     where('createdAt', '>=', startDate),
@@ -1456,9 +1452,13 @@ const SalesAnalytics = () => {
                     return;
                 }
 
-                const posIds = [...new Set(salesData.map(s => s.posId))];
-                const posDocs = await getDocs(query(collection(db, 'pointsOfSale'), where('__name__', 'in', posIds.length > 0 ? posIds : ['dummyId'])));
-                const posMap = new Map(posDocs.docs.map(doc => [doc.id, doc.data()]));
+                const posIds = [...new Set(salesData.map(s => s.posId).filter(Boolean))];
+                let posMap = new Map();
+
+                if (posIds.length > 0) {
+                    const posDocs = await getDocs(query(collection(db, 'pointsOfSale'), where('__name__', 'in', posIds)));
+                    posMap = new Map(posDocs.docs.map(doc => [doc.id, doc.data()]));
+                }
                 
                 const revenue = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0);
                 
@@ -1485,7 +1485,7 @@ const SalesAnalytics = () => {
                 setMonthlyData({
                     revenue,
                     salesCount: salesData.length,
-                    commission: commission,
+                    commission,
                     netIncome: revenue - commission,
                     topPos,
                     topProducts
@@ -1561,7 +1561,8 @@ const AdminDashboard = () => {
     const [expandedRequestId, setExpandedRequestId] = useState(null);
     const [deliveryTab, setDeliveryTab] = useState('actives');
     const [allPosBalances, setAllPosBalances] = useState({});
-    const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard' or 'analytics'
+    const [currentView, setCurrentView] = useState('dashboard');
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     const combinedPointsOfSale = useMemo(() => {
         return pointsOfSale.map(pos => {
@@ -1650,30 +1651,22 @@ const AdminDashboard = () => {
     useEffect(() => {
         if (pointsOfSale.length === 0) return;
 
-        const fetchAllBalances = async () => {
+        const fetchAllCurrentData = async () => {
             const balances = {};
-            for (const pos of pointsOfSale) {
-                const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
-                const salesSnapshot = await getDocs(salesQuery);
-                const gross = salesSnapshot.docs.reduce((acc, doc) => acc + doc.data().totalAmount, 0);
-                balances[pos.id] = gross - (gross * (pos.commissionRate || 0));
-            }
-            setAllPosBalances(balances);
-        };
-
-        const fetchCurrentPeriodSales = async () => {
             let currentSales = [];
+
             for (const pos of pointsOfSale) {
                 const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
                 const salesSnapshot = await getDocs(salesQuery);
                 const salesData = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate }));
                 currentSales = [...currentSales, ...salesData];
-            }
-            return currentSales;
-        };
 
-        fetchAllBalances();
-        fetchCurrentPeriodSales().then(currentSales => {
+                const gross = salesData.reduce((acc, doc) => acc.totalAmount + doc.totalAmount, 0);
+                balances[pos.id] = gross - (gross * (pos.commissionRate || 0));
+            }
+
+            setAllPosBalances(balances);
+            
             const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
             const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
             const toPay = revenue - commission;
@@ -1683,8 +1676,10 @@ const AdminDashboard = () => {
             const salesByProduct = currentSales.reduce((acc, sale) => { const key = `${sale.productName} ${sale.scent || ''}`.trim(); acc[key] = (acc[key] || 0) + sale.quantity; return acc; }, {});
             const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 3);
             setGlobalStats({ revenue, commission, toPay, topPos, topProducts });
-        });
-    }, [pointsOfSale, db]);
+        };
+
+        fetchAllCurrentData();
+    }, [pointsOfSale, db, refreshTrigger]);
 
     const handleCancelDelivery = async (reason) => {
         if (!requestToCancel) return;
@@ -1740,7 +1735,7 @@ const AdminDashboard = () => {
                 </div>
                 <SalesAnalytics />
             </>
-        )
+        );
     }
 
     if (selectedPos) {
@@ -1750,7 +1745,11 @@ const AdminDashboard = () => {
                     <ArrowRightCircle className="transform rotate-180" size={20} />
                     Retour à la liste
                  </button>
-                 <PosDashboard pos={selectedPos} isAdminView={true} />
+                 <PosDashboard 
+                    pos={selectedPos} 
+                    isAdminView={true} 
+                    onActionSuccess={() => setRefreshTrigger(prev => prev + 1)} 
+                />
             </div>
         );
     }
