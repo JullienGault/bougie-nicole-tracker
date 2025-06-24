@@ -42,7 +42,7 @@ import {
 // =================================================================
 
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY", // Remplacez par votre clé API
+    apiKey: "AIzaSyDUmxNBMQ2gWvCHWMrk0iowFpYVE1wMpMo",
     authDomain: "bougienicole.firebaseapp.com",
     projectId: "bougienicole",
     storageBucket: "bougienicole.appspot.com",
@@ -63,7 +63,6 @@ const DELIVERY_STATUS_STEPS = {
 };
 const deliveryStatusOrder = ['pending', 'processing', 'shipping', 'delivered'];
 
-// Correction : Constantes pour les statuts de paiement
 const PAYOUT_STATUSES = {
     pending: { text: 'En attente', color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
     processing: { text: 'En traitement', color: 'text-blue-400', bg: 'bg-blue-500/10' },
@@ -290,7 +289,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
 
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
             
-            // Correction : On s'assure que posId est toujours inclus pour les collectionGroup queries
+            // SOLUTION POUR LE FUTUR : On s'assure que posId est toujours inclus
             batch.set(saleDocRef, {
                 posId: posId, 
                 productId: stockItem.productId,
@@ -720,9 +719,9 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
                         />
                         {hasOpenBalance && (
                              <p className="text-xs text-yellow-400 mt-2">
-                                 <Info size={14} className="inline mr-1" />
-                                 Vous devez clôturer la période de paiement en cours pour modifier ce taux.
-                             </p>
+                                <Info size={14} className="inline mr-1" />
+                                Vous devez clôturer la période de paiement en cours pour modifier ce taux.
+                            </p>
                         )}
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
@@ -1210,7 +1209,7 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
         try {
             await batch.commit();
             showToast("Période de paiement clôturée avec succès !", "success");
-            onActionSuccess(); // Correction : On déclenche le rafraîchissement du parent
+            onActionSuccess(); // SOLUTION : On déclenche le rafraîchissement du parent
         } catch(error) {
             console.error("Erreur lors de la clôture de la période: ", error);
             showToast("Erreur lors de la création du paiement.", "error");
@@ -1438,7 +1437,6 @@ const SalesAnalytics = () => {
             const endDate = new Date(year, month + 1, 1);
 
             try {
-                // Correction : Assurez-vous d'avoir un index sur collection 'sales', champs 'createdAt' et 'posId'
                 const salesQuery = query(
                     collectionGroup(db, 'sales'),
                     where('createdAt', '>=', startDate),
@@ -1458,7 +1456,6 @@ const SalesAnalytics = () => {
                 let posMap = new Map();
 
                 if (posIds.length > 0) {
-                     // Correction : Utilisation de `getDocs` avec une clause `where in` est plus efficace
                     const posDocs = await getDocs(query(collection(db, 'pointsOfSale'), where('__name__', 'in', posIds)));
                     posMap = new Map(posDocs.docs.map(doc => [doc.id, doc.data()]));
                 }
@@ -1467,7 +1464,6 @@ const SalesAnalytics = () => {
                 
                 const commission = salesData.reduce((acc, sale) => {
                     const pos = posMap.get(sale.posId);
-                    // Correction : Utiliser un taux de commission de 0 si le dépôt est introuvable
                     const commissionRate = pos ? pos.commissionRate : 0;
                     return acc + (sale.totalAmount * commissionRate);
                 }, 0);
@@ -1658,20 +1654,16 @@ const AdminDashboard = () => {
         const fetchAllCurrentData = async () => {
             const balances = {};
             let currentSales = [];
-            
-            // Correction : Utilisation de Promise.all pour gérer les requêtes asynchrones
-            const promises = pointsOfSale.map(async (pos) => {
+
+            for (const pos of pointsOfSale) {
                 const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
                 const salesSnapshot = await getDocs(salesQuery);
                 const salesData = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate }));
-                
-                currentSales.push(...salesData);
+                currentSales = [...currentSales, ...salesData];
 
-                const gross = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0);
+                const gross = salesData.reduce((acc, doc) => acc.totalAmount + doc.totalAmount, 0);
                 balances[pos.id] = gross - (gross * (pos.commissionRate || 0));
-            });
-            
-            await Promise.all(promises);
+            }
 
             setAllPosBalances(balances);
             
