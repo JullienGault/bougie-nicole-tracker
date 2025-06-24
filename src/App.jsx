@@ -63,7 +63,7 @@ const DELIVERY_STATUS_STEPS = {
 };
 const deliveryStatusOrder = ['pending', 'processing', 'shipping', 'delivered'];
 
-// NOUVEAU: Statuts détaillés pour les paiements avec un ordre défini
+// Statuts détaillés pour les paiements avec un ordre défini
 const PAYOUT_STATUSES = {
     pending:    { text: 'En attente',       color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
     processing: { text: 'En traitement',    color: 'text-blue-400',   bg: 'bg-blue-500/10'   },
@@ -1060,7 +1060,7 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
         }
     };
 
-    // NOUVELLE FONCTION: Gérer le changement de statut du paiement par l'admin
+    // Gérer le changement de statut du paiement par l'admin
     const handleUpdatePayoutStatus = async (payout) => {
         if (!isAdminView) return;
 
@@ -1138,8 +1138,9 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                 <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Coins} color="bg-pink-600" />
             </div>
 
+            {/* MODIFICATION: lg:col-span-3 -> lg:col-span-2 ET lg:col-span-2 -> lg:col-span-3 */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 mt-8">
-                <div className="lg:col-span-3 bg-gray-800 rounded-2xl p-6 flex flex-col">
+                <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6 flex flex-col">
                     <h3 className="text-xl font-bold text-white mb-4">Suivi des Livraisons</h3>
                     <div className="border-b border-gray-700 mb-4">
                         <nav className="-mb-px flex gap-6" aria-label="Tabs">
@@ -1195,7 +1196,7 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                     ) : <p className="text-center text-gray-400 pt-8">Aucune demande de livraison.</p>}
                     </div>
                 </div>
-                <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6">
+                <div className="lg:col-span-3 bg-gray-800 rounded-2xl p-6">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xl font-bold text-white">Gestion & Historique</h3>
                     </div>
@@ -1230,7 +1231,7 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                                             <td className="p-3">{formatDate(p.createdAt)}</td>
                                             <td className="p-3 font-semibold">{formatPrice(p.netAmount)}</td>
                                             <td className="p-3">
-                                                <span className={`px-2 py-1 text-xs font-bold rounded-full ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>
+                                                <span className={`px-2 py-1 text-xs font-bold rounded-full whitespace-nowrap ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>
                                                     {PAYOUT_STATUSES[p.status]?.text || p.status}
                                                 </span>
                                             </td>
@@ -1239,7 +1240,7 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                                                     <button 
                                                         onClick={() => handleUpdatePayoutStatus(p)} 
                                                         disabled={isUpdatingPayout === p.id}
-                                                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-2 disabled:opacity-50"
+                                                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
                                                     >
                                                         {isUpdatingPayout === p.id 
                                                             ? <div className="animate-spin rounded-full h-4 w-4 border-b-2"></div>
