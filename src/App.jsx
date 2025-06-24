@@ -50,6 +50,7 @@ const firebaseConfig = {
     appId: "1:319062939476:web:ba2235b7ab762c37a39ac1"
 };
 
+
 const APP_NAME = "Bougie Nicole - Gestion Dépôts";
 const APP_TITLE = "Bougie Nicole Tracker";
 const LOW_STOCK_THRESHOLD = 3;
@@ -289,7 +290,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
 
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
             
-            // SOLUTION POUR LE FUTUR : On s'assure que posId est toujours inclus
+            // On s'assure que posId est toujours inclus pour les requêtes futures
             batch.set(saleDocRef, {
                 posId: posId, 
                 productId: stockItem.productId,
@@ -719,9 +720,9 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
                         />
                         {hasOpenBalance && (
                              <p className="text-xs text-yellow-400 mt-2">
-                                <Info size={14} className="inline mr-1" />
-                                Vous devez clôturer la période de paiement en cours pour modifier ce taux.
-                            </p>
+                                 <Info size={14} className="inline mr-1" />
+                                 Vous devez clôturer la période de paiement en cours pour modifier ce taux.
+                             </p>
                         )}
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
@@ -1209,7 +1210,7 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
         try {
             await batch.commit();
             showToast("Période de paiement clôturée avec succès !", "success");
-            onActionSuccess(); // SOLUTION : On déclenche le rafraîchissement du parent
+            onActionSuccess();
         } catch(error) {
             console.error("Erreur lors de la clôture de la période: ", error);
             showToast("Erreur lors de la création du paiement.", "error");
@@ -1424,7 +1425,7 @@ const SalesAnalytics = () => {
     const { db } = useContext(AppContext);
     const [year, setYear] = useState(new Date().getFullYear());
     const [month, setMonth] = useState(new Date().getMonth());
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
     const [monthlyData, setMonthlyData] = useState({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] });
 
     const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
@@ -1437,6 +1438,11 @@ const SalesAnalytics = () => {
             const endDate = new Date(year, month + 1, 1);
 
             try {
+                // 1. Récupérer tous les points de vente et les mettre dans une Map
+                const posSnapshot = await getDocs(collection(db, 'pointsOfSale'));
+                const posMap = new Map(posSnapshot.docs.map(doc => [doc.id, doc.data()]));
+
+                // 2. Exécuter la requête collectionGroup pour les ventes du mois
                 const salesQuery = query(
                     collectionGroup(db, 'sales'),
                     where('createdAt', '>=', startDate),
@@ -1444,47 +1450,48 @@ const SalesAnalytics = () => {
                 );
                 
                 const salesSnapshot = await getDocs(salesQuery);
-                const salesData = salesSnapshot.docs.map(doc => doc.data());
-
-                if (salesData.length === 0) {
+                
+                if (salesSnapshot.empty) {
                     setMonthlyData({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] });
                     setIsLoading(false);
                     return;
                 }
 
-                const posIds = [...new Set(salesData.map(s => s.posId).filter(Boolean))];
-                let posMap = new Map();
+                let revenue = 0;
+                let commission = 0;
+                const salesByPos = {};
+                const salesByProduct = {};
 
-                if (posIds.length > 0) {
-                    const posDocs = await getDocs(query(collection(db, 'pointsOfSale'), where('__name__', 'in', posIds)));
-                    posMap = new Map(posDocs.docs.map(doc => [doc.id, doc.data()]));
-                }
-                
-                const revenue = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0);
-                
-                const commission = salesData.reduce((acc, sale) => {
-                    const pos = posMap.get(sale.posId);
-                    const commissionRate = pos ? pos.commissionRate : 0;
-                    return acc + (sale.totalAmount * commissionRate);
-                }, 0);
+                // 3. Traiter chaque vente
+                salesSnapshot.docs.forEach(saleDoc => {
+                    const saleData = saleDoc.data();
+                    
+                    // 3a. Extraire l'ID du PoS depuis le chemin de la référence
+                    const pathParts = saleDoc.ref.path.split('/');
+                    const posId = pathParts[1]; // 'pointsOfSale/{posId}/sales/{saleId}'
 
-                const salesByPos = salesData.reduce((acc, sale) => { 
-                    const posName = posMap.get(sale.posId)?.name || 'Dépôt inconnu';
-                    acc[posName] = (acc[posName] || 0) + sale.totalAmount; 
-                    return acc; 
-                }, {});
+                    const posInfo = posMap.get(posId);
+                    const posName = posInfo?.name || 'Dépôt Inconnu';
+                    const commissionRate = posInfo?.commissionRate || 0;
+
+                    // Calculs
+                    revenue += saleData.totalAmount;
+                    commission += saleData.totalAmount * commissionRate;
+                    
+                    // Agrégation pour le top des dépôts
+                    salesByPos[posName] = (salesByPos[posName] || 0) + saleData.totalAmount;
+
+                    // Agrégation pour le top des produits
+                    const productKey = `${saleData.productName} ${saleData.scent || ''}`.trim();
+                    salesByProduct[productKey] = (salesByProduct[productKey] || 0) + saleData.quantity;
+                });
+                
                 const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 5);
-
-                const salesByProduct = salesData.reduce((acc, sale) => { 
-                    const key = `${sale.productName} ${sale.scent || ''}`.trim(); 
-                    acc[key] = (acc[key] || 0) + sale.quantity; 
-                    return acc; 
-                }, {});
                 const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 5);
-
+                
                 setMonthlyData({
                     revenue,
-                    salesCount: salesData.length,
+                    salesCount: salesSnapshot.size,
                     commission,
                     netIncome: revenue - commission,
                     topPos,
@@ -1492,13 +1499,15 @@ const SalesAnalytics = () => {
                 });
 
             } catch (error) {
-                console.error("Erreur lors de la récupération des ventes mensuelles (vérifiez l'index collectionGroup 'sales'): ", error);
+                console.error("Erreur lors de la récupération des ventes mensuelles (vérifiez l'index pour 'sales'): ", error);
             } finally {
                 setIsLoading(false);
             }
         };
 
-        fetchMonthlySales();
+        if (db) {
+            fetchMonthlySales();
+        }
     }, [db, year, month]);
 
     return (
@@ -1569,7 +1578,7 @@ const AdminDashboard = () => {
             const posUser = posUsers.find(u => u.id === pos.id);
             const balance = allPosBalances[pos.id] || 0;
             return { ...posUser, ...pos, uid: pos.id, balance };
-        });
+        }).sort((a, b) => a.name.localeCompare(b.name));
     }, [pointsOfSale, posUsers, allPosBalances]);
 
     const handleArchive = async (requestId) => {
@@ -1661,7 +1670,7 @@ const AdminDashboard = () => {
                 const salesData = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate }));
                 currentSales = [...currentSales, ...salesData];
 
-                const gross = salesData.reduce((acc, doc) => acc.totalAmount + doc.totalAmount, 0);
+                const gross = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0);
                 balances[pos.id] = gross - (gross * (pos.commissionRate || 0));
             }
 
@@ -1813,7 +1822,7 @@ const AdminDashboard = () => {
                                                 </div>
                                             )}
                                         </div>
-                                    )
+                                      )
                                 })}
                             </div>
                         ) : <p className="text-center text-gray-400 pt-8">Aucune demande dans les {deliveryTab}.</p>}
