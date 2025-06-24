@@ -33,7 +33,7 @@ import {
 import {
     Package, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Bell, ArchiveRestore, Phone, Mail,
     PlusCircle, CheckCircle, Truck, DollarSign, Archive, ChevronDown, ChevronUp, Check, XCircle, Trash2, 
-    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign
+    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle
 } from 'lucide-react';
 
 // =================================================================
@@ -63,11 +63,13 @@ const DELIVERY_STATUS_STEPS = {
 };
 const deliveryStatusOrder = ['pending', 'processing', 'shipping', 'delivered'];
 
-// NOUVEAU: Statuts pour les paiements
+// NOUVEAU: Statuts détaillés pour les paiements avec un ordre défini
 const PAYOUT_STATUSES = {
-    pending: { text: 'En attente', color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
-    paid: { text: 'Payé', color: 'text-green-400', bg: 'bg-green-500/10' },
+    pending:    { text: 'En attente',       color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
+    processing: { text: 'En traitement',    color: 'text-blue-400',   bg: 'bg-blue-500/10'   },
+    received:   { text: 'Reçu',             color: 'text-green-400',  bg: 'bg-green-500/10'  },
 };
+const payoutStatusOrder = ['pending', 'processing', 'received'];
 
 
 // =================================================================
@@ -298,7 +300,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
                 unitPrice: stockItem.price,
                 totalAmount: stockItem.price * item.quantity,
                 createdAt: serverTimestamp(),
-                payoutId: null // NOUVEAU: Initialiser à null pour marquer comme non réglé
+                payoutId: null // Initialiser à null pour marquer comme non réglé
             });
         }
 
@@ -652,7 +654,6 @@ const ProfileModal = ({ onClose }) => {
     );
 };
 
-// NOUVEAU: Logique de paiement ajoutée ici
 const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => { 
     const { db, showToast } = useContext(AppContext);
     const [name, setName] = useState(pos.name); 
@@ -721,8 +722,8 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
                         /> 
                         {hasOpenBalance && (
                              <p className="text-xs text-yellow-400 mt-2">
-                                <Info size={14} className="inline mr-1" />
-                                Vous devez clôturer la période de paiement en cours pour modifier ce taux.
+                                 <Info size={14} className="inline mr-1" />
+                                 Vous devez clôturer la période de paiement en cours pour modifier ce taux.
                             </p>
                         )}
                     </div> 
@@ -890,11 +891,12 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
     const [deliveryTab, setDeliveryTab] = useState('actives');
     const [requestToCancel, setRequestToCancel] = useState(null);
     const [showInfoModal, setShowInfoModal] = useState(false);
-    // NOUVEAU: State pour les paiements
+    
     const [payouts, setPayouts] = useState([]);
     const [payoutToConfirm, setPayoutToConfirm] = useState(null);
+    const [isUpdatingPayout, setIsUpdatingPayout] = useState(null); // Pour le loader sur le bouton
 
-    // NOUVEAU: Fetch des paiements
+    // Fetch des paiements
     useEffect(() => {
         if (!db || !posId) return;
         const q = query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc'));
@@ -968,7 +970,6 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
         return unsub;
     }, [db, posId, isAdminView]);
     
-    // NOUVEAU: Séparer les ventes réglées des non réglées
     const { unsettledSales, settledSales } = useMemo(() => {
         return {
             unsettledSales: salesHistory.filter(s => !s.payoutId),
@@ -978,7 +979,6 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
 
     const kpis = useMemo(() => {
         const totalStock = stock.reduce((acc, item) => acc + item.quantity, 0);
-        // Calculer les KPI uniquement sur les ventes non réglées
         const totalRevenue = unsettledSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
         const commission = totalRevenue * (posData?.commissionRate || 0);
         const netToBePaid = totalRevenue - commission;
@@ -996,7 +996,6 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
         const sale = saleToDelete;
         setSaleToDelete(null);
 
-        // NOUVEAU: Empêcher la suppression d'une vente déjà réglée
         if(sale.payoutId) {
             showToast("Impossible d'annuler une vente qui fait partie d'un paiement déjà clôturé.", "error");
             return;
@@ -1021,7 +1020,6 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
         } catch (error) { console.error("Erreur annulation vente: ", error); showToast("Erreur: impossible d'annuler la vente.", "error"); }
     };
     
-    // NOUVEAU: Logique pour créer un paiement
     const handleCreatePayout = async () => {
         if (unsettledSales.length === 0) {
             showToast("Aucune vente à régler pour créer un paiement.", "info");
@@ -1039,12 +1037,13 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
 
         batch.set(payoutDocRef, {
             createdAt: serverTimestamp(),
-            status: 'pending',
+            status: 'pending', // Statut initial
             grossRevenue,
             commissionAmount,
             netAmount,
             commissionRateAtTheTime: posData?.commissionRate || 0,
-            salesCount: salesToSettle.length
+            salesCount: salesToSettle.length,
+            paidAt: null // Date de paiement final
         });
 
         salesToSettle.forEach(sale => {
@@ -1058,6 +1057,45 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
         } catch(error) {
             console.error("Erreur lors de la clôture de la période: ", error);
             showToast("Erreur lors de la création du paiement.", "error");
+        }
+    };
+
+    // NOUVELLE FONCTION: Gérer le changement de statut du paiement par l'admin
+    const handleUpdatePayoutStatus = async (payout) => {
+        if (!isAdminView) return;
+
+        const currentIndex = payoutStatusOrder.indexOf(payout.status);
+        if (currentIndex === -1 || currentIndex === payoutStatusOrder.length - 1) {
+            return; // Déjà au dernier statut ou statut inconnu
+        }
+        
+        const nextStatus = payoutStatusOrder[currentIndex + 1];
+        const payoutDocRef = doc(db, `pointsOfSale/${posId}/payouts`, payout.id);
+
+        setIsUpdatingPayout(payout.id);
+        try {
+            const dataToUpdate = { status: nextStatus };
+            if (nextStatus === 'received') {
+                dataToUpdate.paidAt = serverTimestamp();
+            }
+
+            await updateDoc(payoutDocRef, dataToUpdate);
+
+            // Créer une notification pour le client
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: posId,
+                message: `Le statut de votre paiement de ${formatPrice(payout.netAmount)} est passé à : "${PAYOUT_STATUSES[nextStatus].text}".`,
+                createdAt: serverTimestamp(),
+                isRead: false,
+                type: 'PAYOUT_UPDATE'
+            });
+
+            showToast(`Statut du paiement mis à jour.`, "success");
+        } catch (error) {
+            console.error("Erreur de mise à jour du statut du paiement: ", error);
+            showToast("Une erreur est survenue.", "error");
+        } finally {
+            setIsUpdatingPayout(null);
         }
     };
 
@@ -1077,7 +1115,6 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                         <button onClick={() => setShowDeliveryModal(true)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Truck size={20} /> Demander une Livraison</button>
                         <button onClick={() => setShowSaleModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><PlusCircle size={20} /> Nouvelle Vente</button>
                     </>}
-                    {/* NOUVEAU: Bouton pour l'admin pour clôturer la période */}
                     {isAdminView && <button onClick={() => setPayoutToConfirm(true)} disabled={kpis.netToBePaid <= 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"><CircleDollarSign size={20} /> Clôturer la période</button>}
                 </div>
             </div>
@@ -1162,7 +1199,6 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xl font-bold text-white">Gestion & Historique</h3>
                     </div>
-                    {/* NOUVEAU: Tabs pour l'historique */}
                      <div className="border-b border-gray-700 mb-4">
                         <nav className="-mb-px flex gap-6" aria-label="Tabs">
                             <button onClick={() => setShowHistory('stock')} className={`${showHistory === 'stock' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Stock</button>
@@ -1178,7 +1214,47 @@ const PosDashboard = ({ pos, isAdminView = false }) => {
                         <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Statut</th><th className="p-3">Actions</th></tr></thead><tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName} <span className="text-gray-400">{sale.scent || ''}</span></td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3 text-xs font-semibold">{sale.payoutId ? <span className="text-gray-500">Réglée</span> : <span className="text-green-400">En cours</span>}</td><td className="p-3">{!sale.payoutId && <button onClick={() => setSaleToDelete(sale)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button>}</td></tr>))}</tbody></table></div>
                     )}
                     {showHistory === 'payouts' && (
-                         <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date Clôture</th><th className="p-3">Montant Net</th><th className="p-3">Statut</th><th className="p-3">Date Paiement</th></tr></thead><tbody>{payouts.map(p => (<tr key={p.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3">{formatDate(p.createdAt)}</td><td className="p-3 font-semibold">{formatPrice(p.netAmount)}</td><td className="p-3"><span className={`px-2 py-1 text-xs font-bold rounded-full ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>{PAYOUT_STATUSES[p.status]?.text}</span></td><td className="p-3">{p.paidAt ? formatDate(p.paidAt) : '-'}</td></tr>))}</tbody></table></div>
+                         <div className="animate-fade-in overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-700 text-gray-400 text-sm">
+                                        <th className="p-3">Date Clôture</th>
+                                        <th className="p-3">Montant Net</th>
+                                        <th className="p-3">Statut</th>
+                                        <th className="p-3">{isAdminView ? "Action" : "Date Paiement"}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {payouts.map(p => (
+                                        <tr key={p.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                            <td className="p-3">{formatDate(p.createdAt)}</td>
+                                            <td className="p-3 font-semibold">{formatPrice(p.netAmount)}</td>
+                                            <td className="p-3">
+                                                <span className={`px-2 py-1 text-xs font-bold rounded-full ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>
+                                                    {PAYOUT_STATUSES[p.status]?.text || p.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-3">
+                                                {isAdminView && p.status !== 'received' ? (
+                                                    <button 
+                                                        onClick={() => handleUpdatePayoutStatus(p)} 
+                                                        disabled={isUpdatingPayout === p.id}
+                                                        className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-2 disabled:opacity-50"
+                                                    >
+                                                        {isUpdatingPayout === p.id 
+                                                            ? <div className="animate-spin rounded-full h-4 w-4 border-b-2"></div>
+                                                            : <>Étape suivante <ArrowRightCircle size={14}/></>
+                                                        }
+                                                    </button>
+                                                ) : (
+                                                    p.paidAt ? formatDate(p.paidAt) : '-'
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     )}
                 </div>
             </div>
@@ -1205,7 +1281,6 @@ const AdminDashboard = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [expandedRequestId, setExpandedRequestId] = useState(null);
     const [deliveryTab, setDeliveryTab] = useState('actives');
-    // NOUVEAU: State pour les soldes de tous les dépôts
     const [allPosBalances, setAllPosBalances] = useState({});
 
     const combinedPointsOfSale = useMemo(() => {
@@ -1292,7 +1367,6 @@ const AdminDashboard = () => {
         return unsub;
     }, [db]);
     
-    // NOUVEAU: Calcul des soldes pour tous les dépôts
     useEffect(() => {
         if (pointsOfSale.length === 0) return;
         
@@ -1433,7 +1507,7 @@ const AdminDashboard = () => {
                                                 <DeliveryStatusTracker status={req.status} />
                                                 <div className="mt-4 flex justify-end">
                                                      <button onClick={() => setRequestToProcess(req)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm">
-                                                        <Wrench size={16}/> Gérer la Demande
+                                                         <Wrench size={16}/> Gérer la Demande
                                                     </button>
                                                 </div>
                                             </div>
