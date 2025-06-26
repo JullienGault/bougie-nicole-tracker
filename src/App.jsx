@@ -57,7 +57,7 @@ import {
 // IMPORTANT: Remplacez ces valeurs par votre propre configuration Firebase.
 // J'ai remplacé votre clé API par des placeholders pour des raisons de sécurité.
 const firebaseConfig = {
-    apiKey: "VOTRE_API_KEY",
+    apiKey: "AIzaSyDUmxNBMQ2gWvCHWMrk0iowFpYVE1wMpMo",
     authDomain: "bougienicole.firebaseapp.com",
     projectId: "bougienicole",
     storageBucket: "bougienicole.appspot.com",
