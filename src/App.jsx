@@ -29,6 +29,14 @@ import {
     arrayUnion,
     arrayRemove
 } from 'firebase/firestore';
+// AJOUT: Importations pour Firebase Storage
+import {
+    getStorage,
+    ref,
+    uploadBytesResumable,
+    getDownloadURL
+} from 'firebase/storage';
+
 
 // Importations des icônes Lucide React
 import {
@@ -83,6 +91,7 @@ if (!getApps().length) {
 
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
+const storage = getStorage(firebaseApp); // AJOUT: Initialisation de Storage
 
 // =================================================================
 // CONTEXTE DE L'APPLICATION
@@ -737,31 +746,131 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
     );
 };
 
-const DeliveryRequestModal = ({ posId, posName, onClose }) => {
-    const { db, showToast, products, scents } = useContext(AppContext);
-    const [items, setItems] = useState([{ productId: '', scent: '', quantity: 10 }]);
-    const [isLoading, setIsLoading] = useState(false);
 
-    const handleItemChange = (index, field, value) => {
-        const newItems = [...items];
-        newItems[index][field] = value;
-        if (field === 'productId') {
-            newItems[index].scent = '';
+// =================================================================
+// ============== COMPOSANTS MIS A JOUR ET NOUVEAUX ===============
+// =================================================================
+
+const ProductCard = ({ product, onSelect, isSelected }) => (
+    <div 
+        onClick={() => onSelect(product)}
+        className={`bg-gray-700 p-4 rounded-lg cursor-pointer border-2 transition-all ${isSelected ? 'border-indigo-500 bg-indigo-900/30' : 'border-transparent hover:border-gray-600'}`}
+    >
+        <div className="w-full h-32 bg-gray-600 rounded-md mb-3 flex items-center justify-center overflow-hidden">
+            {product.imageUrl ? (
+                <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover"/>
+            ) : (
+                <Package size={48} className="text-gray-400" />
+            )}
+        </div>
+        <h4 className="font-bold text-white truncate">{product.name}</h4>
+        <p className="text-indigo-400 font-semibold">{formatPrice(product.price)}</p>
+    </div>
+);
+
+const ProductSelectionModal = ({ onClose, onProductAdd }) => {
+    const { products, scents } = useContext(AppContext);
+    const [selectedProduct, setSelectedProduct] = useState(null);
+    const [scent, setScent] = useState('');
+    const [quantity, setQuantity] = useState(10);
+
+    const handleAddClick = () => {
+        if (!selectedProduct) return;
+        if (selectedProduct.hasScents !== false && !scent) {
+            alert("Veuillez choisir un parfum pour ce produit.");
+            return;
         }
+        onProductAdd({
+            productId: selectedProduct.id,
+            scent: selectedProduct.hasScents !== false ? scent : '',
+            quantity: Number(quantity)
+        });
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-4xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-white mb-6">Choisir un produit dans le catalogue</h2>
+                
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
+                    {products.map(p => (
+                        <ProductCard 
+                            key={p.id} 
+                            product={p} 
+                            onSelect={setSelectedProduct}
+                            isSelected={selectedProduct?.id === p.id}
+                        />
+                    ))}
+                </div>
+
+                {selectedProduct && (
+                    <div className="bg-gray-900/50 p-6 rounded-lg animate-fade-in-up">
+                        <h3 className="text-xl font-semibold text-white mb-4">Détails pour : {selectedProduct.name}</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                            {selectedProduct.hasScents !== false && (
+                                <div>
+                                    <label className="text-sm text-gray-300 block mb-1">Parfum</label>
+                                    <select value={scent} onChange={e => setScent(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg">
+                                        <option value="">-- Choisir un parfum --</option>
+                                        {scents.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                                    </select>
+                                </div>
+                            )}
+                            <div>
+                                <label className="text-sm text-gray-300 block mb-1">Quantité</label>
+                                <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} min="1" className="w-full bg-gray-700 p-2 rounded-lg"/>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                <div className="mt-8 flex justify-end gap-4">
+                    <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg">Annuler</button>
+                    <button 
+                        onClick={handleAddClick} 
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50" 
+                        disabled={!selectedProduct}
+                    >
+                        <PlusCircle size={20}/> Ajouter à la demande
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const DeliveryRequestModal = ({ posId, posName, onClose }) => {
+    const { db, showToast, products } = useContext(AppContext);
+    const [items, setItems] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSelectionModalOpen, setSelectionModalOpen] = useState(false);
+
+    const handleProductAdd = (newItem) => {
+        const existingItemIndex = items.findIndex(item => item.productId === newItem.productId && item.scent === newItem.scent);
+
+        if (existingItemIndex > -1) {
+            const newItems = [...items];
+            newItems[existingItemIndex].quantity += newItem.quantity;
+            setItems(newItems);
+        } else {
+            setItems([...items, newItem]);
+        }
+    };
+    
+    const handleQuantityChange = (index, newQuantity) => {
+        const newItems = [...items];
+        newItems[index].quantity = Math.max(1, Number(newQuantity));
         setItems(newItems);
     };
 
-    const addItem = () => setItems([...items, { productId: '', scent: '', quantity: 10 }]);
     const removeItem = (index) => setItems(items.filter((_, i) => i !== index));
 
     const handleSend = async () => {
-        const validItems = items.filter(item => {
-            const product = products.find(p => p.id === item.productId);
-            return product && (product.hasScents === false || item.scent) && item.quantity > 0;
-        });
+        const validItems = items.filter(item => item.quantity > 0);
 
         if (validItems.length === 0) {
-            showToast("Veuillez ajouter au moins un article valide avec un produit et un parfum (si nécessaire).", "error");
+            showToast("Veuillez ajouter au moins un produit à votre demande.", "error");
             return;
         }
 
@@ -795,55 +904,53 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}>
-            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2>
-                <div className="space-y-4">
-                    {items.map((item, i) => {
-                        const product = products.find(p => p.id === item.productId);
-                        const showScents = product && product.hasScents !== false;
-                        return (
-                            <div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-                                <div className="sm:col-span-1">
-                                    <label className="text-sm text-gray-300 block mb-1">Produit</label>
-                                    <select value={item.productId} onChange={e => handleItemChange(i, 'productId', e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg">
-                                        <option value="">-- Choisir --</option>
-                                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="sm:col-span-1">
-                                    {showScents && (
-                                        <>
-                                            <label className="text-sm text-gray-300 block mb-1">Parfum</label>
-                                            <select value={item.scent} onChange={e => handleItemChange(i, 'scent', e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg">
-                                                <option value="">-- Choisir --</option>
-                                                {scents.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                                            </select>
-                                        </>
-                                    )}
-                                </div>
-                                <div className="flex items-end gap-2">
-                                    <div className="flex-grow">
-                                        <label className="text-sm text-gray-300 block mb-1">Quantité</label>
-                                        <input type="number" value={item.quantity} onChange={e => handleItemChange(i, 'quantity', Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/>
-                                    </div>
-                                    {items.length > 1 && <button onClick={() => removeItem(i)} className="p-2 bg-red-600 rounded-lg text-white"><Trash2 size={20}/></button>}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-                <button type="button" onClick={addItem} className="mt-4 flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
-                    <PlusCircle size={20}/>Ajouter un article
-                </button>
-                <div className="mt-8 flex justify-end gap-4">
-                    <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
-                    <button onClick={handleSend} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" disabled={isLoading}>
-                        {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Send size={18}/>Envoyer la demande</>}
+        <>
+            {isSelectionModalOpen && <ProductSelectionModal 
+                onClose={() => setSelectionModalOpen(false)} 
+                onProductAdd={handleProductAdd}
+            />}
+
+            <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}>
+                <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                    <h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2>
+                    
+                    <div className="space-y-3">
+                         {items.length > 0 ? items.map((item, i) => {
+                            const product = products.find(p => p.id === item.productId);
+                            return (
+                               <div key={`${item.productId}-${item.scent}`} className="bg-gray-700/50 p-4 rounded-lg flex justify-between items-center">
+                                   <div>
+                                       <p className="font-bold">{product?.name || 'Produit inconnu'}</p>
+                                       {item.scent && <p className="text-sm text-gray-400">{item.scent}</p>}
+                                   </div>
+                                   <div className="flex items-center gap-4">
+                                       <input 
+                                           type="number" 
+                                           value={item.quantity} 
+                                           onChange={e => handleQuantityChange(i, e.target.value)} 
+                                           min="1" 
+                                           className="w-20 bg-gray-600 p-2 rounded-lg text-center"
+                                       />
+                                       <button onClick={() => removeItem(i)} className="p-2 bg-red-600 hover:bg-red-500 rounded-lg text-white"><Trash2 size={20}/></button>
+                                   </div>
+                               </div>
+                            );
+                        }) : <p className="text-center text-gray-400 py-4">Cliquez sur "Ajouter un produit" pour commencer.</p>}
+                    </div>
+
+                    <button type="button" onClick={() => setSelectionModalOpen(true)} className="mt-6 flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
+                        <PlusCircle size={20}/>Ajouter un produit du catalogue
                     </button>
+                    
+                    <div className="mt-8 flex justify-end gap-4">
+                        <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
+                        <button onClick={handleSend} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" disabled={isLoading}>
+                            {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Send size={18}/>Envoyer la demande</>}
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 
@@ -996,18 +1103,22 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     );
 };
 
-// =================================================================
-// ============== DÉBUT DES NOUVEAUX COMPOSANTS ====================
-// =================================================================
-
 const ProductFormModal = ({ product, onClose }) => {
-    const { db, showToast } = useContext(AppContext);
+    const { db, storage, showToast } = useContext(AppContext);
     const isEditing = !!product?.id;
 
     const [name, setName] = useState(product?.name || '');
     const [price, setPrice] = useState(product?.price || 0);
     const [hasScents, setHasScents] = useState(product?.hasScents !== false);
+    const [imageFile, setImageFile] = useState(null);
+    const [existingImageUrl, setExistingImageUrl] = useState(product?.imageUrl || '');
     const [isLoading, setIsLoading] = useState(false);
+
+    const handleFileChange = (e) => {
+        if (e.target.files[0]) {
+            setImageFile(e.target.files[0]);
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -1016,12 +1127,30 @@ const ProductFormModal = ({ product, onClose }) => {
             return;
         }
         setIsLoading(true);
+
+        let finalImageUrl = existingImageUrl;
+
+        if (imageFile) {
+            const filePath = `products/${Date.now()}_${imageFile.name}`;
+            const storageRef = ref(storage, filePath);
+            const uploadTask = uploadBytesResumable(storageRef, imageFile);
+
+            try {
+                await uploadTask;
+                finalImageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+            } catch (error) {
+                console.error("Erreur de téléversement de l'image :", error);
+                showToast("L'upload de l'image a échoué.", "error");
+                setIsLoading(false);
+                return;
+            }
+        }
         
         const productData = {
             name,
             price: Number(price),
             hasScents,
-            // Pour maintenir l'ordre, on peut ajouter un timestamp
+            imageUrl: finalImageUrl,
             updatedAt: serverTimestamp(),
         };
 
@@ -1056,6 +1185,21 @@ const ProductFormModal = ({ product, onClose }) => {
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">Prix de vente (€)</label>
                         <input type="number" value={price} onChange={e => setPrice(e.target.value)} required min="0.01" step="0.01" className="w-full bg-gray-700 p-3 rounded-lg" />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Image du produit</label>
+                        <div className="mt-2 flex items-center gap-4">
+                            <div className="w-20 h-20 bg-gray-700 rounded flex items-center justify-center overflow-hidden">
+                                {imageFile ? (
+                                    <img src={URL.createObjectURL(imageFile)} alt="Aperçu" className="h-full w-full object-cover" />
+                                ) : existingImageUrl ? (
+                                    <img src={existingImageUrl} alt="Image actuelle" className="h-full w-full object-cover" />
+                                ) : (
+                                    <Package size={32} className="text-gray-500"/>
+                                )}
+                            </div>
+                            <input type="file" onChange={handleFileChange} accept="image/*" className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700"/>
+                        </div>
                     </div>
                     <div className="flex items-center gap-3">
                         <input id="hasScents" type="checkbox" checked={hasScents} onChange={e => setHasScents(e.target.checked)} className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-indigo-600 focus:ring-indigo-500"/>
@@ -1157,7 +1301,7 @@ const ProductManager = ({ onBack }) => {
 
 
 // =================================================================
-// ============== FIN DES NOUVEAUX COMPOSANTS ======================
+// ============== FIN DES COMPOSANTS MIS A JOUR ====================
 // =================================================================
 
 
@@ -2100,11 +2244,12 @@ export default function App() {
     const contextValue = useMemo(() => ({
         db,
         auth,
+        storage,
         loggedInUserData,
         products,
         scents,
         showToast
-    }), [db, auth, loggedInUserData, products, scents, showToast]);
+    }), [db, auth, storage, loggedInUserData, products, scents, showToast]);
 
     if (isLoading) {
         return (
