@@ -34,7 +34,7 @@ import {
 import {
     Package, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Bell, ArchiveRestore, Phone, Mail,
     PlusCircle, CheckCircle, Truck, DollarSign, Archive, ChevronDown, ChevronUp, Check, XCircle, Trash2,
-    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle
+    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle, Edit
 } from 'lucide-react';
 
 // =================================================================
@@ -997,6 +997,171 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
 };
 
 // =================================================================
+// ============== DÉBUT DES NOUVEAUX COMPOSANTS ====================
+// =================================================================
+
+const ProductFormModal = ({ product, onClose }) => {
+    const { db, showToast } = useContext(AppContext);
+    const isEditing = !!product?.id;
+
+    const [name, setName] = useState(product?.name || '');
+    const [price, setPrice] = useState(product?.price || 0);
+    const [hasScents, setHasScents] = useState(product?.hasScents !== false);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!name || price <= 0) {
+            showToast("Veuillez remplir le nom et un prix valide.", "error");
+            return;
+        }
+        setIsLoading(true);
+        
+        const productData = {
+            name,
+            price: Number(price),
+            hasScents,
+            // Pour maintenir l'ordre, on peut ajouter un timestamp
+            updatedAt: serverTimestamp(),
+        };
+
+        try {
+            if (isEditing) {
+                const productDocRef = doc(db, "products", product.id);
+                await updateDoc(productDocRef, productData);
+                showToast("Produit mis à jour avec succès !", "success");
+            } else {
+                productData.createdAt = serverTimestamp();
+                await addDoc(collection(db, "products"), productData);
+                showToast("Produit ajouté avec succès !", "success");
+            }
+            onClose();
+        } catch (error) {
+            console.error("Erreur lors de la sauvegarde du produit :", error);
+            showToast("Une erreur est survenue.", "error");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg border-gray-700" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-white mb-6">{isEditing ? "Modifier le Produit" : "Ajouter un Produit"}</h2>
+                <form onSubmit={handleSubmit} className="space-y-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Nom du produit</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg" placeholder="ex: Bougie 100g"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Prix de vente (€)</label>
+                        <input type="number" value={price} onChange={e => setPrice(e.target.value)} required min="0.01" step="0.01" className="w-full bg-gray-700 p-3 rounded-lg" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <input id="hasScents" type="checkbox" checked={hasScents} onChange={e => setHasScents(e.target.checked)} className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-indigo-600 focus:ring-indigo-500"/>
+                        <label htmlFor="hasScents" className="text-sm font-medium text-gray-300">Ce produit a des parfums</label>
+                    </div>
+
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
+                        <button type="submit" disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">
+                           {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/> {isEditing ? "Enregistrer" : "Créer"}</>}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+const ProductManager = ({ onBack }) => {
+    const { products, showToast, db } = useContext(AppContext);
+    const [productToEdit, setProductToEdit] = useState(null);
+    const [productToDelete, setProductToDelete] = useState(null);
+
+    const handleDelete = async () => {
+        if (!productToDelete) return;
+
+        try {
+            await deleteDoc(doc(db, 'products', productToDelete.id));
+            showToast("Produit supprimé avec succès.", "success");
+        } catch (error) {
+            console.error("Erreur lors de la suppression :", error);
+            showToast("Erreur lors de la suppression du produit.", "error");
+        } finally {
+            setProductToDelete(null);
+        }
+    };
+
+    return (
+        <div className="p-4 sm:p-8 animate-fade-in">
+            {productToEdit && <ProductFormModal product={productToEdit.id ? productToEdit : null} onClose={() => setProductToEdit(null)} />}
+            {productToDelete && <ConfirmationModal 
+                title="Confirmer la suppression" 
+                message={`Êtes-vous sûr de vouloir supprimer le produit "${productToDelete.name}" ? Cette action est irréversible.`} 
+                onConfirm={handleDelete} 
+                onCancel={() => setProductToDelete(null)}
+                confirmText="Oui, supprimer"
+            />}
+
+            <div className="flex justify-between items-center mb-8">
+                <div className="flex items-center gap-4">
+                    <button onClick={onBack} className="bg-gray-600 hover:bg-gray-500 p-2 rounded-full text-white">
+                        <ArrowRightCircle className="transform rotate-180" size={24} />
+                    </button>
+                    <div>
+                        <h2 className="text-3xl font-bold text-white">Gestion du Catalogue</h2>
+                        <p className="text-gray-400">Ajoutez, modifiez ou supprimez des produits.</p>
+                    </div>
+                </div>
+                <button onClick={() => setProductToEdit({})} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                    <PlusCircle size={20} /> Ajouter un produit
+                </button>
+            </div>
+
+            <div className="bg-gray-800 rounded-2xl p-6 mt-8">
+                 <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="border-b border-gray-700 text-gray-400 text-sm">
+                                <th className="p-3">Nom du Produit</th>
+                                <th className="p-3">Prix</th>
+                                <th className="p-3">A des parfums</th>
+                                <th className="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {products.map(p => (
+                                <tr key={p.id} className="border-b border-gray-700/50 hover:bg-gray-700/50">
+                                    <td className="p-3 font-medium">{p.name}</td>
+                                    <td className="p-3">{formatPrice(p.price)}</td>
+                                    <td className="p-3">
+                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.hasScents !== false ? 'bg-green-500/10 text-green-400' : 'bg-gray-600/20 text-gray-300'}`}>
+                                            {p.hasScents !== false ? 'Oui' : 'Non'}
+                                        </span>
+                                    </td>
+                                    <td className="p-3 text-right space-x-2">
+                                        <button onClick={() => setProductToEdit(p)} title="Modifier" className="p-2 text-yellow-400 hover:text-yellow-300 bg-gray-900/50 rounded-lg"><Edit size={18}/></button>
+                                        <button onClick={() => setProductToDelete(p)} title="Supprimer" className="p-2 text-red-500 hover:text-red-400 bg-gray-900/50 rounded-lg"><Trash2 size={18}/></button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                     {products.length === 0 && <p className="text-center text-gray-400 py-8">Aucun produit dans le catalogue.</p>}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// =================================================================
+// ============== FIN DES NOUVEAUX COMPOSANTS ======================
+// =================================================================
+
+
+// =================================================================
 // TABLEAUX DE BORD (DASHBOARDS)
 // =================================================================
 
@@ -1566,7 +1731,7 @@ const AdminDashboard = () => {
     const [expandedRequestId, setExpandedRequestId] = useState(null);
     const [deliveryTab, setDeliveryTab] = useState('actives');
     const [allPosBalances, setAllPosBalances] = useState({});
-    const [currentView, setCurrentView] = useState('dashboard');
+    const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'analytics', 'products'
     const [refreshTrigger, setRefreshTrigger] = useState(0);
 
     const combinedPointsOfSale = useMemo(() => {
@@ -1742,6 +1907,10 @@ const AdminDashboard = () => {
             </>
         );
     }
+    
+    if (currentView === 'products') {
+        return <ProductManager onBack={() => setCurrentView('dashboard')} />;
+    }
 
     if (selectedPos) {
         return (
@@ -1770,6 +1939,7 @@ const AdminDashboard = () => {
             <div className="flex flex-col md:flex-row justify-between items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord Administrateur</h2><p className="text-gray-400">Gestion des dépôts-ventes et du catalogue.</p></div>
                 <div className="flex flex-wrap gap-4 mt-4 md:mt-0">
+                    <button onClick={() => setCurrentView('products')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Package size={20} /> Gérer le Catalogue</button>
                     <button onClick={() => setCurrentView('analytics')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><History size={20} /> Analyse des Ventes</button>
                     <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><UserPlus size={20} /> Ajouter un Dépôt</button>
                 </div>
