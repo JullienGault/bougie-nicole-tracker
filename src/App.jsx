@@ -34,7 +34,8 @@ import {
 import {
     Package, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Bell, ArchiveRestore, Phone, Mail,
     PlusCircle, CheckCircle, Truck, DollarSign, Archive, ChevronDown, ChevronUp, Check, XCircle, Trash2,
-    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle, Edit
+    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle, Edit,
+    Search // <-- NOUVELLE ICÔNE AJOUTÉE
 } from 'lucide-react';
 
 // =================================================================
@@ -289,7 +290,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
             batch.update(stockDocRef, { quantity: stockItem.quantity - item.quantity });
 
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
-            
+          
             // On s'assure que posId est toujours inclus pour les requêtes futures
             batch.set(saleDocRef, {
                 posId: posId, 
@@ -722,7 +723,7 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
                              <p className="text-xs text-yellow-400 mt-2">
                                  <Info size={14} className="inline mr-1" />
                                  Vous devez clôturer la période de paiement en cours pour modifier ce taux.
-                               </p>
+                                </p>
                         )}
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
@@ -997,7 +998,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
 };
 
 // =================================================================
-// ============== DÉBUT DES NOUVEAUX COMPOSANTS ====================
+// ============== DÉBUT DES COMPOSANTS MODIFIÉS ====================
 // =================================================================
 
 const ProductFormModal = ({ product, onClose }) => {
@@ -1016,7 +1017,7 @@ const ProductFormModal = ({ product, onClose }) => {
             return;
         }
         setIsLoading(true);
-        
+      
         const productData = {
             name,
             price: Number(price),
@@ -1043,7 +1044,7 @@ const ProductFormModal = ({ product, onClose }) => {
             setIsLoading(false);
         }
     };
-    
+   
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
             <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg border-gray-700" onClick={e => e.stopPropagation()}>
@@ -1074,10 +1075,47 @@ const ProductFormModal = ({ product, onClose }) => {
     );
 };
 
+// =================================================================
+// ============== NOUVEAU COMPOSANT PRODUCTCARD ====================
+// =================================================================
+const ProductCard = ({ product, onEdit, onDelete }) => (
+    <div className="bg-gray-800 rounded-2xl p-5 flex flex-col justify-between border border-gray-700/50 hover:border-indigo-500/50 transition-all duration-300">
+        <div>
+            <div className="flex justify-between items-start">
+                <h3 className="text-lg font-bold text-white pr-2">{product.name}</h3>
+                <span className={`px-2 py-1 text-xs font-bold rounded-full whitespace-nowrap ${product.hasScents !== false ? 'bg-green-500/10 text-green-400' : 'bg-gray-600/20 text-gray-300'}`}>
+                    {product.hasScents !== false ? 'Parfums' : 'Sans parfum'}
+                </span>
+            </div>
+            <p className="text-2xl font-semibold text-indigo-400 mt-2 mb-4">{formatPrice(product.price)}</p>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-700 pt-4">
+            <button onClick={() => onEdit(product)} title="Modifier" className="p-2 text-yellow-400 hover:text-yellow-300 bg-gray-900/50 rounded-lg">
+                <Edit size={18}/>
+            </button>
+            <button onClick={() => onDelete(product)} title="Supprimer" className="p-2 text-red-500 hover:text-red-400 bg-gray-900/50 rounded-lg">
+                <Trash2 size={18}/>
+            </button>
+        </div>
+    </div>
+);
+
+
 const ProductManager = ({ onBack }) => {
     const { products, showToast, db } = useContext(AppContext);
     const [productToEdit, setProductToEdit] = useState(null);
     const [productToDelete, setProductToDelete] = useState(null);
+    const [searchTerm, setSearchTerm] = useState(''); // <-- NOUVEAU : état pour la recherche
+
+    // NOUVEAU : Filtrer les produits en fonction de la recherche
+    const filteredProducts = useMemo(() => {
+        if (!searchTerm) {
+            return products;
+        }
+        return products.filter(p => 
+            p.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [products, searchTerm]);
 
     const handleDelete = async () => {
         if (!productToDelete) return;
@@ -1119,45 +1157,50 @@ const ProductManager = ({ onBack }) => {
                 </button>
             </div>
 
-            <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="border-b border-gray-700 text-gray-400 text-sm">
-                                <th className="p-3">Nom du Produit</th>
-                                <th className="p-3">Prix</th>
-                                <th className="p-3">A des parfums</th>
-                                <th className="p-3 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {products.map(p => (
-                                <tr key={p.id} className="border-b border-gray-700/50 hover:bg-gray-700/50">
-                                    <td className="p-3 font-medium">{p.name}</td>
-                                    <td className="p-3">{formatPrice(p.price)}</td>
-                                    <td className="p-3">
-                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.hasScents !== false ? 'bg-green-500/10 text-green-400' : 'bg-gray-600/20 text-gray-300'}`}>
-                                            {p.hasScents !== false ? 'Oui' : 'Non'}
-                                        </span>
-                                    </td>
-                                    <td className="p-3 text-right space-x-2">
-                                        <button onClick={() => setProductToEdit(p)} title="Modifier" className="p-2 text-yellow-400 hover:text-yellow-300 bg-gray-900/50 rounded-lg"><Edit size={18}/></button>
-                                        <button onClick={() => setProductToDelete(p)} title="Supprimer" className="p-2 text-red-500 hover:text-red-400 bg-gray-900/50 rounded-lg"><Trash2 size={18}/></button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                     {products.length === 0 && <p className="text-center text-gray-400 py-8">Aucun produit dans le catalogue.</p>}
+            {/* NOUVEAU : Barre de recherche */}
+            <div className="mb-8">
+                <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-3">
+                        <Search className="h-5 w-5 text-gray-400" />
+                    </span>
+                    <input
+                        type="text"
+                        placeholder="Rechercher un produit par nom..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full bg-gray-800 border border-gray-700 rounded-lg py-3 pl-10 pr-4 focus:outline-none focus:border-indigo-500"
+                    />
                 </div>
             </div>
+
+            {/* NOUVEAU : Grille de cartes de produits */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {filteredProducts.map(p => (
+                    <ProductCard 
+                        key={p.id}
+                        product={p}
+                        onEdit={() => setProductToEdit(p)}
+                        onDelete={() => setProductToDelete(p)}
+                    />
+                ))}
+            </div>
+            
+            {filteredProducts.length === 0 && (
+                <div className="text-center py-16 text-gray-400">
+                    <Package size={48} className="mx-auto mb-4" />
+                    <h3 className="text-xl font-semibold text-white">
+                        {products.length === 0 ? "Aucun produit dans le catalogue." : "Aucun produit ne correspond à votre recherche."}
+                    </h3>
+                    {products.length > 0 && <p>Essayez avec d'autres mots-clés.</p>}
+                </div>
+            )}
         </div>
     );
 };
 
 
 // =================================================================
-// ============== FIN DES NOUVEAUX COMPOSANTS ======================
+// ============== FIN DES COMPOSANTS MODIFIÉS ======================
 // =================================================================
 
 
@@ -1624,7 +1667,7 @@ const SalesAnalytics = () => {
                     }));
                     allSales = allSales.concat(monthSales);
                 }
-                
+               
                 if (allSales.length === 0) {
                     setMonthlyData({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] });
                     setIsLoading(false);
@@ -1642,14 +1685,14 @@ const SalesAnalytics = () => {
                     commission += sale.totalAmount * (sale.commissionRate || 0);
 
                     salesByPos[sale.posName] = (salesByPos[sale.posName] || 0) + sale.totalAmount;
-                    
+                       
                     const productKey = `${sale.productName} ${sale.scent || ''}`.trim();
                     salesByProduct[productKey] = (salesByProduct[productKey] || 0) + sale.quantity;
                 });
-                
+               
                 const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 5);
                 const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 5);
-                
+               
                 setMonthlyData({
                     revenue,
                     salesCount: allSales.length,
@@ -1836,7 +1879,7 @@ const AdminDashboard = () => {
             }
 
             setAllPosBalances(balances);
-            
+           
             const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
             const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
             const toPay = revenue - commission;
@@ -1898,7 +1941,7 @@ const AdminDashboard = () => {
         return (
             <>
                 <div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700">
-                     <button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                    <button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
                         <ArrowRightCircle className="transform rotate-180" size={20} />
                         Retour au Tableau de Bord
                     </button>
@@ -1907,7 +1950,7 @@ const AdminDashboard = () => {
             </>
         );
     }
-    
+   
     if (currentView === 'products') {
         return <ProductManager onBack={() => setCurrentView('dashboard')} />;
     }
