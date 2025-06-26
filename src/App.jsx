@@ -106,7 +106,7 @@ const AppContext = React.createContext(null);
 
 
 // =================================================================
-// FONCTIONS UTILITAIRES ET COMPOSANTS UI (Inchangés)
+// FONCTIONS UTILITAIRES ET COMPOSANTS UI
 // =================================================================
 
 const formatPrice = (price) => `${(price || 0).toFixed(2)} €`;
@@ -149,10 +149,9 @@ const ProfileModal = ({ onClose }) => { const { loggedInUserData, db, showToast 
 const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => { const { db, showToast } = useContext(AppContext); const [name, setName] = useState(pos.name); const [commissionRate, setCommissionRate] = useState((pos.commissionRate || 0) * 100); const [isLoading, setIsLoading] = useState(false); const handleSave = async (event) => { event.preventDefault(); if (hasOpenBalance) { showToast("Clôturez la période de paiement en cours avant de modifier la commission.", "error"); return; } setIsLoading(true); const newRate = parseFloat(commissionRate) / 100; if (isNaN(newRate) || newRate < 0 || newRate > 1) { showToast("Le taux de commission doit être entre 0 et 100.", "error"); setIsLoading(false); return; } try { const posDocRef = doc(db, "pointsOfSale", pos.id); await updateDoc(posDocRef, { name: name, commissionRate: newRate }); await addDoc(collection(db, 'notifications'), { recipientUid: pos.id, message: `Le taux de votre commission a été mis à jour à ${formatPercent(newRate)}.`, createdAt: serverTimestamp(), isRead: false, type: 'COMMISSION_UPDATE' }); showToast("Dépôt mis à jour avec succès !", "success"); onSave(); onClose(); } catch (error) { console.error("Erreur de mise à jour du dépôt : ", error); showToast("Erreur lors de la mise à jour.", "error"); } finally { setIsLoading(false); } }; return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}> <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}> <h2 className="text-2xl font-bold text-white mb-6">Modifier le Dépôt-Vente</h2> <form onSubmit={handleSave} className="space-y-4"> <div><label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label><input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-gray-700 p-3 rounded-lg"/></div> <div><label className="block text-sm font-medium text-gray-300 mb-1">Taux de Commission (%)</label><input type="number" value={commissionRate} onChange={e => setCommissionRate(e.target.value)} required min="0" max="100" className={`w-full bg-gray-700 p-3 rounded-lg ${hasOpenBalance ? 'cursor-not-allowed bg-gray-900/50' : ''}`} disabled={hasOpenBalance}/> {hasOpenBalance && (<p className="text-xs text-yellow-400 mt-2"><Info size={14} className="inline mr-1" />Vous devez clôturer la période de paiement en cours pour modifier ce taux.</p>)} </div> <div className="flex justify-end gap-4 pt-4"> <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button> <button type="submit" disabled={isLoading || hasOpenBalance} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"> {isLoading ? <Loader2 className="animate-spin" size={20}/> : <><Save size={18}/>Enregistrer</>} </button> </div> </form> </div> </div> ); };
 
 // =================================================================
-// COMPOSANTS MODIFIÉS POUR LA NOUVELLE LOGIQUE
+// COMPOSANTS MODIFIÉS ET NOUVEAUX
 // =================================================================
 
-// MODIFIÉ : Simplification du modal de vente, plus de gestion de 'scent'
 const SaleModal = ({ posId, stock, onClose }) => {
     const { db, showToast } = useContext(AppContext);
     const [items, setItems] = useState([{ stockId: '', quantity: 1, maxQuantity: 0 }]);
@@ -198,7 +197,6 @@ const SaleModal = ({ posId, stock, onClose }) => {
             batch.update(stockDocRef, { quantity: stockItem.quantity - item.quantity });
             
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
-            // MODIFIÉ : 'scent' a été supprimé des données de vente
             batch.set(saleDocRef, {
                 posId: posId, 
                 productId: stockItem.productId,
@@ -234,7 +232,6 @@ const SaleModal = ({ posId, stock, onClose }) => {
                                 <label className="text-sm text-gray-300">Produit</label>
                                 <select value={item.stockId} onChange={e => handleItemChange(index, 'stockId', e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg mt-1">
                                     <option value="">-- Choisir un produit en stock --</option>
-                                    {/* MODIFIÉ: L'affichage du produit est simplifié */}
                                     {availableStock.map(s => <option key={s.id} value={s.id}>{s.productName} - Stock: {s.quantity}</option>)}
                                 </select>
                             </div>
@@ -258,7 +255,6 @@ const SaleModal = ({ posId, stock, onClose }) => {
     );
 };
 
-// MODIFIÉ : Simplification du modal de demande de livraison
 const DeliveryRequestModal = ({ posId, posName, onClose }) => {
     const { db, showToast, products } = useContext(AppContext);
     const [requestItems, setRequestItems] = useState([]);
@@ -269,7 +265,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
         if (!searchTerm) return products;
         return products.filter(p => 
             p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            p.category.toLowerCase().includes(searchTerm.toLowerCase())
+            (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
         );
     }, [products, searchTerm]);
 
@@ -287,7 +283,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
 
     const handleUpdateItem = (index, field, value) => {
         const newItems = [...requestItems];
-        newItems[index][field] = value;
+        newItems[index][field] = Math.max(1, Number(value));
         setRequestItems(newItems);
     };
 
@@ -297,7 +293,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
         const validItems = requestItems.filter(item => item.quantity > 0)
             .map(item => ({ 
                 productId: item.productId, 
-                productName: item.productName, // Sauvegarde du nom pour l'historique
+                productName: item.productName,
                 quantity: Number(item.quantity) 
             }));
 
@@ -319,7 +315,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
     };
 
     return (
-         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 animate-fade-in" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 animate-fade-in" onClick={onClose}>
             <div className="bg-gray-800 rounded-2xl w-full max-w-6xl h-[90vh] flex flex-col border-gray-700" onClick={e => e.stopPropagation()}>
                 <div className="p-6 border-b border-gray-700 flex justify-between items-center">
                     <div><h2 className="text-2xl font-bold text-white">Demander une Livraison</h2><p className="text-gray-400">Parcourez le catalogue et ajoutez les produits à votre demande.</p></div>
@@ -333,7 +329,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
                     <div className="w-2/5 flex flex-col">
                         <div className="p-6 flex-grow overflow-y-auto custom-scrollbar">
                             <h3 className="text-xl font-bold text-white mb-4">Votre Demande ({requestItems.length})</h3>
-                            {requestItems.length === 0 ? (<p className="text-center text-gray-400 mt-10">Sélectionnez des produits dans le catalogue pour les ajouter ici.</p>) : (<div className="space-y-3">{requestItems.map((item, index) => (<div key={item.productId} className="bg-gray-700/50 p-3 rounded-lg animate-fade-in-up"><div className="flex justify-between items-start"><p className="font-bold">{item.productName}</p><button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400"><Trash2 size={18}/></button></div><div className="grid grid-cols-2 gap-3 mt-2"><div className='col-span-2'><label className="text-xs text-gray-400 block mb-1">Quantité</label><input type="number" value={item.quantity} onChange={e => handleUpdateItem(index, 'quantity', e.target.value)} min="1" className="w-full bg-gray-600 p-2 rounded-lg text-sm"/></div></div></div>))}</div>)}
+                            {requestItems.length === 0 ? (<p className="text-center text-gray-400 mt-10">Sélectionnez des produits pour les ajouter ici.</p>) : (<div className="space-y-3">{requestItems.map((item, index) => (<div key={item.productId} className="bg-gray-700/50 p-3 rounded-lg animate-fade-in-up"><div className="flex justify-between items-start"><p className="font-bold">{item.productName}</p><button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400"><Trash2 size={18}/></button></div><div className="grid grid-cols-2 gap-3 mt-2"><div className='col-span-2'><label className="text-xs text-gray-400 block mb-1">Quantité</label><input type="number" value={item.quantity} onChange={e => handleUpdateItem(index, 'quantity', e.target.value)} min="1" className="w-full bg-gray-600 p-2 rounded-lg text-sm"/></div></div></div>))}</div>)}
                         </div>
                         <div className="p-6 border-t border-gray-700"><button onClick={handleSend} disabled={isLoading || requestItems.length === 0} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-50">{isLoading ? <Loader2 className="animate-spin" size={20}/> : <><Send size={18}/> Envoyer la demande</>}</button></div>
                     </div>
@@ -343,7 +339,6 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
     );
 };
 
-// MODIFIÉ : Simplification du traitement, la mise à jour du stock n'utilise plus 'scent'
 const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     const { db, products, showToast } = useContext(AppContext);
     const [isLoading, setIsLoading] = useState(false);
@@ -380,7 +375,6 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
                         const product = products.find(p => p.id === item.productId);
                         if (!product) throw new Error(`Produit ID ${item.productId} non trouvé.`);
                         
-                        // MODIFIÉ : Le stockId est maintenant simplement le productId
                         const stockId = item.productId;
                         const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId);
                         const stockDoc = await transaction.get(stockDocRef);
@@ -389,7 +383,6 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
                             const newQuantity = (stockDoc.data().quantity || 0) + item.quantity;
                             transaction.update(stockDocRef, { quantity: newQuantity });
                         } else {
-                            // MODIFIÉ: On ajoute la catégorie au document de stock
                             transaction.set(stockDocRef, { 
                                 productId: item.productId, 
                                 productName: product.name, 
@@ -416,7 +409,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
 
     return (
     <>
-        {showReasonModal && (<ReasonPromptModal title="Justifier les modifications" message="Veuillez expliquer pourquoi la commande est modifiée. Ce motif sera visible par le client." onConfirm={handleSaveChanges} onCancel={() => setShowReasonModal(false)}/>)}
+        {showReasonModal && (<ReasonPromptModal title="Justifier les modifications" message="Expliquez pourquoi la commande est modifiée. Ce motif sera visible par le client." onConfirm={handleSaveChanges} onCancel={() => setShowReasonModal(false)}/>)}
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
             <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl" onClick={e=>e.stopPropagation()}>
                 <div className="flex justify-between items-start mb-6">
@@ -424,7 +417,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
                     {request.status !== 'delivered' && request.status !== 'cancelled' && <button onClick={() => onCancelRequest(request)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><XCircle size={18}/>Annuler la Commande</button>}
                 </div>
                 <div className="mb-8"><DeliveryStatusTracker status={request.status}/></div>
-                <div className="bg-gray-700/50 p-4 rounded-lg max-h-64 overflow-y-auto custom-scrollbar"><table className="w-full text-left"><thead><tr className="border-b border-gray-600"><th className="p-2">Produit</th><th className="p-2 w-32">Quantité</th><th className="p-2 w-16">Actions</th></tr></thead><tbody>{editableItems.map((item, index) => { const product = products.find(p => p.id === item.productId); return (<tr key={index} className="border-b border-gray-700/50"><td className="p-2">{product?.name || 'Inconnu'}</td><td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(index, e.target.value)} className="w-20 bg-gray-600 p-1 rounded-md text-center" disabled={!canAdvance}/></td><td className="p-2">{canAdvance ? <button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button> : null}</td></tr>);})}</tbody></table></div>
+                <div className="bg-gray-700/50 p-4 rounded-lg max-h-64 overflow-y-auto custom-scrollbar"><table className="w-full text-left"><thead><tr className="border-b border-gray-600"><th className="p-2">Produit</th><th className="p-2 w-32">Quantité</th><th className="p-2 w-16">Actions</th></tr></thead><tbody>{editableItems.map((item, index) => { return (<tr key={index} className="border-b border-gray-700/50"><td className="p-2">{item.productName || 'Inconnu'}</td><td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(index, e.target.value)} className="w-20 bg-gray-600 p-1 rounded-md text-center" disabled={!canAdvance}/></td><td className="p-2">{canAdvance ? <button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button> : null}</td></tr>);})}</tbody></table></div>
                 <div className="mt-8 flex justify-between items-center">
                     {canAdvance ? <button onClick={() => setShowReasonModal(true)} disabled={isLoading} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">{isLoading ? <Loader2 className="animate-spin" size={20}/> : <><Save size={18}/>Enregistrer Modifications</>}</button> : <div></div>}
                     <div className="flex gap-4">
@@ -438,7 +431,6 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     );
 };
 
-// MODIFIÉ : Le modal de création/édition gère maintenant les catégories
 const ProductEditModal = ({ product, onClose }) => {
     const { db, showToast, productCategories } = useContext(AppContext);
     const [formData, setFormData] = useState({ 
@@ -454,7 +446,6 @@ const ProductEditModal = ({ product, onClose }) => {
 
     const handleSave = async (e) => {
         e.preventDefault();
-        // NOUVEAU: Validation du champ catégorie
         if (!formData.name || formData.price <= 0 || !formData.category) {
             showToast("Veuillez remplir le nom, un prix valide et une catégorie.", "error");
             return;
@@ -473,7 +464,6 @@ const ProductEditModal = ({ product, onClose }) => {
                 imageUrl = await getDownloadURL(snapshot.ref);
             }
             
-            // MODIFIÉ: Suppression de hasScents, ajout de category
             const productData = { 
                 ...formData, 
                 price: Number(formData.price), 
@@ -510,7 +500,6 @@ const ProductEditModal = ({ product, onClose }) => {
                      </div>
                     <div><label className="block text-sm font-medium text-gray-300 mb-1">Nom du Produit</label><input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required className="w-full bg-gray-700 p-3 rounded-lg"/></div>
                     
-                    {/* NOUVEAU: Champ pour la catégorie */}
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Prix (€)</label>
@@ -525,8 +514,6 @@ const ProductEditModal = ({ product, onClose }) => {
                         </div>
                     </div>
 
-                    {/* MODIFIÉ : Suppression de la checkbox hasScents */}
-
                     <div className="flex justify-end gap-4 pt-4">
                         <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
                         <button type="submit" disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">{isLoading ? <Loader2 className="animate-spin" size={20} /> : <Save size={18}/>}{isLoading ? 'Sauvegarde...' : 'Enregistrer'}</button>
@@ -537,27 +524,109 @@ const ProductEditModal = ({ product, onClose }) => {
     );
 };
 
-// MODIFIÉ : Gestion des catégories et suppression de l'ancienne logique de parfums
+const CategoryManagerModal = ({ onClose }) => {
+    const { db, showToast, products, productCategories } = useContext(AppContext);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [isAdding, setIsAdding] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(null); 
+
+    const handleAddCategory = async (e) => {
+        e.preventDefault();
+        const trimmedName = newCategoryName.trim();
+        if (!trimmedName) {
+            showToast("Le nom de la catégorie ne peut pas être vide.", "error");
+            return;
+        }
+        if (productCategories.some(cat => cat.name.toLowerCase() === trimmedName.toLowerCase())) {
+            showToast("Cette catégorie existe déjà.", "error");
+            return;
+        }
+
+        setIsAdding(true);
+        try {
+            await addDoc(collection(db, 'product_categories'), { name: trimmedName });
+            showToast(`Catégorie "${trimmedName}" ajoutée avec succès !`, "success");
+            setNewCategoryName('');
+        } catch (error) {
+            console.error("Erreur ajout catégorie:", error);
+            showToast("Une erreur est survenue.", "error");
+        } finally {
+            setIsAdding(false);
+        }
+    };
+
+    const handleDeleteCategory = async (category) => {
+        if (!category || !category.id || !category.name) return;
+
+        setIsDeleting(category.id);
+        const productsQuery = query(collection(db, "products"), where("category", "==", category.name));
+        const querySnapshot = await getDocs(productsQuery);
+
+        if (!querySnapshot.empty) {
+            showToast(`Impossible : La catégorie "${category.name}" est utilisée par ${querySnapshot.size} produit(s).`, "error");
+            setIsDeleting(null);
+            return;
+        }
+
+        try {
+            await deleteDoc(doc(db, 'product_categories', category.id));
+            showToast(`Catégorie "${category.name}" supprimée.`, "success");
+        } catch (error) {
+            console.error("Erreur suppression catégorie:", error);
+            showToast("Une erreur est survenue.", "error");
+        } finally {
+            setIsDeleting(null);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[60] animate-fade-in" onClick={onClose}>
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-md border border-gray-700" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-white mb-6">Gérer les catégories</h2>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                    {productCategories.length > 0 ? productCategories.map(cat => (
+                        <div key={cat.id} className="bg-gray-700/50 p-3 rounded-lg flex justify-between items-center">
+                            <span className="font-medium">{cat.name}</span>
+                            <button onClick={() => handleDeleteCategory(cat)} className="p-2 text-red-400 hover:text-red-300 disabled:opacity-50" disabled={isDeleting === cat.id}>
+                                {isDeleting === cat.id ? <Loader2 className="animate-spin" size={18} /> : <Trash2 size={18} />}
+                            </button>
+                        </div>
+                    )) : <p className="text-gray-400 text-center">Aucune catégorie pour le moment.</p>}
+                </div>
+                
+                <form onSubmit={handleAddCategory} className="mt-6 border-t border-gray-700 pt-6">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Ajouter une nouvelle catégorie</label>
+                    <div className="flex gap-2">
+                        <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="Ex: Suspensions" className="flex-grow bg-gray-700 p-3 rounded-lg"/>
+                        <button type="submit" disabled={isAdding} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center disabled:opacity-60">
+                            {isAdding ? <Loader2 className="animate-spin" size={20} /> : <PlusCircle size={20} />}
+                        </button>
+                    </div>
+                </form>
+
+                <div className="mt-8 flex justify-end">
+                    <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-6 rounded-lg">Fermer</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ProductManagementPage = ({ onBack }) => {
-    const { db, showToast } = useContext(AppContext);
-    const [products, setProducts] = useState([]);
-    const [categories, setCategories] = useState([]);
+    const { db, showToast, products, productCategories } = useContext(AppContext);
     const [isLoading, setIsLoading] = useState(true);
     const [modalProduct, setModalProduct] = useState(null);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [productToDelete, setProductToDelete] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCategory, setFilterCategory] = useState('all');
+    const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
 
     useEffect(() => {
-        const q = query(collection(db, 'products'), orderBy('name'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            setIsLoading(false);
-        });
-        return () => unsubscribe();
-    }, [db]);
-
+        if (products) setIsLoading(false);
+    }, [products]);
+    
     const filteredProducts = useMemo(() => {
         return products.filter(p => {
             const matchesCategory = filterCategory === 'all' || p.category === filterCategory;
@@ -566,23 +635,26 @@ const ProductManagementPage = ({ onBack }) => {
         });
     }, [products, searchTerm, filterCategory]);
 
-    useEffect(() => {
-        const q = query(collection(db, 'product_categories'), orderBy('name'));
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
-        return unsubscribe;
-    }, [db]);
-    
-
     const handleDelete = async () => {
         if (!productToDelete) return;
         try {
-            if (productToDelete.imageUrl) await deleteObject(ref(storage, productToDelete.imageUrl));
+            if (productToDelete.imageUrl) {
+                 const imageRef = ref(storage, productToDelete.imageUrl);
+                 await deleteObject(imageRef);
+            }
             await deleteDoc(doc(db, 'products', productToDelete.id));
             showToast("Produit supprimé avec succès.", "success");
-        } catch (error) { console.error("Erreur de suppression:", error); showToast("Erreur lors de la suppression du produit.", "error");
-        } finally { setProductToDelete(null); }
+        } catch (error) { 
+            console.error("Erreur de suppression:", error); 
+            if (error.code === 'storage/object-not-found') {
+                 await deleteDoc(doc(db, 'products', productToDelete.id));
+                 showToast("Produit supprimé (image non trouvée).", "success");
+            } else {
+                showToast("Erreur lors de la suppression du produit.", "error");
+            }
+        } finally { 
+            setProductToDelete(null); 
+        }
     };
 
     const openEditModal = (product) => { setModalProduct(product); setIsCreateModalOpen(true); };
@@ -593,17 +665,31 @@ const ProductManagementPage = ({ onBack }) => {
         <div className="p-4 sm:p-8 animate-fade-in">
              {isCreateModalOpen && <ProductEditModal product={modalProduct} onClose={closeModal} />}
              {productToDelete && <ConfirmationModal title="Confirmer la suppression" message={`Êtes-vous sûr de vouloir supprimer le produit "${productToDelete.name}" ? Cette action est irréversible.`} onConfirm={handleDelete} onCancel={() => setProductToDelete(null)} />}
+             {isCategoryModalOpen && <CategoryManagerModal onClose={() => setIsCategoryModalOpen(false)} />}
             
             <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-4">
-                <div className="flex items-center gap-4"><button onClick={onBack} className="p-2 bg-gray-700 rounded-lg hover:bg-gray-600 flex-shrink-0"><ArrowLeft size={22}/></button><div><h2 className="text-3xl font-bold text-white">Gestion du Catalogue</h2><p className="text-gray-400">Ajoutez, modifiez ou supprimez vos produits.</p></div></div>
-                <button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 w-full md:w-auto"><PlusCircle size={20} />Ajouter un Produit</button>
+                <div className="flex items-center gap-4">
+                    <button onClick={onBack} className="p-2 bg-gray-700 rounded-lg hover:bg-gray-600 flex-shrink-0"><ArrowLeft size={22}/></button>
+                    <div>
+                        <h2 className="text-3xl font-bold text-white">Gestion du Catalogue</h2>
+                        <p className="text-gray-400">Ajoutez, modifiez ou supprimez vos produits et catégories.</p>
+                    </div>
+                </div>
+                <div className="flex gap-2 w-full md:w-auto">
+                    <button onClick={() => setIsCategoryModalOpen(true)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                        <Layers size={20} /> Gérer les catégories
+                    </button>
+                    <button onClick={openCreateModal} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                        <PlusCircle size={20} /> Ajouter un Produit
+                    </button>
+                </div>
             </div>
             
             <div className="mb-6 flex flex-col md:flex-row gap-4">
                 <div className="relative flex-grow"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20}/><input type="search" placeholder="Rechercher un produit..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-gray-800 p-3 pl-12 rounded-lg border border-gray-700"/></div>
                 <select onChange={(e) => setFilterCategory(e.target.value)} value={filterCategory} className="bg-gray-800 p-3 rounded-lg border border-gray-700 md:w-64">
                     <option value="all">Toutes les catégories</option>
-                    {categories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
+                    {productCategories.map(cat => <option key={cat.id} value={cat.name}>{cat.name}</option>)}
                 </select>
             </div>
 
@@ -645,7 +731,7 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
     useEffect(() => { if (!db || !posId) return; const q = query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub;}, [db, posId]);
     useEffect(() => { if (!db || !posId) return; const unsub = onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); }); return unsub; }, [db, posId]);
     useEffect(() => { if (!db || !posId) return; const q = query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))); return unsub; }, [db, posId]);
-    useEffect(() => { if (!db || !posId || isAdminView) return; const q = query(collection(db, `deliveryRequests`), where("posId", "==", posId), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setDeliveryRequests(snapshot.docs.map(d => ({id: d.id, ...d.data()}))), (error) => console.error("Erreur Firestore (pensez à l'index pour le dashboard client!) : ", error)); return unsub; }, [db, posId, isAdminView]);
+    useEffect(() => { if (!db || !posId || isAdminView) return; const q = query(collection(db, `deliveryRequests`), where("posId", "==", posId), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setDeliveryRequests(snapshot.docs.map(d => ({id: d.id, ...d.data()}))), (error) => console.error("Erreur Firestore (index requis) : ", error)); return unsub; }, [db, posId, isAdminView]);
 
     const handleArchive = async (requestId) => { await updateDoc(doc(db, 'deliveryRequests', requestId), { archivedBy: arrayUnion(posId) }); };
     const handleUnarchive = async (requestId) => { await updateDoc(doc(db, 'deliveryRequests', requestId), { archivedBy: arrayRemove(posId) }); };
@@ -654,7 +740,7 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
         if (!requestToCancel) return;
         try {
             await updateDoc(doc(db, 'deliveryRequests', requestToCancel.id), { status: 'cancelled', cancellationReason: 'Annulée par le client' });
-            await addDoc(collection(db, 'notifications'), { recipientUid: 'all_admins', message: `La commande de ${posData.name} du ${formatDate(requestToCancel.createdAt)} a été annulée par le client.`, createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_CANCELLED' });
+            await addDoc(collection(db, 'notifications'), { recipientUid: 'all_admins', message: `La commande de ${posData.name} du ${formatDate(requestToCancel.createdAt)} a été annulée.`, createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_CANCELLED' });
             showToast("Commande annulée avec succès", "success");
         } catch(e) { showToast("Erreur lors de l'annulation", "error"); }
         finally { setRequestToCancel(null); }
@@ -678,9 +764,8 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
     const handleDeleteSale = async (reason) => {
         if (!saleToDelete) return;
         const sale = saleToDelete; setSaleToDelete(null);
-        if(sale.payoutId) { showToast("Impossible d'annuler une vente qui fait partie d'un paiement déjà clôturé.", "error"); return; }
+        if(sale.payoutId) { showToast("Impossible d'annuler une vente qui fait partie d'un paiement.", "error"); return; }
         
-        // MODIFIÉ : Logique de restauration du stock simplifiée
         const stockId = sale.productId;
         const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, stockId);
         const saleDocRef = doc(db, `pointsOfSale/${posId}/sales`, sale.id);
@@ -699,17 +784,17 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
         } catch (error) { console.error("Erreur annulation vente: ", error); showToast("Erreur: impossible d'annuler la vente.", "error"); }
     };
 
-    const handleCreatePayout = async () => { if (unsettledSales.length === 0) { showToast("Aucune vente à régler pour créer un paiement.", "info"); return; } setPayoutToConfirm(null); const batch = writeBatch(db); const payoutDocRef = doc(collection(db, `pointsOfSale/${posId}/payouts`)); const salesToSettle = [...unsettledSales]; const grossRevenue = salesToSettle.reduce((acc, sale) => acc + sale.totalAmount, 0); const commissionAmount = grossRevenue * (posData?.commissionRate || 0); const netAmount = grossRevenue - commissionAmount; batch.set(payoutDocRef, { createdAt: serverTimestamp(), status: 'pending', grossRevenue, commissionAmount, netAmount, commissionRateAtTheTime: posData?.commissionRate || 0, salesCount: salesToSettle.length, paidAt: null }); salesToSettle.forEach(sale => { batch.update(doc(db, `pointsOfSale/${posId}/sales`, sale.id), { payoutId: payoutDocRef.id }); }); try { await batch.commit(); showToast("Période de paiement clôturée avec succès !", "success"); onActionSuccess(); } catch(error) { console.error("Erreur lors de la clôture de la période: ", error); showToast("Erreur lors de la création du paiement.", "error"); } };
-    const handleUpdatePayoutStatus = async (payout) => { if (!isAdminView) return; const currentIndex = payoutStatusOrder.indexOf(payout.status); if (currentIndex === -1 || currentIndex === payoutStatusOrder.length - 1) return; const nextStatus = payoutStatusOrder[currentIndex + 1]; const payoutDocRef = doc(db, `pointsOfSale/${posId}/payouts`, payout.id); setIsUpdatingPayout(payout.id); try { const dataToUpdate = { status: nextStatus }; if (nextStatus === 'received') dataToUpdate.paidAt = serverTimestamp(); await updateDoc(payoutDocRef, dataToUpdate); await addDoc(collection(db, 'notifications'), { recipientUid: posId, message: `Le statut de votre paiement de ${formatPrice(payout.netAmount)} est passé à : "${PAYOUT_STATUSES[nextStatus].text}".`, createdAt: serverTimestamp(), isRead: false, type: 'PAYOUT_UPDATE' }); showToast(`Statut du paiement mis à jour.`, "success"); } catch (error) { console.error("Erreur de mise à jour du statut du paiement: ", error); showToast("Une erreur est survenue.", "error"); } finally { setIsUpdatingPayout(null); } };
+    const handleCreatePayout = async () => { if (unsettledSales.length === 0) { showToast("Aucune vente à régler.", "info"); return; } setPayoutToConfirm(null); const batch = writeBatch(db); const payoutDocRef = doc(collection(db, `pointsOfSale/${posId}/payouts`)); const salesToSettle = [...unsettledSales]; const grossRevenue = salesToSettle.reduce((acc, sale) => acc + sale.totalAmount, 0); const commissionAmount = grossRevenue * (posData?.commissionRate || 0); const netAmount = grossRevenue - commissionAmount; batch.set(payoutDocRef, { createdAt: serverTimestamp(), status: 'pending', grossRevenue, commissionAmount, netAmount, commissionRateAtTheTime: posData?.commissionRate || 0, salesCount: salesToSettle.length, paidAt: null }); salesToSettle.forEach(sale => { batch.update(doc(db, `pointsOfSale/${posId}/sales`, sale.id), { payoutId: payoutDocRef.id }); }); try { await batch.commit(); showToast("Période de paiement clôturée !", "success"); onActionSuccess(); } catch(error) { console.error("Erreur clôture période: ", error); showToast("Erreur lors de la création du paiement.", "error"); } };
+    const handleUpdatePayoutStatus = async (payout) => { if (!isAdminView) return; const currentIndex = payoutStatusOrder.indexOf(payout.status); if (currentIndex === -1 || currentIndex === payoutStatusOrder.length - 1) return; const nextStatus = payoutStatusOrder[currentIndex + 1]; const payoutDocRef = doc(db, `pointsOfSale/${posId}/payouts`, payout.id); setIsUpdatingPayout(payout.id); try { const dataToUpdate = { status: nextStatus }; if (nextStatus === 'received') dataToUpdate.paidAt = serverTimestamp(); await updateDoc(payoutDocRef, dataToUpdate); await addDoc(collection(db, 'notifications'), { recipientUid: posId, message: `Le statut de votre paiement de ${formatPrice(payout.netAmount)} est passé à : "${PAYOUT_STATUSES[nextStatus].text}".`, createdAt: serverTimestamp(), isRead: false, type: 'PAYOUT_UPDATE' }); showToast(`Statut du paiement mis à jour.`, "success"); } catch (error) { console.error("Erreur mise à jour statut paiement: ", error); showToast("Une erreur est survenue.", "error"); } finally { setIsUpdatingPayout(null); } };
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
             {showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {saleToDelete && <ConfirmationModal title="Confirmer l'annulation" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName} ?\nLe stock sera automatiquement restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} confirmText="Annuler la Vente" requiresReason={true} />}
-            {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message="Êtes-vous sûr de vouloir annuler cette commande ? Cette action est irréversible." onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler" confirmColor="bg-red-600 hover:bg-red-700"/>}
-            {showInfoModal && <InfoModal title="Annulation Impossible" message="Cette commande est déjà en cours de traitement et ne peut plus être annulée. Veuillez contacter l'administrateur en cas de problème." onClose={() => setShowInfoModal(false)} />}
-            {payoutToConfirm && <ConfirmationModal title="Clôturer la Période" message={`Vous allez clôturer la période avec un montant net à reverser de ${formatPrice(kpis.netToBePaid)}. Un nouveau paiement sera créé avec le statut 'En attente'. Êtes-vous sûr ?`} onConfirm={handleCreatePayout} onCancel={() => setPayoutToConfirm(null)} confirmText="Oui, Clôturer" confirmColor="bg-blue-600 hover:bg-blue-700" />}
+            {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message="Êtes-vous sûr de vouloir annuler cette commande ? L'action est irréversible." onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler" confirmColor="bg-red-600 hover:bg-red-700"/>}
+            {showInfoModal && <InfoModal title="Annulation Impossible" message="Cette commande est déjà en traitement. Veuillez contacter l'administrateur." onClose={() => setShowInfoModal(false)} />}
+            {payoutToConfirm && <ConfirmationModal title="Clôturer la Période" message={`Vous allez clôturer la période avec un montant net à reverser de ${formatPrice(kpis.netToBePaid)}. Êtes-vous sûr ?`} onConfirm={handleCreatePayout} onCancel={() => setPayoutToConfirm(null)} confirmText="Oui, Clôturer" confirmColor="bg-blue-600 hover:bg-blue-700" />}
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
@@ -747,7 +832,7 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
                     <div className="border-b border-gray-700 mb-4">
                         <nav className="-mb-px flex gap-6" aria-label="Tabs"><button onClick={() => setDeliveryTab('actives')} className={`${deliveryTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button><button onClick={() => setDeliveryTab('archived')} className={`${deliveryTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button></nav>
                     </div>
-                    <div className="flex-grow">{deliveriesToDisplay.length > 0 ? (<div className="space-y-4">{deliveriesToDisplay.map(req => {const isExpanded = expandedRequestId === req.id; const isArchivable = (req.status === 'delivered' || req.status === 'cancelled'); const isCancellable = req.status === 'pending'; return (<div key={req.id} className="bg-gray-900/50 rounded-lg transition-all duration-300"><div className='flex'><button onClick={() => toggleExpand(req.id)} className="flex-grow w-full p-4 flex justify-between items-center text-left"><div><p className="font-bold">Demande du {formatDate(req.createdAt)}</p><p className="text-sm text-gray-400">{req.items.length} article(s) - <span className={`font-semibold ${req.status === 'delivered' ? 'text-green-400' : 'text-blue-400'}`}>{DELIVERY_STATUS_STEPS[req.status]}</span></p></div>{isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</button>{deliveryTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}{deliveryTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}</div>{isExpanded && (<div className="p-4 border-t border-gray-700 animate-fade-in"><div className="mb-4"><DeliveryStatusTracker status={req.status} reason={req.cancellationReason} /></div>{req.modificationReason && (<div className="bg-yellow-500/10 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-4 text-sm"><div className="flex items-start gap-3"><Info className="h-5 w-5 text-yellow-300 flex-shrink-0 mt-0.5"/><div><h4 className="font-bold text-yellow-300">Cette commande a été modifiée :</h4><p className="text-gray-300 mt-1 italic">"{req.modificationReason}"</p></div></div></div>)}{req.status !== 'cancelled' && (<div className="bg-gray-700/50 p-3 rounded-lg"><table className="w-full text-sm"><thead><tr className="border-b border-gray-600 text-gray-400"><th className="text-left p-2">Produit</th><th className="text-right p-2">Quantité</th></tr></thead><tbody>{req.items.map((item, index) => { const originalItem = req.originalItems?.find(oi => oi.productId === item.productId && oi.scent === item.scent); const wasModified = originalItem && originalItem.quantity !== item.quantity; return (<tr key={index} className="border-b border-gray-800 last:border-none"><td className="p-2">{item.productName || 'Produit inconnu'}</td><td className="p-2 text-right font-mono">{wasModified ? (<span><s className="text-red-400">{originalItem.quantity}</s><span className="ml-3 text-green-400 font-bold">{item.quantity}</span></span>) : (<span>{item.quantity}</span>)}</td></tr>);})}</tbody></table></div>)}<div className="mt-4 pt-4 border-t border-gray-700/50 flex justify-end"><button onClick={() => isCancellable ? setRequestToCancel(req) : setShowInfoModal(true)} className={`font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm ${isCancellable ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}><XCircle size={16} />Annuler la commande</button></div></div>)}</div>);})}</div>) : <p className="text-center text-gray-400 pt-8">Aucune demande de livraison.</p>}</div>
+                    <div className="flex-grow">{deliveriesToDisplay.length > 0 ? (<div className="space-y-4">{deliveriesToDisplay.map(req => {const isExpanded = expandedRequestId === req.id; const isArchivable = (req.status === 'delivered' || req.status === 'cancelled'); const isCancellable = req.status === 'pending'; return (<div key={req.id} className="bg-gray-900/50 rounded-lg transition-all duration-300"><div className='flex'><button onClick={() => toggleExpand(req.id)} className="flex-grow w-full p-4 flex justify-between items-center text-left"><div><p className="font-bold">Demande du {formatDate(req.createdAt)}</p><p className="text-sm text-gray-400">{req.items.length} article(s) - <span className={`font-semibold ${req.status === 'delivered' ? 'text-green-400' : 'text-blue-400'}`}>{DELIVERY_STATUS_STEPS[req.status]}</span></p></div>{isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</button>{deliveryTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}{deliveryTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}</div>{isExpanded && (<div className="p-4 border-t border-gray-700 animate-fade-in"><div className="mb-4"><DeliveryStatusTracker status={req.status} reason={req.cancellationReason} /></div>{req.modificationReason && (<div className="bg-yellow-500/10 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-4 text-sm"><div className="flex items-start gap-3"><Info className="h-5 w-5 text-yellow-300 flex-shrink-0 mt-0.5"/><div><h4 className="font-bold text-yellow-300">Cette commande a été modifiée :</h4><p className="text-gray-300 mt-1 italic">"{req.modificationReason}"</p></div></div></div>)}{req.status !== 'cancelled' && (<div className="bg-gray-700/50 p-3 rounded-lg"><table className="w-full text-sm"><thead><tr className="border-b border-gray-600 text-gray-400"><th className="text-left p-2">Produit</th><th className="text-right p-2">Quantité</th></tr></thead><tbody>{req.items.map((item, index) => { const originalItem = req.originalItems?.find(oi => oi.productId === item.productId); const wasModified = originalItem && originalItem.quantity !== item.quantity; return (<tr key={index} className="border-b border-gray-800 last:border-none"><td className="p-2">{item.productName || 'Produit inconnu'}</td><td className="p-2 text-right font-mono">{wasModified ? (<span><s className="text-red-400">{originalItem.quantity}</s><span className="ml-3 text-green-400 font-bold">{item.quantity}</span></span>) : (<span>{item.quantity}</span>)}</td></tr>);})}</tbody></table></div>)}<div className="mt-4 pt-4 border-t border-gray-700/50 flex justify-end"><button onClick={() => isCancellable ? setRequestToCancel(req) : setShowInfoModal(true)} className={`font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm ${isCancellable ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}><XCircle size={16} />Annuler la commande</button></div></div>)}</div>);})}</div>) : <p className="text-center text-gray-400 pt-8">Aucune demande de livraison.</p>}</div>
                 </div>
                 <div className="lg:col-span-3 bg-gray-800 rounded-2xl p-6">
                     <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-white">Gestion & Historique</h3></div>
@@ -762,8 +847,8 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
     );
 };
 
-const SalesAnalytics = () => { const { db } = useContext(AppContext); const [year, setYear] = useState(new Date().getFullYear()); const [month, setMonth] = useState(new Date().getMonth()); const [isLoading, setIsLoading] = useState(true); const [monthlyData, setMonthlyData] = useState({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] }); const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]; const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i); useEffect(() => { const fetchMonthlySales = async () => { setIsLoading(true); const startDate = new Date(year, month, 1); const endDate = new Date(year, month + 1, 1); try { const posSnapshot = await getDocs(collection(db, 'pointsOfSale')); const pointsOfSale = posSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); let allSales = []; for (const pos of pointsOfSale) { const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where('createdAt', '>=', startDate), where('createdAt', '<', endDate)); const salesSnapshot = await getDocs(salesQuery); const monthSales = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate })); allSales = allSales.concat(monthSales); } if (allSales.length === 0) { setMonthlyData({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] }); setIsLoading(false); return; } let revenue = 0; let commission = 0; const salesByPos = {}; const salesByProduct = {}; allSales.forEach(sale => { revenue += sale.totalAmount; commission += sale.totalAmount * (sale.commissionRate || 0); salesByPos[sale.posName] = (salesByPos[sale.posName] || 0) + sale.totalAmount; const productKey = sale.productName; salesByProduct[productKey] = (salesByProduct[productKey] || 0) + sale.quantity; }); const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 5); const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 5); setMonthlyData({ revenue, salesCount: allSales.length, commission, netIncome: revenue - commission, topPos, topProducts }); } catch (error) { console.error("Erreur lors de la récupération des ventes mensuelles : ", error); } finally { setIsLoading(false); } }; if (db) fetchMonthlySales(); }, [db, year, month]); return ( <div className="animate-fade-in"> <div className="flex flex-col md:flex-row justify-between items-center mb-8 px-4 sm:px-8"> <div><h2 className="text-3xl font-bold text-white">Analyse des Ventes Mensuelles</h2><p className="text-gray-400">Suivi du chiffre d'affaires global par mois.</p></div> <div className="flex gap-4 mt-4 md:mt-0"><select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-gray-700 p-2 rounded-lg">{months.map((m, i) => <option key={i} value={i}>{m}</option>)}</select><select value={year} onChange={e => setYear(Number(e.target.value))} className="bg-gray-700 p-2 rounded-lg">{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div> </div> {isLoading ? (<div className="flex justify-center items-center p-16"><Loader2 className="animate-spin h-12 w-12"/></div>) : ( <div className="px-4 sm:px-8"> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"> <KpiCard title="CA Total du Mois" value={formatPrice(monthlyData.revenue)} icon={CircleDollarSign} color="bg-green-600" /> <KpiCard title="Commissions du Mois" value={formatPrice(monthlyData.commission)} icon={HandCoins} color="bg-blue-600" /> <KpiCard title="Revenu Net Dépôts" value={formatPrice(monthlyData.netIncome)} icon={Package} color="bg-pink-600" /> <KpiCard title="Nombre de Ventes" value={monthlyData.salesCount} icon={CheckCircle} color="bg-purple-600" /> </div> <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8"> <div className="bg-gray-800 rounded-2xl p-6"><h3 className="text-xl font-bold mb-4">Top Dépôts du Mois (par CA)</h3>{monthlyData.topPos.length > 0 ? <ul>{monthlyData.topPos.map(([name, val])=><li key={name} className="flex justify-between py-2 border-b border-gray-700"><span>{name}</span><strong>{formatPrice(val)}</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente ce mois-ci.</p>}</div> <div className="bg-gray-800 rounded-2xl p-6"><h3 className="text-xl font-bold mb-4">Top Produits du Mois (par Qté)</h3>{monthlyData.topProducts.length > 0 ? <ul>{monthlyData.topProducts.map(([name, qty])=><li key={name} className="flex justify-between py-2 border-b border-gray-700"><span>{name}</span><strong>{qty} Unités</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente ce mois-ci.</p>}</div> </div> </div> )} </div> ); };
-const AdminDashboard = () => { const { db, loggedInUserData, showToast, products } = useContext(AppContext); const [pointsOfSale, setPointsOfSale] = useState([]); const [posUsers, setPosUsers] = useState([]); const [showCreateModal, setShowCreateModal] = useState(false); const [selectedPos, setSelectedPos] = useState(null); const [posToEdit, setPosToEdit] = useState(null); const [posToToggleStatus, setPosToToggleStatus] = useState(null); const [requestToProcess, setRequestToProcess] = useState(null); const [requestToCancel, setRequestToCancel] = useState(null); const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0, topPos: [], topProducts: [] }); const [deliveryRequests, setDeliveryRequests] = useState([]); const [isLoading, setIsLoading] = useState(false); const [expandedRequestId, setExpandedRequestId] = useState(null); const [deliveryTab, setDeliveryTab] = useState('actives'); const [allPosBalances, setAllPosBalances] = useState({}); const [currentView, setCurrentView] = useState('dashboard'); const [refreshTrigger, setRefreshTrigger] = useState(0); const combinedPointsOfSale = useMemo(() => { return pointsOfSale.map(pos => { const posUser = posUsers.find(u => u.id === pos.id); const balance = allPosBalances[pos.id] || 0; return { ...posUser, ...pos, uid: pos.id, balance }; }).sort((a, b) => a.name.localeCompare(b.name)); }, [pointsOfSale, posUsers, allPosBalances]); const handleArchive = async (requestId) => await updateDoc(doc(db, 'deliveryRequests', requestId), { archivedBy: arrayUnion(loggedInUserData.uid) }); const handleUnarchive = async (requestId) => await updateDoc(doc(db, 'deliveryRequests', requestId), { archivedBy: arrayRemove(loggedInUserData.uid) }); const { activeDeliveries, archivedDeliveries } = useMemo(() => ({ activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(loggedInUserData.uid)), archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(loggedInUserData.uid)) }), [deliveryRequests, loggedInUserData.uid]); const deliveriesToDisplay = deliveryTab === 'actives' ? activeDeliveries : archivedDeliveries; const toggleExpand = (requestId) => setExpandedRequestId(prevId => (prevId === requestId ? null : requestId)); const DeliveryStatusTracker = ({ status }) => { const currentIndex = deliveryStatusOrder.indexOf(status); return (<div className="flex items-center space-x-2 sm:space-x-4 p-2">{deliveryStatusOrder.map((step, index) => { const isCompleted = index < currentIndex; const isActive = index === currentIndex; return (<React.Fragment key={step}><div className="flex flex-col items-center flex-shrink-0"><div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white ${ isCompleted ? 'bg-green-600' : isActive ? 'bg-blue-600 animate-pulse' : 'bg-gray-600'}`}>{isCompleted ? <Check size={16} /> : <span className="text-xs">{index + 1}</span>}</div><p className={`mt-2 text-xs text-center w-20 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{DELIVERY_STATUS_STEPS[step]}</p></div>{index < deliveryStatusOrder.length - 1 && (<div className={`flex-1 h-1 rounded-full ${isCompleted ? 'bg-green-600' : 'bg-gray-600'}`}></div>)}</React.Fragment>);})}</div>); }; useEffect(() => { const q = query(collection(db, "pointsOfSale"), orderBy('name')); const unsub = onSnapshot(q, (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [db]); useEffect(() => { const q = query(collection(db, "users"), where("role", "==", "pos")); const unsub = onSnapshot(q, (snapshot) => setPosUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), (error) => console.error("Erreur lecture utilisateurs (vérifiez index):", error)); return unsub; }, [db]); useEffect(() => { const q = query(collection(db, "deliveryRequests"), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), (error) => console.error("Erreur Firestore (pensez aux index!) : ", error)); return unsub; }, [db]); useEffect(() => { if (pointsOfSale.length === 0) return; const fetchAllCurrentData = async () => { const balances = {}; let currentSales = []; for (const pos of pointsOfSale) { const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null)); const salesSnapshot = await getDocs(salesQuery); const salesData = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate })); currentSales = [...currentSales, ...salesData]; const gross = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0); balances[pos.id] = gross - (gross * (pos.commissionRate || 0)); } setAllPosBalances(balances); const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0); const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0); const toPay = revenue - commission; const salesByPos = currentSales.reduce((acc, sale) => { acc[sale.posName] = (acc[sale.posName] || 0) + sale.totalAmount; return acc; }, {}); const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 3); const salesByProduct = currentSales.reduce((acc, sale) => { const key = sale.productName; acc[key] = (acc[key] || 0) + sale.quantity; return acc; }, {}); const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 3); setGlobalStats({ revenue, commission, toPay, topPos, topProducts }); }; fetchAllCurrentData(); }, [pointsOfSale, db, refreshTrigger]); const handleCancelDelivery = async (reason) => { if (!requestToCancel) return; setIsLoading(true); try { await updateDoc(doc(db, 'deliveryRequests', requestToCancel.id), { status: 'cancelled', cancellationReason: reason }); await addDoc(collection(db, 'notifications'), { recipientUid: requestToCancel.posId, message: `Votre commande du ${formatDate(requestToCancel.createdAt)} a été annulée.`, createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_CANCELLED' }); showToast("Commande annulée avec succès.", "success"); setRequestToCancel(null); setRequestToProcess(null); } catch (error) { showToast("Erreur lors de l'annulation.", "error"); } finally { setIsLoading(false); } }; const handleTogglePosStatus = async () => { if (!posToToggleStatus) return; const pos = posToToggleStatus; const newStatus = pos.status === 'active' ? 'inactive' : 'active'; try { const batch = writeBatch(db); batch.update(doc(db, "pointsOfSale", pos.id), { status: newStatus }); batch.update(doc(db, "users", pos.id), { status: newStatus }); await batch.commit(); showToast(`Le compte "${pos.name}" est maintenant ${newStatus === 'active' ? 'actif' : 'inactif'}.`, "success"); } catch (error) { console.error("Erreur de changement de statut: ", error); showToast("Erreur lors du changement de statut.", "error"); } finally { setPosToToggleStatus(null); } }; if (currentView === 'products') return <ProductManagementPage onBack={() => setCurrentView('dashboard')} />; if (currentView === 'analytics') return (<><div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700"><button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowLeft size={20} />Retour au Tableau de Bord</button></div><SalesAnalytics /></>); if (selectedPos) return (<div><button onClick={() => setSelectedPos(null)} className="m-4 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowLeft size={20}/>Retour à la liste</button><PosDashboard pos={selectedPos} isAdminView={true} onActionSuccess={() => setRefreshTrigger(prev => prev + 1)}/></div>); return ( <div className="p-4 sm:p-8 animate-fade-in"> {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />} {posToEdit && <EditPosModal pos={posToEdit} hasOpenBalance={posToEdit.balance > 0} onClose={() => setPosToEdit(null)} onSave={() => {}} />} {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`} onConfirm={handleTogglePosStatus} onCancel={() => setPosToToggleStatus(null)} confirmText="Oui, confirmer" confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} />} {requestToProcess && <ProcessDeliveryModal request={requestToProcess} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />} {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Vous êtes sur le point d'annuler cette commande. Veuillez fournir un motif (obligatoire).`} confirmText="Confirmer l'Annulation" confirmColor="bg-red-600 hover:bg-red-700" requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />} <div className="flex flex-col md:flex-row justify-between items-center mb-8"> <div><h2 className="text-3xl font-bold text-white">Tableau de Bord Administrateur</h2><p className="text-gray-400">Gestion des dépôts-ventes et du catalogue.</p></div> <div className="flex flex-wrap gap-4 mt-4 md:mt-0"> {/* MODIFIÉ : Le bouton pour les catégories est renommé */} <button onClick={() => setCurrentView('products')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Layers size={20} />Gérer le Catalogue</button> <button onClick={() => setCurrentView('analytics')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><History size={20} />Analyse des Ventes</button> <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><UserPlus size={20} />Ajouter un Dépôt</button> </div> </div> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"> <KpiCard title="CA (Période en cours)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" /> <KpiCard title="Commissions (Période en cours)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" /> <KpiCard title="Net à Reverser (Total)" value={formatPrice(globalStats.toPay)} icon={Coins} color="bg-pink-600" /> <KpiCard title="Dépôts Actifs" value={pointsOfSale.length} icon={Store} color="bg-purple-600" /> </div> <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8"> <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6 flex flex-col"> <div className="border-b border-gray-700 mb-4"><nav className="-mb-px flex gap-6" aria-label="Tabs"><button onClick={() => setDeliveryTab('actives')} className={`${deliveryTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button><button onClick={() => setDeliveryTab('archived')} className={`${deliveryTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button></nav></div> <div className="flex-grow">{deliveriesToDisplay.length > 0 ? (<div className="space-y-4">{deliveriesToDisplay.map(req => { const isExpanded = expandedRequestId === req.id; const isArchivable = (req.status === 'delivered' || req.status === 'cancelled'); return (<div key={req.id} className="bg-gray-700/50 rounded-lg transition-all duration-300"><div className='flex'><button onClick={() => toggleExpand(req.id)} className="w-full p-4 flex justify-between items-center text-left flex-grow"><div><p className="font-bold">{req.posName}</p><p className="text-sm text-gray-400">{formatDate(req.createdAt)} - <span className="font-semibold text-blue-400">{DELIVERY_STATUS_STEPS[req.status]}</span></p></div>{isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</button>{deliveryTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}{deliveryTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}</div>{isExpanded && (<div className="p-4 border-t border-gray-600 animate-fade-in"><DeliveryStatusTracker status={req.status} /><div className="mt-4 flex justify-end"><button onClick={() => setRequestToProcess(req)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm"><Wrench size={16}/>Gérer la Demande</button></div></div>)}</div>);})}</div>) : <p className="text-center text-gray-400 pt-8">Aucune demande dans les {deliveryTab}.</p>}</div> </div> <div className="space-y-6"> <div className="bg-gray-800 rounded-2xl p-6"><h3 className="text-xl font-bold mb-4">Top 3 Dépôts (période en cours)</h3>{globalStats.topPos.length > 0 ? <ul>{globalStats.topPos.map(([name, val])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{formatPrice(val)}</strong></li>)}</ul> : <p className="text-gray-400">Aucune donnée.</p>}</div> <div className="bg-gray-800 rounded-2xl p-6"><h3 className="text-xl font-bold mb-4">Top 3 Produits (période en cours)</h3>{globalStats.topProducts.length > 0 ? <ul>{globalStats.topProducts.map(([name, qty])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{qty}</strong></li>)}</ul> : <p className="text-gray-400">Aucune donnée.</p>}</div> </div> </div> <div className="bg-gray-800 rounded-2xl p-6 mt-8"> <h3 className="text-xl font-bold text-white mb-4">Liste des Dépôts-Ventes</h3> <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead><tbody>{combinedPointsOfSale.map(pos => (<tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3 font-medium flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${pos.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}></span>{pos.name}</td><td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td><td className="p-3">{formatPercent(pos.commissionRate)}</td><td className="p-3 space-x-2"><button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button><button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Modifier</button><button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}>{pos.status === 'active' ? 'Désactiver' : 'Activer'}</button></td></tr>))}</tbody></table></div> </div> </div> );
+const SalesAnalytics = () => { const { db } = useContext(AppContext); const [year, setYear] = useState(new Date().getFullYear()); const [month, setMonth] = useState(new Date().getMonth()); const [isLoading, setIsLoading] = useState(true); const [monthlyData, setMonthlyData] = useState({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] }); const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"]; const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i); useEffect(() => { const fetchMonthlySales = async () => { setIsLoading(true); const startDate = new Date(year, month, 1); const endDate = new Date(year, month + 1, 1); try { const posSnapshot = await getDocs(collection(db, 'pointsOfSale')); const pointsOfSale = posSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); let allSales = []; for (const pos of pointsOfSale) { const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where('createdAt', '>=', startDate), where('createdAt', '<', endDate)); const salesSnapshot = await getDocs(salesQuery); const monthSales = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate })); allSales = allSales.concat(monthSales); } if (allSales.length === 0) { setMonthlyData({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] }); setIsLoading(false); return; } let revenue = 0; let commission = 0; const salesByPos = {}; const salesByProduct = {}; allSales.forEach(sale => { revenue += sale.totalAmount; commission += sale.totalAmount * (sale.commissionRate || 0); salesByPos[sale.posName] = (salesByPos[sale.posName] || 0) + sale.totalAmount; const productKey = sale.productName; salesByProduct[productKey] = (salesByProduct[productKey] || 0) + sale.quantity; }); const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 5); const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 5); setMonthlyData({ revenue, salesCount: allSales.length, commission, netIncome: revenue - commission, topPos, topProducts }); } catch (error) { console.error("Erreur récupération ventes mensuelles: ", error); } finally { setIsLoading(false); } }; if (db) fetchMonthlySales(); }, [db, year, month]); return ( <div className="animate-fade-in"> <div className="flex flex-col md:flex-row justify-between items-center mb-8 px-4 sm:px-8"> <div><h2 className="text-3xl font-bold text-white">Analyse des Ventes Mensuelles</h2><p className="text-gray-400">Suivi du chiffre d'affaires global par mois.</p></div> <div className="flex gap-4 mt-4 md:mt-0"><select value={month} onChange={e => setMonth(Number(e.target.value))} className="bg-gray-700 p-2 rounded-lg">{months.map((m, i) => <option key={i} value={i}>{m}</option>)}</select><select value={year} onChange={e => setYear(Number(e.target.value))} className="bg-gray-700 p-2 rounded-lg">{years.map(y => <option key={y} value={y}>{y}</option>)}</select></div> </div> {isLoading ? (<div className="flex justify-center items-center p-16"><Loader2 className="animate-spin h-12 w-12"/></div>) : ( <div className="px-4 sm:px-8"> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"> <KpiCard title="CA Total du Mois" value={formatPrice(monthlyData.revenue)} icon={CircleDollarSign} color="bg-green-600" /> <KpiCard title="Commissions du Mois" value={formatPrice(monthlyData.commission)} icon={HandCoins} color="bg-blue-600" /> <KpiCard title="Revenu Net Dépôts" value={formatPrice(monthlyData.netIncome)} icon={Package} color="bg-pink-600" /> <KpiCard title="Nombre de Ventes" value={monthlyData.salesCount} icon={CheckCircle} color="bg-purple-600" /> </div> <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-8"> <div className="bg-gray-800 rounded-2xl p-6"><h3 className="text-xl font-bold mb-4">Top Dépôts du Mois (par CA)</h3>{monthlyData.topPos.length > 0 ? <ul>{monthlyData.topPos.map(([name, val])=><li key={name} className="flex justify-between py-2 border-b border-gray-700"><span>{name}</span><strong>{formatPrice(val)}</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente ce mois-ci.</p>}</div> <div className="bg-gray-800 rounded-2xl p-6"><h3 className="text-xl font-bold mb-4">Top Produits du Mois (par Qté)</h3>{monthlyData.topProducts.length > 0 ? <ul>{monthlyData.topProducts.map(([name, qty])=><li key={name} className="flex justify-between py-2 border-b border-gray-700"><span>{name}</span><strong>{qty} Unités</strong></li>)}</ul> : <p className="text-gray-400">Aucune vente ce mois-ci.</p>}</div> </div> </div> )} </div> ); };
+const AdminDashboard = () => { const { db, loggedInUserData, showToast } = useContext(AppContext); const [pointsOfSale, setPointsOfSale] = useState([]); const [posUsers, setPosUsers] = useState([]); const [showCreateModal, setShowCreateModal] = useState(false); const [selectedPos, setSelectedPos] = useState(null); const [posToEdit, setPosToEdit] = useState(null); const [posToToggleStatus, setPosToToggleStatus] = useState(null); const [requestToProcess, setRequestToProcess] = useState(null); const [requestToCancel, setRequestToCancel] = useState(null); const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0, topPos: [], topProducts: [] }); const [deliveryRequests, setDeliveryRequests] = useState([]); const [expandedRequestId, setExpandedRequestId] = useState(null); const [deliveryTab, setDeliveryTab] = useState('actives'); const [allPosBalances, setAllPosBalances] = useState({}); const [currentView, setCurrentView] = useState('dashboard'); const [refreshTrigger, setRefreshTrigger] = useState(0); const combinedPointsOfSale = useMemo(() => { return pointsOfSale.map(pos => { const posUser = posUsers.find(u => u.id === pos.id); const balance = allPosBalances[pos.id] || 0; return { ...posUser, ...pos, uid: pos.id, balance }; }).sort((a, b) => a.name.localeCompare(b.name)); }, [pointsOfSale, posUsers, allPosBalances]); const handleArchive = async (requestId) => await updateDoc(doc(db, 'deliveryRequests', requestId), { archivedBy: arrayUnion(loggedInUserData.uid) }); const handleUnarchive = async (requestId) => await updateDoc(doc(db, 'deliveryRequests', requestId), { archivedBy: arrayRemove(loggedInUserData.uid) }); const { activeDeliveries, archivedDeliveries } = useMemo(() => ({ activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(loggedInUserData.uid)), archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(loggedInUserData.uid)) }), [deliveryRequests, loggedInUserData.uid]); const deliveriesToDisplay = deliveryTab === 'actives' ? activeDeliveries : archivedDeliveries; const toggleExpand = (requestId) => setExpandedRequestId(prevId => (prevId === requestId ? null : requestId)); const DeliveryStatusTracker = ({ status }) => { const currentIndex = deliveryStatusOrder.indexOf(status); return (<div className="flex items-center space-x-2 sm:space-x-4 p-2">{deliveryStatusOrder.map((step, index) => { const isCompleted = index < currentIndex; const isActive = index === currentIndex; return (<React.Fragment key={step}><div className="flex flex-col items-center flex-shrink-0"><div className={`w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white ${ isCompleted ? 'bg-green-600' : isActive ? 'bg-blue-600 animate-pulse' : 'bg-gray-600'}`}>{isCompleted ? <Check size={16} /> : <span className="text-xs">{index + 1}</span>}</div><p className={`mt-2 text-xs text-center w-20 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{DELIVERY_STATUS_STEPS[step]}</p></div>{index < deliveryStatusOrder.length - 1 && (<div className={`flex-1 h-1 rounded-full ${isCompleted ? 'bg-green-600' : 'bg-gray-600'}`}></div>)}</React.Fragment>);})}</div>); }; useEffect(() => { const q = query(collection(db, "pointsOfSale"), orderBy('name')); const unsub = onSnapshot(q, (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [db]); useEffect(() => { const q = query(collection(db, "users"), where("role", "==", "pos")); const unsub = onSnapshot(q, (snapshot) => setPosUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), (error) => console.error("Erreur lecture utilisateurs (index requis):", error)); return unsub; }, [db]); useEffect(() => { const q = query(collection(db, "deliveryRequests"), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))), (error) => console.error("Erreur Firestore (index requis) : ", error)); return unsub; }, [db]); useEffect(() => { if (pointsOfSale.length === 0) return; const fetchAllCurrentData = async () => { const balances = {}; let currentSales = []; for (const pos of pointsOfSale) { const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null)); const salesSnapshot = await getDocs(salesQuery); const salesData = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate })); currentSales = [...currentSales, ...salesData]; const gross = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0); balances[pos.id] = gross - (gross * (pos.commissionRate || 0)); } setAllPosBalances(balances); const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0); const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0); const toPay = revenue - commission; const salesByPos = currentSales.reduce((acc, sale) => { acc[sale.posName] = (acc[sale.posName] || 0) + sale.totalAmount; return acc; }, {}); const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 3); const salesByProduct = currentSales.reduce((acc, sale) => { const key = sale.productName; acc[key] = (acc[key] || 0) + sale.quantity; return acc; }, {}); const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 3); setGlobalStats({ revenue, commission, toPay, topPos, topProducts }); }; fetchAllCurrentData(); }, [pointsOfSale, db, refreshTrigger]); const handleCancelDelivery = async (reason) => { if (!requestToCancel) return; try { await updateDoc(doc(db, 'deliveryRequests', requestToCancel.id), { status: 'cancelled', cancellationReason: reason }); await addDoc(collection(db, 'notifications'), { recipientUid: requestToCancel.posId, message: `Votre commande du ${formatDate(requestToCancel.createdAt)} a été annulée.`, createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_CANCELLED' }); showToast("Commande annulée avec succès.", "success"); setRequestToCancel(null); setRequestToProcess(null); } catch (error) { showToast("Erreur lors de l'annulation.", "error"); } }; const handleTogglePosStatus = async () => { if (!posToToggleStatus) return; const pos = posToToggleStatus; const newStatus = pos.status === 'active' ? 'inactive' : 'active'; try { const batch = writeBatch(db); batch.update(doc(db, "pointsOfSale", pos.id), { status: newStatus }); batch.update(doc(db, "users", pos.id), { status: newStatus }); await batch.commit(); showToast(`Le compte "${pos.name}" est maintenant ${newStatus === 'active' ? 'actif' : 'inactif'}.`, "success"); } catch (error) { console.error("Erreur changement de statut: ", error); showToast("Erreur lors du changement de statut.", "error"); } finally { setPosToToggleStatus(null); } }; if (currentView === 'products') return <ProductManagementPage onBack={() => setCurrentView('dashboard')} />; if (currentView === 'analytics') return (<><div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700"><button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowLeft size={20} />Retour</button></div><SalesAnalytics /></>); if (selectedPos) return (<div><button onClick={() => setSelectedPos(null)} className="m-4 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowLeft size={20}/>Retour</button><PosDashboard pos={selectedPos} isAdminView={true} onActionSuccess={() => setRefreshTrigger(prev => prev + 1)}/></div>); return ( <div className="p-4 sm:p-8 animate-fade-in"> {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />} {posToEdit && <EditPosModal pos={posToEdit} hasOpenBalance={posToEdit.balance > 0} onClose={() => setPosToEdit(null)} onSave={() => {}} />} {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`} onConfirm={handleTogglePosStatus} onCancel={() => setPosToToggleStatus(null)} confirmText="Oui, confirmer" confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} />} {requestToProcess && <ProcessDeliveryModal request={requestToProcess} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />} {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Veuillez fournir un motif pour l'annulation.`} confirmText="Confirmer l'Annulation" confirmColor="bg-red-600 hover:bg-red-700" requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />} <div className="flex flex-col md:flex-row justify-between items-center mb-8"> <div><h2 className="text-3xl font-bold text-white">Tableau de Bord Administrateur</h2><p className="text-gray-400">Gestion des dépôts-ventes et du catalogue.</p></div> <div className="flex flex-wrap gap-4 mt-4 md:mt-0"> <button onClick={() => setCurrentView('products')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Package size={20} />Gérer le Catalogue</button> <button onClick={() => setCurrentView('analytics')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><History size={20} />Analyse des Ventes</button> <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><UserPlus size={20} />Ajouter un Dépôt</button> </div> </div> <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"> <KpiCard title="CA (Période en cours)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" /> <KpiCard title="Commissions (Période en cours)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" /> <KpiCard title="Net à Reverser (Total)" value={formatPrice(globalStats.toPay)} icon={Coins} color="bg-pink-600" /> <KpiCard title="Dépôts Actifs" value={pointsOfSale.length} icon={Store} color="bg-purple-600" /> </div> <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8"> <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6 flex flex-col"> <div className="border-b border-gray-700 mb-4"><nav className="-mb-px flex gap-6" aria-label="Tabs"><button onClick={() => setDeliveryTab('actives')} className={`${deliveryTab === 'actives' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actives</button><button onClick={() => setDeliveryTab('archived')} className={`${deliveryTab === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archives</button></nav></div> <div className="flex-grow">{deliveriesToDisplay.length > 0 ? (<div className="space-y-4">{deliveriesToDisplay.map(req => { const isExpanded = expandedRequestId === req.id; const isArchivable = (req.status === 'delivered' || req.status === 'cancelled'); return (<div key={req.id} className="bg-gray-700/50 rounded-lg transition-all duration-300"><div className='flex'><button onClick={() => toggleExpand(req.id)} className="w-full p-4 flex justify-between items-center text-left flex-grow"><div><p className="font-bold">{req.posName}</p><p className="text-sm text-gray-400">{formatDate(req.createdAt)} - <span className="font-semibold text-blue-400">{DELIVERY_STATUS_STEPS[req.status]}</span></p></div>{isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}</button>{deliveryTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}{deliveryTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}</div>{isExpanded && (<div className="p-4 border-t border-gray-600 animate-fade-in"><DeliveryStatusTracker status={req.status} /><div className="mt-4 flex justify-end"><button onClick={() => setRequestToProcess(req)} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 text-sm"><Wrench size={16}/>Gérer la Demande</button></div></div>)}</div>);})}</div>) : <p className="text-center text-gray-400 pt-8">Aucune demande dans les {deliveryTab}.</p>}</div> </div> <div className="space-y-6"> <div className="bg-gray-800 rounded-2xl p-6"><h3 className="text-xl font-bold mb-4">Top 3 Dépôts (période en cours)</h3>{globalStats.topPos.length > 0 ? <ul>{globalStats.topPos.map(([name, val])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{formatPrice(val)}</strong></li>)}</ul> : <p className="text-gray-400">Aucune donnée.</p>}</div> <div className="bg-gray-800 rounded-2xl p-6"><h3 className="text-xl font-bold mb-4">Top 3 Produits (période en cours)</h3>{globalStats.topProducts.length > 0 ? <ul>{globalStats.topProducts.map(([name, qty])=><li key={name} className="flex justify-between py-1 border-b border-gray-700"><span>{name}</span><strong>{qty}</strong></li>)}</ul> : <p className="text-gray-400">Aucune donnée.</p>}</div> </div> </div> <div className="bg-gray-800 rounded-2xl p-6 mt-8"> <h3 className="text-xl font-bold text-white mb-4">Liste des Dépôts-Ventes</h3> <div className="overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead><tbody>{combinedPointsOfSale.map(pos => (<tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50"><td className="p-3 font-medium flex items-center gap-2"><span className={`h-2 w-2 rounded-full ${pos.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}></span>{pos.name}</td><td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td><td className="p-3">{formatPercent(pos.commissionRate)}</td><td className="p-3 space-x-2"><button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button><button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Modifier</button><button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}>{pos.status === 'active' ? 'Désactiver' : 'Activer'}</button></td></tr>))}</tbody></table></div> </div> </div> );
 };
 
 // =================================================================
@@ -778,7 +863,6 @@ export default function App() {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [toast, setToast] = useState(null);
     const [products, setProducts] = useState([]);
-    // NOUVEAU: State pour les catégories de produits
     const [productCategories, setProductCategories] = useState([]);
     const [showProfileModal, setShowProfileModal] = useState(false);
 
@@ -787,8 +871,6 @@ export default function App() {
     useEffect(() => {
         if(!db) return;
         const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), snap => setProducts(snap.docs.map(d=>({id:d.id, ...d.data()}))));
-        
-        // MODIFIÉ: Suppression du listener pour 'scents', ajout pour 'product_categories'
         const unsubCategories = onSnapshot(query(collection(db, 'product_categories'), orderBy('name')), snap => setProductCategories(snap.docs.map(d=>({id:d.id, ...d.data()}))));
         
         return () => { unsubProducts(); unsubCategories(); };
@@ -823,7 +905,6 @@ export default function App() {
 
     const handleLogout = useCallback(() => { signOut(auth); }, []);
 
-    // MODIFIÉ: Le contexte inclut maintenant les catégories et non plus les parfums
     const contextValue = useMemo(() => ({
         db, auth, loggedInUserData, products, productCategories, showToast
     }), [db, auth, loggedInUserData, products, productCategories, showToast]);
