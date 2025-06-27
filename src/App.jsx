@@ -34,7 +34,7 @@ import {
 import {
     Package, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Bell, ArchiveRestore, Phone, Mail,
     PlusCircle, CheckCircle, Truck, DollarSign, Archive, ChevronDown, ChevronUp, Check, XCircle, Trash2,
-    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle, Edit, ImageOff
+    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle, Edit, ImageOff, Search
 } from 'lucide-react';
 
 // =================================================================
@@ -289,7 +289,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
             batch.update(stockDocRef, { quantity: stockItem.quantity - item.quantity });
 
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
-           
+            
             // On s'assure que posId est toujours inclus pour les requêtes futures
             batch.set(saleDocRef, {
                 posId: posId, 
@@ -739,44 +739,41 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
 
 const DeliveryRequestModal = ({ posId, posName, onClose }) => {
     const { db, showToast, products, scents } = useContext(AppContext);
-    const [items, setItems] = useState([{ productId: '', scent: '', quantity: 10 }]);
     const [isLoading, setIsLoading] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [requestedQuantities, setRequestedQuantities] = useState({});
 
-    const handleItemChange = (index, field, value) => {
-        const newItems = [...items];
-        newItems[index][field] = value;
-        if (field === 'productId') {
-            // Reset scent when product changes to avoid invalid combinations
-            newItems[index].scent = '';
-        }
-        setItems(newItems);
+    const handleQuantityChange = (productId, scentName, quantityStr) => {
+        const quantity = parseInt(quantityStr, 10);
+        const key = scentName ? `${productId}_${scentName}` : productId;
+
+        setRequestedQuantities(prev => {
+            const newQuantities = { ...prev };
+            if (isNaN(quantity) || quantity <= 0) {
+                delete newQuantities[key];
+            } else {
+                newQuantities[key] = quantity;
+            }
+            return newQuantities;
+        });
     };
 
-    const addItem = () => setItems([...items, { productId: '', scent: '', quantity: 10 }]);
-    const removeItem = (index) => setItems(items.filter((_, i) => i !== index));
-
     const handleSend = async () => {
-        // Find if any product requires a scent but doesn't have one selected
-        const invalidItems = items.filter(item => {
-            const product = products.find(p => p.id === item.productId);
-            // An item is invalid if a product is selected, it has scents, but no scent is chosen.
-            return product && product.hasScents && !item.scent;
-        });
+        const itemsToSend = Object.entries(requestedQuantities)
+            .map(([key, quantity]) => {
+                if (quantity > 0) {
+                    const parts = key.split('_');
+                    const productId = parts[0];
+                    const scent = parts.length > 1 ? parts.slice(1).join('_') : null;
+                    return { productId, scent, quantity };
+                }
+                return null;
+            })
+            .filter(Boolean);
 
-        if (items.some(item => !item.productId || item.quantity <= 0)) {
-            showToast("Veuillez sélectionner un produit et une quantité valide pour chaque ligne.", "error");
+        if (itemsToSend.length === 0) {
+            showToast("Veuillez demander une quantité pour au moins un produit.", "error");
             return;
-        }
-        
-        if (invalidItems.length > 0) {
-            showToast("Certains produits requièrent la sélection d'un parfum.", "error");
-            return;
-        }
-
-        const validItems = items.filter(item => item.productId && item.quantity > 0);
-        if(validItems.length === 0) {
-             showToast("Veuillez ajouter au moins un article valide.", "error");
-             return;
         }
 
         setIsLoading(true);
@@ -784,7 +781,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
             await addDoc(collection(db, 'deliveryRequests'), {
                 posId,
                 posName,
-                items: validItems,
+                items: itemsToSend,
                 status: 'pending',
                 createdAt: serverTimestamp(),
                 archivedBy: []
@@ -808,59 +805,113 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
         }
     };
 
+    const filteredProducts = useMemo(() => {
+        if (!searchTerm) return products;
+        return products.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [products, searchTerm]);
+    
+    const totalItems = Object.values(requestedQuantities).reduce((sum, qty) => sum + qty, 0);
+
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40" onClick={onClose}>
-            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-2xl border-gray-700 custom-scrollbar max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold text-white mb-6">Demander une Livraison</h2>
-                <div className="space-y-4">
-                    {items.map((item, i) => {
-                        const product = products.find(p => p.id === item.productId);
-                        // Show scents dropdown only if the product is selected and has the hasScents flag
-                        const showScents = product && product.hasScents;
-                        return (
-                            <div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-                                <div className="sm:col-span-1">
-                                    <label className="text-sm text-gray-300 block mb-1">Produit</label>
-                                    <select value={item.productId} onChange={e => handleItemChange(i, 'productId', e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg">
-                                        <option value="">-- Choisir --</option>
-                                        {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="sm:col-span-1">
-                                    {showScents ? (
-                                        <>
-                                            <label className="text-sm text-gray-300 block mb-1">Parfum</label>
-                                            <select value={item.scent} onChange={e => handleItemChange(i, 'scent', e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg">
-                                                <option value="">-- Choisir --</option>
-                                                {scents.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                                            </select>
-                                        </>
-                                    ) :  <div className="h-10"></div> /* Placeholder for alignment */ }
-                                </div>
-                                <div className="flex items-end gap-2">
-                                    <div className="flex-grow">
-                                        <label className="text-sm text-gray-300 block mb-1">Quantité</label>
-                                        <input type="number" value={item.quantity} onChange={e => handleItemChange(i, 'quantity', Number(e.target.value))} min="1" className="w-full bg-gray-600 p-2 rounded-lg"/>
-                                    </div>
-                                    {items.length > 1 && <button onClick={() => removeItem(i)} className="p-2 bg-red-600 rounded-lg text-white"><Trash2 size={20}/></button>}
-                                </div>
-                            </div>
-                        );
-                    })}
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-40 animate-fade-in" onClick={onClose}>
+            <div className="bg-gray-800 rounded-2xl w-full max-w-4xl border-gray-700 flex flex-col h-[90vh]" onClick={e => e.stopPropagation()}>
+                <div className="p-6 border-b border-gray-700">
+                    <h2 className="text-2xl font-bold text-white">Demander une Livraison</h2>
+                    <p className="text-gray-400">Parcourez le catalogue et indiquez les quantités souhaitées.</p>
+                     <div className="relative mt-4">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un produit..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full bg-gray-700 p-2 pl-10 rounded-lg"
+                        />
+                    </div>
                 </div>
-                <button type="button" onClick={addItem} className="mt-4 flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
-                    <PlusCircle size={20}/>Ajouter un article
-                </button>
-                <div className="mt-8 flex justify-end gap-4">
-                    <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
-                    <button onClick={handleSend} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2" disabled={isLoading}>
-                        {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Send size={18}/>Envoyer la demande</>}
-                    </button>
+
+                <div className="flex-grow p-6 overflow-y-auto custom-scrollbar">
+                    {filteredProducts.length > 0 ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filteredProducts.map(p => {
+                                const key_noscent = p.id;
+                                return (
+                                <div key={p.id} className="bg-gray-900/50 rounded-2xl overflow-hidden shadow-lg flex flex-col justify-between animate-fade-in-up">
+                                    {p.imageUrl ? (
+                                        <img src={p.imageUrl} alt={p.name} className="w-full h-48 object-cover"/>
+                                    ) : (
+                                        <div className="w-full h-48 bg-gray-700 flex items-center justify-center">
+                                            <ImageOff size={48} className="text-gray-500"/>
+                                        </div>
+                                    )}
+                                    <div className="p-4 flex-grow">
+                                        <h3 className="font-bold text-lg text-white">{p.name}</h3>
+                                        <p className="text-indigo-400 font-semibold text-xl mt-1">{formatPrice(p.price)}</p>
+                                    </div>
+                                    <div className="p-4 pt-2">
+                                        {!p.hasScents ? (
+                                             <div>
+                                                <label className="text-sm font-medium text-gray-300 block mb-1">Quantité</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="0"
+                                                    value={requestedQuantities[key_noscent] || ''}
+                                                    onChange={e => handleQuantityChange(p.id, null, e.target.value)}
+                                                    className="w-full bg-gray-700 p-2 rounded-lg text-center font-bold text-lg"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                <p className="text-sm font-medium text-gray-300 -mb-1">Quantités par parfum :</p>
+                                                {scents.map(scent => {
+                                                    const key_scent = `${p.id}_${scent.name}`;
+                                                    return (
+                                                        <div key={scent.id} className="flex items-center justify-between gap-2">
+                                                            <label htmlFor={key_scent} className="text-gray-300 text-sm">{scent.name}</label>
+                                                            <input
+                                                                id={key_scent}
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="0"
+                                                                value={requestedQuantities[key_scent] || ''}
+                                                                onChange={e => handleQuantityChange(p.id, scent.name, e.target.value)}
+                                                                className="w-20 bg-gray-700 p-1 rounded-md text-center"
+                                                            />
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                         <div className="text-center py-16 text-gray-400">
+                             <p>Aucun produit ne correspond à votre recherche "{searchTerm}".</p>
+                         </div>
+                    )}
+                </div>
+                
+                <div className="p-6 border-t border-gray-700 bg-gray-800 flex justify-between items-center">
+                     <div>
+                        <span className="font-bold text-lg">{totalItems}</span>
+                        <span className="text-gray-400"> article(s) dans la demande.</span>
+                    </div>
+                    <div className="flex gap-4">
+                        <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg">Annuler</button>
+                        <button onClick={handleSend} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2" disabled={isLoading || totalItems === 0}>
+                            {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Send size={18}/>Envoyer la demande</>}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     );
 };
+
 
 const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     const { db, products, showToast } = useContext(AppContext);
@@ -1104,6 +1155,7 @@ const ProductManager = ({ onBack }) => {
     const { products, showToast, db } = useContext(AppContext);
     const [productToEdit, setProductToEdit] = useState(null);
     const [productToDelete, setProductToDelete] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const handleDelete = async () => {
         if (!productToDelete) return;
@@ -1119,6 +1171,12 @@ const ProductManager = ({ onBack }) => {
             setProductToDelete(null);
         }
     };
+
+    const filteredProducts = useMemo(() => {
+        return products.filter(p =>
+            p.name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [products, searchTerm]);
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
@@ -1146,8 +1204,21 @@ const ProductManager = ({ onBack }) => {
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mt-8">
-                {products.map(p => (
+            <div className="mb-8 max-w-md">
+                 <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                    <input
+                        type="text"
+                        placeholder="Rechercher dans le catalogue..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full bg-gray-700 p-3 pl-10 rounded-lg"
+                    />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                {filteredProducts.map(p => (
                     <div key={p.id} className="bg-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col justify-between animate-fade-in-up">
                         {p.imageUrl ? (
                             <img src={p.imageUrl} alt={p.name} className="w-full h-48 object-cover"/>
@@ -1167,7 +1238,7 @@ const ProductManager = ({ onBack }) => {
                     </div>
                 ))}
             </div>
-            {products.length === 0 && <p className="text-center text-gray-400 py-16">Aucun produit dans le catalogue. Cliquez sur "Ajouter un produit" pour commencer.</p>}
+            {filteredProducts.length === 0 && <p className="text-center text-gray-400 py-16">Aucun produit ne correspond à votre recherche.</p>}
         </div>
     );
 };
@@ -1643,7 +1714,7 @@ const SalesAnalytics = () => {
                     }));
                     allSales = allSales.concat(monthSales);
                 }
-               
+                
                 if (allSales.length === 0) {
                     setMonthlyData({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] });
                     setIsLoading(false);
@@ -1661,14 +1732,14 @@ const SalesAnalytics = () => {
                     commission += sale.totalAmount * (sale.commissionRate || 0);
 
                     salesByPos[sale.posName] = (salesByPos[sale.posName] || 0) + sale.totalAmount;
-                   
+                    
                     const productKey = `${sale.productName} ${sale.scent || ''}`.trim();
                     salesByProduct[productKey] = (salesByProduct[productKey] || 0) + sale.quantity;
                 });
-               
+                
                 const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 5);
                 const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 5);
-               
+                
                 setMonthlyData({
                     revenue,
                     salesCount: allSales.length,
@@ -1752,14 +1823,23 @@ const AdminDashboard = () => {
     const [allPosBalances, setAllPosBalances] = useState({});
     const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'analytics', 'products'
     const [refreshTrigger, setRefreshTrigger] = useState(0);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const combinedPointsOfSale = useMemo(() => {
-        return pointsOfSale.map(pos => {
+        let filteredPos = pointsOfSale.map(pos => {
             const posUser = posUsers.find(u => u.id === pos.id);
             const balance = allPosBalances[pos.id] || 0;
             return { ...posUser, ...pos, uid: pos.id, balance };
-        }).sort((a, b) => a.name.localeCompare(b.name));
-    }, [pointsOfSale, posUsers, allPosBalances]);
+        });
+
+        if (searchTerm) {
+            filteredPos = filteredPos.filter(pos => 
+                pos.name?.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+        }
+
+        return filteredPos.sort((a, b) => a.name.localeCompare(b.name));
+    }, [pointsOfSale, posUsers, allPosBalances, searchTerm]);
 
     const handleArchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
@@ -1855,7 +1935,7 @@ const AdminDashboard = () => {
             }
 
             setAllPosBalances(balances);
-           
+            
             const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
             const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
             const toPay = revenue - commission;
@@ -1926,7 +2006,7 @@ const AdminDashboard = () => {
             </>
         );
     }
-   
+    
     if (currentView === 'products') {
         return <ProductManager onBack={() => setCurrentView('dashboard')} />;
     }
@@ -2025,7 +2105,19 @@ const AdminDashboard = () => {
                 </div>
             </div>
             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                <h3 className="text-xl font-bold text-white mb-4">Liste des Dépôts-Ventes</h3>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                    <h3 className="text-xl font-bold text-white mb-2 sm:mb-0">Liste des Dépôts-Ventes</h3>
+                    <div className="relative w-full sm:w-auto sm:max-w-xs">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un dépôt..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full bg-gray-700 p-2 pl-10 rounded-lg"
+                        />
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
                         <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead>
