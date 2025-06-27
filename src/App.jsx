@@ -720,9 +720,9 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
                         />
                         {hasOpenBalance && (
                              <p className="text-xs text-yellow-400 mt-2">
-                                 <Info size={14} className="inline mr-1" />
-                                 Vous devez clôturer la période de paiement en cours pour modifier ce taux.
-                               </p>
+                                <Info size={14} className="inline mr-1" />
+                                Vous devez clôturer la période de paiement en cours pour modifier ce taux.
+                              </p>
                         )}
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
@@ -890,7 +890,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
                         </div>
                     ) : (
                          <div className="text-center py-16 text-gray-400">
-                             <p>Aucun produit ne correspond à votre recherche "{searchTerm}".</p>
+                            <p>Aucun produit ne correspond à votre recherche "{searchTerm}".</p>
                          </div>
                     )}
                 </div>
@@ -1075,7 +1075,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
 
 
 // =================================================================
-// ============== COMPOSANTS PRODUITS (MODIFIÉS) ===================
+// ============== COMPOSANTS PRODUITS (VOTRE SECTION) ==============
 // =================================================================
 
 const ProductFormModal = ({ product, onClose }) => {
@@ -1109,6 +1109,7 @@ const ProductFormModal = ({ product, onClose }) => {
                 showToast("Produit mis à jour avec succès !", "success");
             } else {
                 productData.createdAt = serverTimestamp();
+                // L'appel à addDoc déclenchera le listener onSnapshot dans App.js
                 await addDoc(collection(db, "products"), productData);
                 showToast("Produit ajouté avec succès !", "success");
             }
@@ -1152,6 +1153,9 @@ const ProductFormModal = ({ product, onClose }) => {
 };
 
 const ProductManager = ({ onBack }) => {
+    // 1. On récupère la liste des produits via le contexte.
+    // Cette liste est toujours à jour car elle provient de l'état global de App.js,
+    // qui est lui-même mis à jour par le listener onSnapshot.
     const { products, showToast, db } = useContext(AppContext);
     const [productToEdit, setProductToEdit] = useState(null);
     const [productToDelete, setProductToDelete] = useState(null);
@@ -1162,6 +1166,7 @@ const ProductManager = ({ onBack }) => {
 
         try {
             // TODO: Ajouter une vérification pour savoir si le produit est en stock quelque part avant de supprimer.
+            // L'appel à deleteDoc déclenchera aussi le listener onSnapshot dans App.js
             await deleteDoc(doc(db, 'products', productToDelete.id));
             showToast("Produit supprimé avec succès.", "success");
         } catch (error) {
@@ -1172,12 +1177,16 @@ const ProductManager = ({ onBack }) => {
         }
     };
 
+    // 2. On utilise useMemo pour filtrer les produits.
+    // Ce calcul ne sera refait que si la liste `products` (du contexte) ou `searchTerm` change.
     const filteredProducts = useMemo(() => {
         return products.filter(p =>
             p.name.toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [products, searchTerm]);
 
+    // 3. Le rendu utilise `filteredProducts`. Chaque fois que `products` change dans le contexte,
+    // `filteredProducts` est recalculé, et le composant se met à jour pour afficher la nouvelle liste.
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
             {productToEdit && <ProductFormModal product={productToEdit.id ? productToEdit : null} onClose={() => setProductToEdit(null)} />}
@@ -1242,7 +1251,6 @@ const ProductManager = ({ onBack }) => {
         </div>
     );
 };
-
 
 // =================================================================
 // ============== FIN DES COMPOSANTS MODIFIÉS ======================
@@ -2164,10 +2172,21 @@ export default function App() {
 
     useEffect(() => { document.title = APP_TITLE; }, []);
 
+    // POINT CLÉ : Les listeners pour les données globales (catalogue produits, parfums)
+    // sont établis ici, une seule fois, au plus haut niveau de l'application.
     useEffect(() => {
         if(!db) return;
-        const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), snap => setProducts(snap.docs.map(d=>({id:d.id, ...d.data()}))));
-        const unsubScents = onSnapshot(query(collection(db, 'scents'), orderBy('name')), snap => setScents(snap.docs.map(d=>({id:d.id, ...d.data()}))));
+        
+        // Ce listener onSnapshot met à jour l'état `products` en temps réel.
+        const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), (snapshot) => {
+            setProducts(snapshot.docs.map(d => ({id: d.id, ...d.data()})));
+        });
+        
+        const unsubScents = onSnapshot(query(collection(db, 'scents'), orderBy('name')), (snapshot) => {
+            setScents(snapshot.docs.map(d => ({id: d.id, ...d.data()})));
+        });
+        
+        // On nettoie les listeners quand le composant est démonté.
         return () => { unsubProducts(); unsubScents(); };
     }, [db]);
 
@@ -2208,6 +2227,11 @@ export default function App() {
 
     const handleLogout = useCallback(() => { signOut(auth); }, []);
 
+    // POINT CLÉ : La valeur du contexte est mémoïsée avec `useMemo`.
+    // Elle ne sera recalculée que si l'une de ses dépendances change.
+    // Quand `setProducts` est appelé, la variable `products` change, une nouvelle
+    // `contextValue` est créée, et tous les composants qui consomment ce contexte
+    // seront notifiés du changement.
     const contextValue = useMemo(() => ({
         db,
         auth,
