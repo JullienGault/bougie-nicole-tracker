@@ -34,7 +34,7 @@ import {
 import {
     Package, Store, User, LogOut, LogIn, AlertTriangle, X, Info, Bell, ArchiveRestore, Phone, Mail,
     PlusCircle, CheckCircle, Truck, DollarSign, Archive, ChevronDown, ChevronUp, Check, XCircle, Trash2,
-    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle, Edit
+    Send, UserPlus, Percent, Save, Wrench, HandCoins, CalendarCheck, Coins, History, CircleDollarSign, ArrowRightCircle, Edit, ImageOff
 } from 'lucide-react';
 
 // =================================================================
@@ -289,7 +289,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
             batch.update(stockDocRef, { quantity: stockItem.quantity - item.quantity });
 
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
-            
+           
             // On s'assure que posId est toujours inclus pour les requêtes futures
             batch.set(saleDocRef, {
                 posId: posId, 
@@ -746,6 +746,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
         const newItems = [...items];
         newItems[index][field] = value;
         if (field === 'productId') {
+            // Reset scent when product changes to avoid invalid combinations
             newItems[index].scent = '';
         }
         setItems(newItems);
@@ -755,14 +756,27 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
     const removeItem = (index) => setItems(items.filter((_, i) => i !== index));
 
     const handleSend = async () => {
-        const validItems = items.filter(item => {
+        // Find if any product requires a scent but doesn't have one selected
+        const invalidItems = items.filter(item => {
             const product = products.find(p => p.id === item.productId);
-            return product && (product.hasScents === false || item.scent) && item.quantity > 0;
+            // An item is invalid if a product is selected, it has scents, but no scent is chosen.
+            return product && product.hasScents && !item.scent;
         });
 
-        if (validItems.length === 0) {
-            showToast("Veuillez ajouter au moins un article valide avec un produit et un parfum (si nécessaire).", "error");
+        if (items.some(item => !item.productId || item.quantity <= 0)) {
+            showToast("Veuillez sélectionner un produit et une quantité valide pour chaque ligne.", "error");
             return;
+        }
+        
+        if (invalidItems.length > 0) {
+            showToast("Certains produits requièrent la sélection d'un parfum.", "error");
+            return;
+        }
+
+        const validItems = items.filter(item => item.productId && item.quantity > 0);
+        if(validItems.length === 0) {
+             showToast("Veuillez ajouter au moins un article valide.", "error");
+             return;
         }
 
         setIsLoading(true);
@@ -801,7 +815,8 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
                 <div className="space-y-4">
                     {items.map((item, i) => {
                         const product = products.find(p => p.id === item.productId);
-                        const showScents = product && product.hasScents !== false;
+                        // Show scents dropdown only if the product is selected and has the hasScents flag
+                        const showScents = product && product.hasScents;
                         return (
                             <div key={i} className="bg-gray-700/50 p-4 rounded-lg grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                                 <div className="sm:col-span-1">
@@ -812,7 +827,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
                                     </select>
                                 </div>
                                 <div className="sm:col-span-1">
-                                    {showScents && (
+                                    {showScents ? (
                                         <>
                                             <label className="text-sm text-gray-300 block mb-1">Parfum</label>
                                             <select value={item.scent} onChange={e => handleItemChange(i, 'scent', e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg">
@@ -820,7 +835,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
                                                 {scents.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                                             </select>
                                         </>
-                                    )}
+                                    ) :  <div className="h-10"></div> /* Placeholder for alignment */ }
                                 </div>
                                 <div className="flex items-end gap-2">
                                     <div className="flex-grow">
@@ -930,14 +945,25 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
                     for (const item of editableItems) {
                         const product = products.find(p => p.id === item.productId);
                         if (!product) throw new Error(`Produit ID ${item.productId} non trouvé.`);
-                        const stockId = product.hasScents !== false ? `${item.productId}_${item.scent}` : item.productId;
+                        
+                        // Adapt stockId creation based on whether the product uses scents
+                        const stockId = product.hasScents ? `${item.productId}_${item.scent}` : item.productId;
+                        
                         const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId);
                         const stockDoc = await transaction.get(stockDocRef);
+                        
                         if (stockDoc.exists()) {
                             const newQuantity = (stockDoc.data().quantity || 0) + item.quantity;
                             transaction.update(stockDocRef, { quantity: newQuantity });
                         } else {
-                            transaction.set(stockDocRef, { productId: item.productId, productName: product.name, price: product.price, scent: item.scent || null, quantity: item.quantity });
+                            transaction.set(stockDocRef, { 
+                                productId: item.productId, 
+                                productName: product.name, 
+                                price: product.price, 
+                                scent: item.scent || null, 
+                                quantity: item.quantity,
+                                hasScents: !!product.hasScents // Make sure this is stored in stock too
+                            });
                         }
                     }
                     transaction.update(requestDocRef, { status: 'delivered', items: editableItems });
@@ -996,8 +1022,9 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     );
 };
 
+
 // =================================================================
-// ============== DÉBUT DES NOUVEAUX COMPOSANTS ====================
+// ============== COMPOSANTS PRODUITS (MODIFIÉS) ===================
 // =================================================================
 
 const ProductFormModal = ({ product, onClose }) => {
@@ -1006,7 +1033,7 @@ const ProductFormModal = ({ product, onClose }) => {
 
     const [name, setName] = useState(product?.name || '');
     const [price, setPrice] = useState(product?.price || 0);
-    const [hasScents, setHasScents] = useState(product?.hasScents !== false);
+    const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
     const [isLoading, setIsLoading] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -1020,8 +1047,7 @@ const ProductFormModal = ({ product, onClose }) => {
         const productData = {
             name,
             price: Number(price),
-            hasScents,
-            // Pour maintenir l'ordre, on peut ajouter un timestamp
+            imageUrl: imageUrl.trim(), // On enregistre l'URL de l'image
             updatedAt: serverTimestamp(),
         };
 
@@ -1057,11 +1083,11 @@ const ProductFormModal = ({ product, onClose }) => {
                         <label className="block text-sm font-medium text-gray-300 mb-2">Prix de vente (€)</label>
                         <input type="number" value={price} onChange={e => setPrice(e.target.value)} required min="0.01" step="0.01" className="w-full bg-gray-700 p-3 rounded-lg" />
                     </div>
-                    <div className="flex items-center gap-3">
-                        <input id="hasScents" type="checkbox" checked={hasScents} onChange={e => setHasScents(e.target.checked)} className="h-5 w-5 rounded bg-gray-700 border-gray-600 text-indigo-600 focus:ring-indigo-500"/>
-                        <label htmlFor="hasScents" className="text-sm font-medium text-gray-300">Ce produit a des parfums</label>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">URL de l'image (optionnel)</label>
+                        <input type="url" value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" placeholder="https://exemple.com/image.jpg"/>
                     </div>
-
+                    
                     <div className="flex justify-end gap-4 pt-4">
                         <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
                         <button type="submit" disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">
@@ -1083,6 +1109,7 @@ const ProductManager = ({ onBack }) => {
         if (!productToDelete) return;
 
         try {
+            // TODO: Ajouter une vérification pour savoir si le produit est en stock quelque part avant de supprimer.
             await deleteDoc(doc(db, 'products', productToDelete.id));
             showToast("Produit supprimé avec succès.", "success");
         } catch (error) {
@@ -1119,45 +1146,35 @@ const ProductManager = ({ onBack }) => {
                 </button>
             </div>
 
-            <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="border-b border-gray-700 text-gray-400 text-sm">
-                                <th className="p-3">Nom du Produit</th>
-                                <th className="p-3">Prix</th>
-                                <th className="p-3">A des parfums</th>
-                                <th className="p-3 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {products.map(p => (
-                                <tr key={p.id} className="border-b border-gray-700/50 hover:bg-gray-700/50">
-                                    <td className="p-3 font-medium">{p.name}</td>
-                                    <td className="p-3">{formatPrice(p.price)}</td>
-                                    <td className="p-3">
-                                        <span className={`px-2 py-1 text-xs font-bold rounded-full ${p.hasScents !== false ? 'bg-green-500/10 text-green-400' : 'bg-gray-600/20 text-gray-300'}`}>
-                                            {p.hasScents !== false ? 'Oui' : 'Non'}
-                                        </span>
-                                    </td>
-                                    <td className="p-3 text-right space-x-2">
-                                        <button onClick={() => setProductToEdit(p)} title="Modifier" className="p-2 text-yellow-400 hover:text-yellow-300 bg-gray-900/50 rounded-lg"><Edit size={18}/></button>
-                                        <button onClick={() => setProductToDelete(p)} title="Supprimer" className="p-2 text-red-500 hover:text-red-400 bg-gray-900/50 rounded-lg"><Trash2 size={18}/></button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                     {products.length === 0 && <p className="text-center text-gray-400 py-8">Aucun produit dans le catalogue.</p>}
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 mt-8">
+                {products.map(p => (
+                    <div key={p.id} className="bg-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col justify-between animate-fade-in-up">
+                        {p.imageUrl ? (
+                            <img src={p.imageUrl} alt={p.name} className="w-full h-48 object-cover"/>
+                        ) : (
+                            <div className="w-full h-48 bg-gray-700 flex items-center justify-center">
+                                <ImageOff size={48} className="text-gray-500"/>
+                            </div>
+                        )}
+                        <div className="p-4 flex-grow">
+                            <h3 className="font-bold text-lg text-white">{p.name}</h3>
+                            <p className="text-indigo-400 font-semibold text-xl mt-2">{formatPrice(p.price)}</p>
+                        </div>
+                         <div className="p-4 pt-0 flex justify-end items-center gap-2">
+                            <button onClick={() => setProductToEdit(p)} title="Modifier" className="p-2 text-yellow-400 hover:text-yellow-300 bg-gray-700/50 rounded-lg"><Edit size={18}/></button>
+                            <button onClick={() => setProductToDelete(p)} title="Supprimer" className="p-2 text-red-500 hover:text-red-400 bg-gray-700/50 rounded-lg"><Trash2 size={18}/></button>
+                         </div>
+                    </div>
+                ))}
             </div>
+            {products.length === 0 && <p className="text-center text-gray-400 py-16">Aucun produit dans le catalogue. Cliquez sur "Ajouter un produit" pour commencer.</p>}
         </div>
     );
 };
 
 
 // =================================================================
-// ============== FIN DES NOUVEAUX COMPOSANTS ======================
+// ============== FIN DES COMPOSANTS MODIFIÉS ======================
 // =================================================================
 
 
@@ -1324,7 +1341,9 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
 
         const product = products.find(p => p.id === sale.productId);
         if (!product) { showToast("Produit de la vente introuvable.", "error"); return; }
-        const stockId = product.hasScents !== false ? `${sale.productId}_${sale.scent}` : sale.productId;
+        
+        const stockId = product.hasScents ? `${sale.productId}_${sale.scent}` : sale.productId;
+        
         const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, stockId);
         const saleDocRef = doc(db, `pointsOfSale/${posId}/sales`, sale.id);
         const logDocRef = doc(collection(db, `pointsOfSale/${posId}/logs`));
@@ -1333,7 +1352,7 @@ const PosDashboard = ({ pos, isAdminView = false, onActionSuccess = () => {} }) 
             const currentStockItem = stock.find(item => item.id === stockId);
             const newQuantity = (currentStockItem?.quantity || 0) + sale.quantity;
             if (currentStockItem) { batch.update(stockDocRef, { quantity: newQuantity }); }
-            else { batch.set(stockDocRef, { productId: sale.productId, productName: sale.productName, scent: sale.scent, quantity: sale.quantity, price: sale.unitPrice }); }
+            else { batch.set(stockDocRef, { productId: sale.productId, productName: sale.productName, scent: sale.scent, quantity: sale.quantity, price: sale.unitPrice, hasScents: !!product.hasScents }); }
             batch.delete(saleDocRef);
             batch.set(logDocRef, { type: 'SALE_CANCELLED', reason, saleData: sale, cancelledAt: serverTimestamp(), by: currentUserData.email });
             await batch.commit();
@@ -1624,7 +1643,7 @@ const SalesAnalytics = () => {
                     }));
                     allSales = allSales.concat(monthSales);
                 }
-                
+               
                 if (allSales.length === 0) {
                     setMonthlyData({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] });
                     setIsLoading(false);
@@ -1642,14 +1661,14 @@ const SalesAnalytics = () => {
                     commission += sale.totalAmount * (sale.commissionRate || 0);
 
                     salesByPos[sale.posName] = (salesByPos[sale.posName] || 0) + sale.totalAmount;
-                    
+                   
                     const productKey = `${sale.productName} ${sale.scent || ''}`.trim();
                     salesByProduct[productKey] = (salesByProduct[productKey] || 0) + sale.quantity;
                 });
-                
+               
                 const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 5);
                 const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 5);
-                
+               
                 setMonthlyData({
                     revenue,
                     salesCount: allSales.length,
@@ -1836,7 +1855,7 @@ const AdminDashboard = () => {
             }
 
             setAllPosBalances(balances);
-            
+           
             const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
             const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
             const toPay = revenue - commission;
@@ -1907,7 +1926,7 @@ const AdminDashboard = () => {
             </>
         );
     }
-    
+   
     if (currentView === 'products') {
         return <ProductManager onBack={() => setCurrentView('dashboard')} />;
     }
