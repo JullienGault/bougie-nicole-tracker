@@ -186,7 +186,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
                 <div className="text-center">
                     <AlertTriangle className="mx-auto h-12 w-12 text-yellow-400"/>
                     <h3 className="mt-4 text-xl font-semibold text-white">{title}</h3>
-                    <p className="text-gray-400 mt-2 whitespace-pre-line">{message}</p>
+                    <div className="text-gray-400 mt-2 whitespace-pre-line">{message}</div>
                 </div>
                 {requiresReason && (
                     <div className="mt-6">
@@ -504,7 +504,8 @@ const CreatePosModal = ({ onClose }) => {
                 name: depotName,
                 commissionRate: 0.3,
                 createdAt: serverTimestamp(),
-                status: "active"
+                status: "active",
+                isArchived: false
             });
 
             await batch.commit();
@@ -653,6 +654,81 @@ const ProfileModal = ({ onClose }) => {
     );
 };
 
+const EditPosUserModal = ({ posUser, onClose, onSave }) => {
+    const { db, showToast } = useContext(AppContext);
+    const [formData, setFormData] = useState({
+        firstName: posUser.firstName || '',
+        lastName: posUser.lastName || '',
+        phone: posUser.phone || '',
+    });
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSave = async (e) => {
+        e.preventDefault();
+        if (!formData.firstName || !formData.lastName || !formData.phone) {
+            showToast("Tous les champs sont obligatoires.", "error");
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const userDocRef = doc(db, "users", posUser.id);
+            await updateDoc(userDocRef, {
+                firstName: formData.firstName,
+                lastName: formData.lastName,
+                phone: formData.phone,
+            });
+
+            showToast("Informations de contact mises à jour !", "success");
+            onSave();
+            onClose();
+        } catch (error) {
+            console.error("Erreur de mise à jour du contact du dépôt: ", error);
+            showToast("Erreur lors de la mise à jour.", "error");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+                <h2 className="text-2xl font-bold text-white mb-6">Modifier les infos de "{posUser.name}"</h2>
+                <form onSubmit={handleSave} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Prénom du Contact</label>
+                            <input type="text" name="firstName" value={formData.firstName} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Contact</label>
+                            <input type="text" name="lastName" value={formData.lastName} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Téléphone</label>
+                        <input type="tel" name="phone" value={formData.phone} onChange={handleChange} required className="w-full bg-gray-700 p-3 rounded-lg"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                        <input type="email" value={posUser.email} readOnly className="w-full bg-gray-900/50 p-3 rounded-lg cursor-not-allowed"/>
+                    </div>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
+                        <button type="submit" disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">
+                            {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
     const { db, showToast } = useContext(AppContext);
     const [name, setName] = useState(pos.name);
@@ -662,7 +738,7 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
     const handleSave = async (event) => {
         event.preventDefault();
 
-        if (hasOpenBalance) {
+        if (hasOpenBalance && pos.commissionRate * 100 !== parseFloat(commissionRate)) {
             showToast("Clôturez la période de paiement en cours avant de modifier la commission.", "error");
             return;
         }
@@ -675,16 +751,24 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
             return;
         }
         try {
+            const batch = writeBatch(db);
             const posDocRef = doc(db, "pointsOfSale", pos.id);
-            await updateDoc(posDocRef, { name: name, commissionRate: newRate });
+            const userDocRef = doc(db, "users", pos.id);
 
-            await addDoc(collection(db, 'notifications'), {
-                recipientUid: pos.id,
-                message: `Le taux de votre commission a été mis à jour à ${formatPercent(newRate)}.`,
-                createdAt: serverTimestamp(),
-                isRead: false,
-                type: 'COMMISSION_UPDATE'
-            });
+            batch.update(posDocRef, { name: name, commissionRate: newRate });
+            batch.update(userDocRef, { displayName: name }); // Keep name and displayName consistent
+
+            await batch.commit();
+
+            if (pos.commissionRate !== newRate) {
+              await addDoc(collection(db, 'notifications'), {
+                  recipientUid: pos.id,
+                  message: `Le taux de votre commission a été mis à jour à ${formatPercent(newRate)}.`,
+                  createdAt: serverTimestamp(),
+                  isRead: false,
+                  type: 'COMMISSION_UPDATE'
+              });
+            }
 
             showToast("Dépôt mis à jour avec succès !", "success");
             onSave();
@@ -700,7 +784,7 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
             <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-                <h2 className="text-2xl font-bold text-white mb-6">Modifier le Dépôt-Vente</h2>
+                <h2 className="text-2xl font-bold text-white mb-6">Paramètres du Dépôt-Vente</h2>
                 <form onSubmit={handleSave} className="space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-gray-300 mb-1">Nom du Dépôt</label>
@@ -720,14 +804,14 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
                         />
                         {hasOpenBalance && (
                              <p className="text-xs text-yellow-400 mt-2">
-                                <Info size={14} className="inline mr-1" />
-                                Vous devez clôturer la période de paiement en cours pour modifier ce taux.
+                                 <Info size={14} className="inline mr-1" />
+                                 Vous devez clôturer la période de paiement en cours pour modifier ce taux.
                               </p>
                         )}
                     </div>
                     <div className="flex justify-end gap-4 pt-4">
                         <button type="button" onClick={onClose} className="bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
-                        <button type="submit" disabled={isLoading || hasOpenBalance} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">
+                        <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50">
                             {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/>Enregistrer</>}
                         </button>
                     </div>
@@ -890,7 +974,7 @@ const DeliveryRequestModal = ({ posId, posName, onClose }) => {
                         </div>
                     ) : (
                          <div className="text-center py-16 text-gray-400">
-                            <p>Aucun produit ne correspond à votre recherche "{searchTerm}".</p>
+                             <p>Aucun produit ne correspond à votre recherche "{searchTerm}".</p>
                          </div>
                     )}
                 </div>
@@ -1820,7 +1904,9 @@ const AdminDashboard = () => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [selectedPos, setSelectedPos] = useState(null);
     const [posToEdit, setPosToEdit] = useState(null);
+    const [posToEditUser, setPosToEditUser] = useState(null);
     const [posToToggleStatus, setPosToToggleStatus] = useState(null);
+    const [shouldArchive, setShouldArchive] = useState(false);
     const [requestToProcess, setRequestToProcess] = useState(null);
     const [requestToCancel, setRequestToCancel] = useState(null);
     const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0, topPos: [], topProducts: [] });
@@ -1828,26 +1914,54 @@ const AdminDashboard = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [expandedRequestId, setExpandedRequestId] = useState(null);
     const [deliveryTab, setDeliveryTab] = useState('actives');
+    const [listFilter, setListFilter] = useState('active'); // 'active', 'inactive', 'archived'
     const [allPosBalances, setAllPosBalances] = useState({});
     const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'analytics', 'products'
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
 
+    const { activePosCount, inactivePosCount, archivedPosCount } = useMemo(() => {
+        const counts = { active: 0, inactive: 0, archived: 0 };
+        pointsOfSale.forEach(pos => {
+            if (pos.isArchived) {
+                counts.archived++;
+            } else if (pos.status === 'active') {
+                counts.active++;
+            } else if (pos.status === 'inactive') {
+                counts.inactive++;
+            }
+        });
+        return { activePosCount: counts.active, inactivePosCount: counts.inactive, archivedPosCount: counts.archived };
+    }, [pointsOfSale]);
+    
     const combinedPointsOfSale = useMemo(() => {
-        let filteredPos = pointsOfSale.map(pos => {
+        let combined = pointsOfSale.map(pos => {
             const posUser = posUsers.find(u => u.id === pos.id);
             const balance = allPosBalances[pos.id] || 0;
-            return { ...posUser, ...pos, uid: pos.id, balance };
+            return { ...posUser, ...pos, uid: pos.id, balance, isArchived: pos.isArchived || false };
         });
 
+        let filteredList;
+        if (listFilter === 'active') {
+            filteredList = combined.filter(p => p.status === 'active' && !p.isArchived);
+        } else if (listFilter === 'inactive') {
+            filteredList = combined.filter(p => p.status === 'inactive' && !p.isArchived);
+        } else if (listFilter === 'archived') {
+            filteredList = combined.filter(p => p.isArchived);
+        } else {
+            filteredList = combined;
+        }
+
         if (searchTerm) {
-            filteredPos = filteredPos.filter(pos => 
-                pos.name?.toLowerCase().includes(searchTerm.toLowerCase())
+            filteredList = filteredList.filter(pos => 
+                pos.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                pos.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                pos.lastName?.toLowerCase().includes(searchTerm.toLowerCase())
             );
         }
 
-        return filteredPos.sort((a, b) => a.name.localeCompare(b.name));
-    }, [pointsOfSale, posUsers, allPosBalances, searchTerm]);
+        return filteredList.sort((a, b) => a.name.localeCompare(b.name));
+    }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
 
     const handleArchive = async (requestId) => {
         const reqDoc = doc(db, 'deliveryRequests', requestId);
@@ -1984,13 +2098,28 @@ const AdminDashboard = () => {
     const handleTogglePosStatus = async () => {
         if (!posToToggleStatus) return;
         const pos = posToToggleStatus;
-        const newStatus = pos.status === 'active' ? 'inactive' : 'active';
+        const isDeactivating = pos.status === 'active';
+        const newStatus = isDeactivating ? 'inactive' : 'active';
+    
         try {
             const batch = writeBatch(db);
             const posDocRef = doc(db, "pointsOfSale", pos.id);
             const userDocRef = doc(db, "users", pos.id);
-            batch.update(posDocRef, { status: newStatus });
-            batch.update(userDocRef, { status: newStatus });
+    
+            const posUpdate = { status: newStatus };
+            const userUpdate = { status: newStatus };
+            
+            if (isDeactivating) {
+                if (shouldArchive) {
+                    posUpdate.isArchived = true;
+                }
+            } else { // Activating
+                posUpdate.isArchived = false; // Always un-archive on activation
+            }
+    
+            batch.update(posDocRef, posUpdate);
+            batch.update(userDocRef, userUpdate);
+    
             await batch.commit();
             showToast(`Le compte "${pos.name}" est maintenant ${newStatus === 'active' ? 'actif' : 'inactif'}.`, "success");
         } catch (error) {
@@ -1998,6 +2127,7 @@ const AdminDashboard = () => {
             showToast("Erreur lors du changement de statut.", "error");
         } finally {
             setPosToToggleStatus(null);
+            setShouldArchive(false);
         }
     };
 
@@ -2039,7 +2169,35 @@ const AdminDashboard = () => {
         <div className="p-4 sm:p-8 animate-fade-in">
             {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
             {posToEdit && <EditPosModal pos={posToEdit} hasOpenBalance={posToEdit.balance > 0} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
-            {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`} onConfirm={handleTogglePosStatus} onCancel={() => setPosToToggleStatus(null)} confirmText="Oui, confirmer" confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} />}
+            {posToEditUser && <EditPosUserModal posUser={posToEditUser} onClose={() => setPosToEditUser(null)} onSave={() => {}} />}
+            {posToToggleStatus && <ConfirmationModal 
+                title="Confirmer le changement de statut" 
+                message={
+                    <div>
+                        <p className="mb-4">
+                            {`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`}
+                        </p>
+                        {posToToggleStatus.status === 'active' && (
+                            <div className="flex items-center justify-center gap-3 bg-gray-700/50 p-3 rounded-lg">
+                                <input
+                                    id="archive-checkbox"
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded bg-gray-600 border-gray-500 text-indigo-600 focus:ring-indigo-500"
+                                    checked={shouldArchive}
+                                    onChange={(e) => setShouldArchive(e.target.checked)}
+                                />
+                                <label htmlFor="archive-checkbox" className="text-sm text-gray-300">
+                                    Archiver également ce compte
+                                </label>
+                            </div>
+                        )}
+                    </div>
+                }
+                onConfirm={handleTogglePosStatus} 
+                onCancel={() => { setPosToToggleStatus(null); setShouldArchive(false); }} 
+                confirmText="Oui, confirmer" 
+                confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} 
+            />}
             {requestToProcess && <ProcessDeliveryModal request={requestToProcess} products={products} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
             {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Vous êtes sur le point d'annuler cette commande. Veuillez fournir un motif (obligatoire).`} confirmText="Confirmer l'Annulation" confirmColor="bg-red-600 hover:bg-red-700" requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />}
 
@@ -2055,7 +2213,7 @@ const AdminDashboard = () => {
                 <KpiCard title="CA (Période en cours)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
                 <KpiCard title="Commissions (Période en cours)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
                 <KpiCard title="Net à Reverser (Total)" value={formatPrice(globalStats.toPay)} icon={Package} color="bg-pink-600" />
-                <KpiCard title="Dépôts Actifs" value={pointsOfSale.length} icon={Store} color="bg-purple-600" />
+                <KpiCard title="Dépôts Actifs" value={activePosCount} icon={Store} color="bg-purple-600" />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
                 <div className="lg:col-span-2 bg-gray-800 rounded-2xl p-6 flex flex-col">
@@ -2114,8 +2272,14 @@ const AdminDashboard = () => {
             </div>
             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-                    <h3 className="text-xl font-bold text-white mb-2 sm:mb-0">Liste des Dépôts-Ventes</h3>
-                    <div className="relative w-full sm:w-auto sm:max-w-xs">
+                     <div className="border-b border-gray-700">
+                        <nav className="-mb-px flex gap-6" aria-label="Tabs">
+                            <button onClick={() => setListFilter('active')} className={`${listFilter === 'active' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actifs ({activePosCount})</button>
+                            <button onClick={() => setListFilter('inactive')} className={`${listFilter === 'inactive' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Inactifs ({inactivePosCount})</button>
+                            <button onClick={() => setListFilter('archived')} className={`${listFilter === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archivés ({archivedPosCount})</button>
+                        </nav>
+                    </div>
+                    <div className="relative w-full sm:w-auto sm:max-w-xs mt-4 sm:mt-0">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                         <input
                             type="text"
@@ -2133,14 +2297,15 @@ const AdminDashboard = () => {
                             {combinedPointsOfSale.map(pos => (
                                 <tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50">
                                     <td className="p-3 font-medium flex items-center gap-2">
-                                        <span className={`h-2 w-2 rounded-full ${pos.status === 'active' ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                        <span className={`h-2.5 w-2.5 rounded-full ${pos.isArchived ? 'bg-gray-500' : (pos.status === 'active' ? 'bg-green-500' : 'bg-red-500')}`} title={pos.isArchived ? 'Archivé' : (pos.status === 'active' ? 'Actif' : 'Inactif')}></span>
                                         {pos.name}
                                     </td>
                                     <td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td>
                                     <td className="p-3">{formatPercent(pos.commissionRate)}</td>
-                                    <td className="p-3 space-x-2">
+                                    <td className="p-3 space-x-2 text-sm whitespace-nowrap">
                                         <button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button>
-                                        <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Modifier</button>
+                                        <button onClick={() => setPosToEditUser(pos)} className="text-cyan-400 p-1 hover:text-cyan-300">Infos Contact</button>
+                                        <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Paramètres</button>
                                         <button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}>
                                             {pos.status === 'active' ? 'Désactiver' : 'Activer'}
                                         </button>
@@ -2149,6 +2314,7 @@ const AdminDashboard = () => {
                             ))}
                         </tbody>
                     </table>
+                    {combinedPointsOfSale.length === 0 && <p className="text-center text-gray-400 py-8">Aucun dépôt-vente ne correspond aux filtres actuels.</p>}
                 </div>
             </div>
         </div>
