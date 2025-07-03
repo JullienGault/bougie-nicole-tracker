@@ -14,8 +14,16 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[90] animate-fade-in" onClick={onCancel}>
-            <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-fade-in-up" onClick={e => e.stopPropagation()}>
+        // Conteneur principal avec z-index élevé et positionnement
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
+            {/* Fond noir séparé */}
+            <div className="absolute inset-0 bg-black/75 animate-fade-in" onClick={onCancel}></div>
+
+            {/* Panneau du modal avec positionnement relatif */}
+            <div 
+                className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-fade-in-up relative" 
+                onClick={e => e.stopPropagation()}
+            >
                 <div className="text-center">
                     <AlertTriangle className="mx-auto h-12 w-12 text-yellow-400" />
                     <h3 className="mt-4 text-xl font-semibold text-white">{title}</h3>
