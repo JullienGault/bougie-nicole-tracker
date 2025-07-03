@@ -1,6 +1,5 @@
 // src/views/AdminDashboard.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-// CORRECTION : Import de documentId
 import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction, arrayUnion, documentId } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle, Archive } from 'lucide-react';
@@ -103,6 +102,8 @@ const AdminDashboard = () => {
         return filteredList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
     
+    // --- FONCTIONS DE GESTION (COMPLÉTÉES) ---
+
     const handleBackToDashboard = () => {
         setCurrentView('dashboard');
         setSelectedPos(null);
@@ -140,27 +141,24 @@ const AdminDashboard = () => {
             
             let periodStart = new Date();
             if (allSaleIds.length > 0) {
-                // CORRECTION: Utilisation de documentId() pour la requête
                 const salesForPeriodQuery = query(
                     collection(db, `pointsOfSale/${posToReconcile.id}/sales`), 
                     where(documentId(), 'in', allSaleIds)
                 );
                 const salesForPeriodSnap = await getDocs(salesForPeriodQuery);
-                const saleDates = salesForPeriodSnap.docs.map(d => d.data().createdAt.toDate());
+                const saleDates = salesForPeriodSnap.docs
+                    .map(d => d.data().createdAt?.toDate())
+                    .filter(Boolean);
+                
                 if (saleDates.length > 0) {
                     periodStart = new Date(Math.min(...saleDates));
                 }
             }
 
             batch.set(payoutDocRef, {
-                createdAt: payoutTimestamp,
-                grossRevenue,
-                commissionRate: posToReconcile.commissionRate,
-                netAmount,
+                createdAt: payoutTimestamp, grossRevenue, commissionRate: posToReconcile.commissionRate, netAmount,
                 items: items.map(({ originalSales, ...item }) => item),
-                posId: posToReconcile.id,
-                posName: posToReconcile.name,
-                status: 'pending',
+                posId: posToReconcile.id, posName: posToReconcile.name, status: 'pending',
                 period: { start: periodStart, end: new Date() }
             });
 
@@ -180,10 +178,50 @@ const AdminDashboard = () => {
         }
     };
     
-    const handleTogglePosStatus = async () => { /* ... */ };
-    const handleCancelDeliveryRequest = async (reason) => { /* ... */ };
-    const handleArchiveDelivery = async () => { /* ... */ };
+    const handleTogglePosStatus = async () => {
+        if (!posToToggleStatus) return;
+        const newStatus = posToToggleStatus.status === 'active' ? 'inactive' : 'active';
+        try {
+            const posDocRef = doc(db, "pointsOfSale", posToToggleStatus.id);
+            await updateDoc(posDocRef, { status: newStatus });
+            showToast(`Dépôt ${newStatus === 'active' ? 'réactivé' : 'désactivé'} avec succès.`, "success");
+        } catch (error) {
+            showToast("Erreur lors de la mise à jour du statut.", "error");
+        } finally {
+            setPosToToggleStatus(null);
+        }
+    };
 
+    const handleCancelDeliveryRequest = async (reason) => {
+        if (!deliveryToCancel) return;
+        try {
+            const requestDocRef = doc(db, 'deliveryRequests', deliveryToCancel.id);
+            await updateDoc(requestDocRef, { status: 'cancelled', cancellationReason: reason });
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: deliveryToCancel.posId,
+                message: `Votre demande de livraison du ${formatDate(deliveryToCancel.createdAt)} a été annulée. Motif : ${reason}`,
+                createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_UPDATE'
+            });
+            showToast("Demande de livraison annulée.", "success");
+        } catch(error) {
+            showToast("Erreur lors de l'annulation.", "error");
+        } finally {
+            setDeliveryToCancel(null);
+        }
+    };
+
+    const handleArchiveDelivery = async () => {
+        if (!deliveryToArchive) return;
+        try {
+            const deliveryDocRef = doc(db, "deliveryRequests", deliveryToArchive.id);
+            await updateDoc(deliveryDocRef, { archivedBy: arrayUnion('admin') });
+            showToast("Demande archivée.", "success");
+        } catch (error) {
+            showToast("Erreur lors de l'archivage.", "error");
+        } finally {
+            setDeliveryToArchive(null);
+        }
+    };
 
     const BackButton = ({ onBack }) => (
         <div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700">
@@ -194,12 +232,82 @@ const AdminDashboard = () => {
         </div>
     );
     
-    const DeliveriesView = () => { /* ... */ };
+    const DeliveriesView = () => {
+        const [deliveryFilter, setDeliveryFilter] = useState('active');
+        const filteredDeliveries = useMemo(() => {
+            return deliveryRequests.filter(req => {
+                const isArchivedByAdmin = req.archivedBy?.includes('admin');
+                if (deliveryFilter === 'active') return !isArchivedByAdmin;
+                if (deliveryFilter === 'archived') return isArchivedByAdmin;
+                return true;
+            });
+        }, [deliveryRequests, deliveryFilter]);
+
+        return (
+            <div className="p-4 sm:p-8 animate-fade-in">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
+                    <div className="flex items-center gap-4">
+                        <button onClick={handleBackToDashboard} className="bg-gray-600 hover:bg-gray-500 p-2 rounded-full text-white">
+                            <ArrowRightCircle className="transform rotate-180" size={24} />
+                        </button>
+                        <div>
+                            <h2 className="text-3xl font-bold text-white">Demandes de Livraison</h2>
+                            <p className="text-gray-400">Gérez toutes les demandes en cours et passées.</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-2 p-1 bg-gray-900 rounded-lg mt-4 sm:mt-0">
+                        <button onClick={() => setDeliveryFilter('active')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>En cours</button>
+                        <button onClick={() => setDeliveryFilter('archived')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'archived' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Archivées</button>
+                    </div>
+                </div>
+                <div className="space-y-4">
+                     {filteredDeliveries.map(req => {
+                        const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
+                        const Icon = statusConfig.icon;
+                        const isActionable = req.status !== 'delivered' && req.status !== 'cancelled';
+                        const isArchivable = !isActionable && deliveryFilter === 'active';
+
+                        return (
+                            <div key={req.id} className="bg-gray-800 p-5 rounded-xl border border-gray-700/50 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                <div className="flex-1">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <p className="font-bold text-white text-lg">{req.posName}</p>
+                                        <span className={`flex sm:hidden items-center gap-2 px-2 py-1 text-xs font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}><Icon size={14} /><span>{statusConfig.text}</span></span>
+                                    </div>
+                                    <div className="flex items-baseline gap-4">
+                                        <p className="text-base font-semibold">{req.items.reduce((acc, i) => acc + i.quantity, 0)} articles demandés</p>
+                                        <p className="text-xs text-gray-400">{formatDate(req.createdAt)}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 sm:gap-4">
+                                    <span className={`hidden sm:flex items-center gap-2 px-2.5 py-1.5 text-sm font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}><Icon size={16} /><span>{statusConfig.text}</span></span>
+                                    <div className="flex items-center gap-2">
+                                        {isArchivable && <button onClick={() => setDeliveryToArchive(req)} className="p-2 text-yellow-400 hover:bg-yellow-500/10 rounded-md" title="Archiver"><Archive size={18}/></button>}
+                                        {isActionable && <button onClick={() => setDeliveryToCancel(req)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-md" title="Annuler la commande"><XCircle size={18}/></button>}
+                                        <button onClick={() => setDeliveryToProcess(req)} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2 hover:bg-indigo-700"><Truck size={16}/>Gérer</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    })}
+                    {filteredDeliveries.length === 0 && 
+                        <div className="col-span-full text-center py-16 text-gray-400">
+                            <p>Aucune demande de livraison ne correspond à ce filtre.</p>
+                        </div>
+                    }
+                </div>
+            </div>
+        );
+    };
     
-    if (currentView === 'products') return <><BackButton onBack={handleBackToDashboard} /><ProductManager onBack={handleBackToDashboard} /></>;
+    // --- ROUTAGE DES VUES ---
+    
+    if (currentView === 'products') return <ProductManager onBack={handleBackToDashboard} />;
     if (currentView === 'analytics') return <><BackButton onBack={handleBackToDashboard} /><SalesAnalytics /></>;
     if (currentView === 'deliveries') return <DeliveriesView />;
     if (selectedPos) return <><BackButton onBack={handleBackToDashboard} /><PosDashboard pos={selectedPos} isAdminView={true} /></>;
+
+    // --- VUE PRINCIPALE ---
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
