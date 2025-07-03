@@ -1,6 +1,6 @@
 // src/views/AdminDashboard.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction } from '../services/firebase';
+import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction, arrayUnion } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle, Archive, ChevronDown } from 'lucide-react';
 import { formatPrice, formatPercent, formatDate } from '../utils/formatters';
@@ -18,7 +18,7 @@ import PosDashboard from './PosDashboard';
 import SalesAnalytics from './SalesAnalytics';
 
 const AdminDashboard = () => {
-    const { showToast, setChangeAdminView } = useContext(AppContext);
+    const { showToast, setChangeAdminView, loggedInUserData } = useContext(AppContext);
 
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [posUsers, setPosUsers] = useState([]);
@@ -40,9 +40,7 @@ const AdminDashboard = () => {
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [deliveryToProcess, setDeliveryToProcess] = useState(null);
     const [deliveryToCancel, setDeliveryToCancel] = useState(null);
-    const [deliveryFilter, setDeliveryFilter] = useState('active');
     const [deliveryToArchive, setDeliveryToArchive] = useState(null);
-    const [expandedCardId, setExpandedCardId] = useState(null);
 
     useEffect(() => {
         const unsubPointsOfSale = onSnapshot(query(collection(db, "pointsOfSale"), orderBy('name')), (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
@@ -83,13 +81,9 @@ const AdminDashboard = () => {
             return { active: 0, inactive: 0, archived: 0 };
         }
         return pointsOfSale.reduce((counts, pos) => {
-            if (pos && pos.isArchived) {
-                counts.archived++;
-            } else if (pos && pos.status === 'active') {
-                counts.active++;
-            } else {
-                counts.inactive++;
-            }
+            if (pos && pos.isArchived) { counts.archived++; } 
+            else if (pos && pos.status === 'active') { counts.active++; } 
+            else { counts.inactive++; }
             return counts;
         }, { active: 0, inactive: 0, archived: 0 });
     }, [pointsOfSale]);
@@ -115,8 +109,11 @@ const AdminDashboard = () => {
         if (!deliveryToArchive) return;
         try {
             const deliveryDocRef = doc(db, "deliveryRequests", deliveryToArchive.id);
-            await updateDoc(deliveryDocRef, { isArchived: true });
-            showToast("Demande archivée avec succès.", "success");
+            // On ajoute 'admin' à la liste de ceux qui ont archivé
+            await updateDoc(deliveryDocRef, {
+                archivedBy: arrayUnion('admin')
+            });
+            showToast("Demande archivée pour vous.", "success");
         } catch (error) {
             console.error("Erreur lors de l'archivage:", error);
             showToast("Erreur lors de l'archivage.", "error");
@@ -182,10 +179,14 @@ const AdminDashboard = () => {
         } catch (error) { showToast("Une erreur est survenue lors de la clôture.", "error"); }
     };
 
-    const renderDeliveriesView = () => {
+    const DeliveriesView = () => {
+        const [deliveryFilter, setDeliveryFilter] = useState('active');
+        const [expandedCardId, setExpandedCardId] = useState(null);
+
         const filteredDeliveries = deliveryRequests.filter(req => {
-            if (deliveryFilter === 'active') return !req.isArchived;
-            if (deliveryFilter === 'archived') return req.isArchived === true;
+            const hasBeenArchivedByAdmin = req.archivedBy && req.archivedBy.includes('admin');
+            if (deliveryFilter === 'active') return !hasBeenArchivedByAdmin;
+            if (deliveryFilter === 'archived') return hasBeenArchivedByAdmin;
             return true;
         });
 
@@ -340,7 +341,7 @@ const AdminDashboard = () => {
                 </>
             )}
 
-            {currentView === 'deliveries' && renderDeliveriesView()}
+            {currentView === 'deliveries' && <DeliveriesView />}
         </div>
     );
 };
