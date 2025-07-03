@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, onSnapshot, doc, collection, query, orderBy, updateDoc, serverTimestamp } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { Truck, PlusCircle, CircleDollarSign, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail, ShoppingBag, Calendar } from 'lucide-react';
+import { Truck, PlusCircle, CircleDollarSign, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail } from 'lucide-react';
 import { LOW_STOCK_THRESHOLD, PAYOUT_STATUSES } from '../constants';
 import { formatPrice, formatDate, formatPercent, formatPhone } from '../utils/formatters';
 import KpiCard from '../components/common/KpiCard';
@@ -85,46 +85,41 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                     </table>
                 );
             case 'sales':
+                // NOUVELLE VUE "LISTE" AMÉLIORÉE
                 return (
-                    <div className="space-y-4">
-                        {salesHistory.map(sale => (
-                            <div key={sale.id} className="bg-gray-900/50 p-4 rounded-lg flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                                <div className="flex-grow">
-                                    <div className="flex items-center gap-3 mb-2">
-                                        <ShoppingBag className="text-indigo-400" size={20} />
-                                        <h4 className="font-bold text-lg text-white">{sale.productName}</h4>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm text-gray-400">
-                                        <Calendar size={14} />
-                                        <span>{formatDate(sale.createdAt)}</span>
+                    <div>
+                        {/* En-tête de la liste */}
+                        <div className="grid grid-cols-12 gap-4 px-4 pb-2 border-b border-gray-700 text-xs text-gray-400 font-semibold uppercase">
+                            <div className="col-span-4 sm:col-span-3">Date</div>
+                            <div className="col-span-8 sm:col-span-4">Produit</div>
+                            <div className="hidden sm:block sm:col-span-1 text-center">Qté</div>
+                            <div className="hidden sm:block sm:col-span-2 text-right">Total</div>
+                            <div className="hidden sm:block sm:col-span-2 text-center">Statut</div>
+                        </div>
+                        <div className="space-y-2 mt-2">
+                            {salesHistory.map(sale => (
+                                <div key={sale.id} className="grid grid-cols-12 items-center gap-4 bg-gray-900/50 hover:bg-gray-900 p-4 rounded-lg">
+                                    <div className="col-span-12 sm:col-span-3 text-sm text-gray-300">{formatDate(sale.createdAt)}</div>
+                                    <div className="col-span-12 sm:col-span-4 font-semibold text-white">{sale.productName}</div>
+                                    <div className="col-span-4 sm:col-span-1 text-center text-lg font-bold">{sale.quantity}</div>
+                                    <div className="col-span-4 sm:col-span-2 text-right text-lg font-bold text-green-400">{formatPrice(sale.totalAmount)}</div>
+                                    <div className="col-span-4 sm:col-span-2 flex justify-center">
+                                        <span className={`px-3 py-1 text-xs font-bold rounded-full ${
+                                            sale.payoutId 
+                                            ? 'bg-green-500/10 text-green-400' 
+                                            : 'bg-yellow-500/10 text-yellow-400'
+                                        }`}>
+                                            {sale.payoutId ? 'Réglée' : 'En cours'}
+                                        </span>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-6 text-center w-full sm:w-auto">
-                                    <div className="flex-1">
-                                        <p className="text-xs text-gray-400 uppercase font-semibold">Quantité</p>
-                                        <p className="text-lg font-bold">{sale.quantity}</p>
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="text-xs text-gray-400 uppercase font-semibold">Total</p>
-                                        <p className="text-lg font-bold text-green-400">{formatPrice(sale.totalAmount)}</p>
-                                    </div>
-                                </div>
-                                <div className="w-full sm:w-auto text-center sm:text-right mt-2 sm:mt-0">
-                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${
-                                        sale.payoutId 
-                                        ? 'bg-green-500/10 text-green-400' 
-                                        : 'bg-yellow-500/10 text-yellow-400'
-                                    }`}>
-                                        {sale.payoutId ? 'Réglée' : 'En cours'}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 );
             case 'payouts':
                 return (
-                    <table className="w-full text-left">
+                     <table className="w-full text-left">
                         <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date Clôture</th><th className="p-3">Montant Net</th><th className="p-3">Statut</th><th className="p-3">Action</th></tr></thead>
                         <tbody>
                             {payouts.map(p => (
