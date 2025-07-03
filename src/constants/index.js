@@ -11,7 +11,7 @@ export const PAYOUT_STATUSES = {
     received: { text: 'Reçu', color: 'text-green-400', bg: 'bg-green-500/10' },
 };
 
-// NOUVEL OBJET DE CONFIGURATION POUR LES STATUTS DE LIVRAISON
+// OBJET DE CONFIGURATION CENTRALISÉ POUR LES STATUTS DE LIVRAISON
 export const DELIVERY_STATUSES = {
     pending: { text: 'En attente', icon: Clock, color: 'text-yellow-400', bg: 'bg-yellow-500/10' },
     processing: { text: 'En traitement', icon: Cog, color: 'text-blue-400', bg: 'bg-blue-500/10' },
@@ -21,7 +21,6 @@ export const DELIVERY_STATUSES = {
     default: { text: 'Inconnu', icon: Clock, color: 'text-gray-400', bg: 'bg-gray-500/10' }
 };
 
-// L'ancien objet est maintenant déprécié, mais nous gardons deliveryStatusOrder pour la logique de progression
 export const deliveryStatusOrder = ['pending', 'processing', 'shipping', 'delivered'];
 
 export const NOTIFICATION_CONFIG = {
