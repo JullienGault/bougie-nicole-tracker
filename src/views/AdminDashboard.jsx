@@ -1,6 +1,7 @@
 // src/views/AdminDashboard.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction, arrayUnion } from '../services/firebase';
+// CORRECTION : Import de documentId
+import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction, arrayUnion, documentId } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle, Archive } from 'lucide-react';
 import { formatPrice, formatPercent, formatDate } from '../utils/formatters';
@@ -102,8 +103,6 @@ const AdminDashboard = () => {
         return filteredList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
     
-    // --- FONCTIONS CORRIGÉES ---
-
     const handleBackToDashboard = () => {
         setCurrentView('dashboard');
         setSelectedPos(null);
@@ -130,6 +129,7 @@ const AdminDashboard = () => {
     };
 
     const handleCreatePayout = async (reconciledData) => {
+        if (!posToReconcile) return;
         const { items, netAmount, grossRevenue } = reconciledData;
         const payoutTimestamp = serverTimestamp();
         
@@ -138,11 +138,19 @@ const AdminDashboard = () => {
             const payoutDocRef = doc(collection(db, `pointsOfSale/${posToReconcile.id}/payouts`));
             const allSaleIds = items.flatMap(item => item.originalSaleIds);
             
-            // Logique pour trouver la date de début de la période
-            const salesForPeriodQuery = query(collection(db, `pointsOfSale/${posToReconcile.id}/sales`), where('id', 'in', allSaleIds.length > 0 ? allSaleIds : [' ']));
-            const salesForPeriodSnap = await getDocs(salesForPeriodQuery);
-            const saleDates = salesForPeriodSnap.docs.map(d => d.data().createdAt.toDate());
-            const periodStart = saleDates.length > 0 ? new Date(Math.min(...saleDates)) : new Date();
+            let periodStart = new Date();
+            if (allSaleIds.length > 0) {
+                // CORRECTION: Utilisation de documentId() pour la requête
+                const salesForPeriodQuery = query(
+                    collection(db, `pointsOfSale/${posToReconcile.id}/sales`), 
+                    where(documentId(), 'in', allSaleIds)
+                );
+                const salesForPeriodSnap = await getDocs(salesForPeriodQuery);
+                const saleDates = salesForPeriodSnap.docs.map(d => d.data().createdAt.toDate());
+                if (saleDates.length > 0) {
+                    periodStart = new Date(Math.min(...saleDates));
+                }
+            }
 
             batch.set(payoutDocRef, {
                 createdAt: payoutTimestamp,
@@ -163,14 +171,15 @@ const AdminDashboard = () => {
 
             await batch.commit();
             showToast("Paiement enregistré et ventes clôturées !", "success");
+        } catch (error) {
+            console.error("Erreur détaillée de création de paiement : ", error);
+            showToast("Erreur lors de la création du paiement.", "error");
+        } finally {
             setPosToReconcile(null);
             setRefreshTrigger(p => p + 1);
-        } catch (error) {
-            showToast("Erreur lors de la création du paiement.", "error");
         }
     };
     
-    // --- AUTRES FONCTIONS (INCHANGÉES) ---
     const handleTogglePosStatus = async () => { /* ... */ };
     const handleCancelDeliveryRequest = async (reason) => { /* ... */ };
     const handleArchiveDelivery = async () => { /* ... */ };
