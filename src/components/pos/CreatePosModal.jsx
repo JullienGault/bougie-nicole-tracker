@@ -2,7 +2,7 @@
 import React, { useState, useContext } from 'react';
 import { UserPlus } from 'lucide-react';
 import { AppContext } from '../../contexts/AppContext';
-import { db, writeBatch, doc, setDoc, serverTimestamp, createUserWithEmailAndPassword, signOut, deleteApp, getAuth, initializeApp } from '../../services/firebase';
+import { db, writeBatch, doc, serverTimestamp, createUserWithEmailAndPassword, signOut, deleteApp, getAuth, initializeApp } from '../../services/firebase';
 
 const CreatePosModal = ({ onClose }) => {
     const { showToast } = useContext(AppContext);
@@ -25,11 +25,13 @@ const CreatePosModal = ({ onClose }) => {
         const appName = `secondary-app-${Date.now()}`;
         let secondaryApp;
         try {
-            const firebaseConfig = { // Re-get config from auth object
-                apiKey: auth.app.options.apiKey,
-                authDomain: auth.app.options.authDomain,
-                projectId: auth.app.options.projectId,
+            // CORRECTION : On utilise les variables d'environnement pour plus de fiabilité
+            const firebaseConfig = {
+                apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+                authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+                projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
             };
+            
             secondaryApp = initializeApp(firebaseConfig, appName);
             const secondaryAuth = getAuth(secondaryApp);
             const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
@@ -55,7 +57,8 @@ const CreatePosModal = ({ onClose }) => {
                 commissionRate: 0.3,
                 createdAt: serverTimestamp(),
                 status: "active",
-                isArchived: false
+                isArchived: false,
+                archivedBy: [] // Initialiser le champ pour l'archivage indépendant
             });
 
             await batch.commit();
@@ -65,14 +68,19 @@ const CreatePosModal = ({ onClose }) => {
             if (err.code === 'auth/email-already-in-use') {
                 showToast("Cette adresse email est déjà utilisée.", "error");
             } else {
-                console.error(err);
+                console.error("Erreur de création : ", err);
                 showToast("Erreur lors de la création du compte.", "error");
             }
         } finally {
             setIsLoading(false);
             if (secondaryApp) {
-                await signOut(getAuth(secondaryApp));
-                await deleteApp(secondaryApp);
+                // S'assurer que la déconnexion et la suppression se font correctement
+                try {
+                    await signOut(getAuth(secondaryApp));
+                    await deleteApp(secondaryApp);
+                } catch (cleanupError) {
+                    console.error("Erreur lors du nettoyage de l'app secondaire:", cleanupError);
+                }
             }
         }
     };
