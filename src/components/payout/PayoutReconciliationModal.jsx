@@ -15,11 +15,11 @@ const PayoutReconciliationModal = ({ pos, unsettledSales, stock, onClose, onConf
                 id: adj.productId || index,
                 productName: adj.productName,
                 quantity: adj.finalQuantity,
-                unitPrice: adj.unitPrice, // Utilisation du prix unitaire exact sauvegardé
+                unitPrice: adj.unitPrice,
                 status: 'confirmed',
-                currentStock: 'N/A', // Non pertinent pour un paiement passé
+                currentStock: 'N/A',
                 originalQuantity: adj.originalQuantity,
-                adjustmentReason: adj.adjustmentReason // Correction du nom de la propriété
+                adjustmentReason: adj.adjustmentReason
             }));
         } else {
             // Mode "Réconciliation" pour l'admin
@@ -72,7 +72,7 @@ const PayoutReconciliationModal = ({ pos, unsettledSales, stock, onClose, onConf
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in">
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[70] animate-fade-in" onClick={onClose}>
             <div className="bg-gray-800 rounded-2xl w-full max-w-5xl h-[90vh] border-gray-700 flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="p-6 border-b border-gray-700 flex justify-between items-center">
                     <div>
