@@ -29,13 +29,11 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
                 )}
                 <div className="mt-8 flex justify-center gap-4">
                     <button onClick={onCancel} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg">{cancelText}</button>
-                    {onConfirm && <button onClick={handleConfirm} className={`${confirmColor} text-white font-bold py-2 px-6 rounded-lg disabled:opacity-50`} disabled={requiresReason && !reason.trim()}>
-                        {confirmText}
-                    </button>}
+                    {onConfirm && <button onClick={handleConfirm} className={`${confirmColor} text-white font-bold py-2 px-6 rounded-lg disabled:opacity-50`} disabled={requiresReason && !reason.trim()}>{confirmText}</button>}
                 </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 export default ConfirmationModal;
