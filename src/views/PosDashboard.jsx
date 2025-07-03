@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, onSnapshot, doc, collection, query, orderBy, updateDoc, serverTimestamp } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { Truck, PlusCircle, CircleDollarSign, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail } from 'lucide-react';
+import { Truck, PlusCircle, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail } from 'lucide-react';
 import { LOW_STOCK_THRESHOLD, PAYOUT_STATUSES } from '../constants';
 import { formatPrice, formatDate, formatPercent, formatPhone } from '../utils/formatters';
 import KpiCard from '../components/common/KpiCard';
@@ -85,10 +85,8 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                     </table>
                 );
             case 'sales':
-                // NOUVELLE VUE "LISTE" AMÉLIORÉE
                 return (
                     <div>
-                        {/* En-tête de la liste */}
                         <div className="grid grid-cols-12 gap-4 px-4 pb-2 border-b border-gray-700 text-xs text-gray-400 font-semibold uppercase">
                             <div className="col-span-4 sm:col-span-3">Date</div>
                             <div className="col-span-8 sm:col-span-4">Produit</div>
@@ -145,75 +143,4 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
             {!isAdminView && showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {!isAdminView && showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {payoutToView && posData && <PayoutReconciliationModal pos={posData} stock={stock} unsettledSales={[]} payoutData={payoutToView} onClose={() => setPayoutToView(null)} isReadOnly={true} />}
-            {showContactVerificationModal && loggedInUserData && (
-                <ContactVerificationModal 
-                    userData={loggedInUserData} 
-                    onConfirm={handleConfirmContact} 
-                    onModify={handleModifyContact}
-                    isConfirming={isConfirmingContact} 
-                />
-            )}
-            
-            <FullScreenDataModal
-                isOpen={!!activeModal}
-                onClose={() => setActiveModal(null)}
-                title={
-                    activeModal === 'stock' ? 'Votre Stock Actuel' :
-                    activeModal === 'sales' ? 'Historique des Ventes' :
-                    'Historique des Paiements'
-                }
-            >
-                {renderModalContent()}
-            </FullScreenDataModal>
-            
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
-                <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
-                <div className="flex gap-4 mt-4 md:mt-0">
-                    {!isAdminView && (
-                        <>
-                            <button onClick={() => setShowDeliveryModal(true)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Truck size={20} /> Demander une Livraison</button>
-                            <button onClick={() => setShowSaleModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><PlusCircle size={20} /> Nouvelle Vente</button>
-                        </>
-                    )}
-                </div>
-            </div>
-            
-            <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
-                <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-base">
-                    <div className="flex items-center gap-3"><User className="text-indigo-400" size={22}/> <span>{currentUserData.firstName} {currentUserData.lastName}</span></div>
-                    <div className="flex items-center gap-3"><Store className="text-indigo-400" size={22}/> <span>{currentUserData.displayName}</span></div>
-                    <div className="flex items-center gap-3"><Phone className="text-indigo-400" size={22}/> <span>{formatPhone(currentUserData.phone)}</span></div>
-                    <div className="flex items-center gap-3"><Mail className="text-indigo-400" size={22}/> <span>{currentUserData.email}</span></div>
-                </div>
-            </div>
-
-            {!isAdminView && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <KpiCard title="Montant à reverser" value={formatPrice(unsettledBalance)} icon={DollarSign} color="bg-green-600" />
-                    <KpiCard title="Articles en Stock" value={totalStock} icon={Package} color="bg-blue-600" />
-                    <KpiCard title="Taux de Commission" value={formatPercent(commissionRate)} icon={Percent} color="bg-pink-600" />
-                </div>
-            )}
-            
-            <div className="bg-gray-800 rounded-2xl p-6">
-                <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                     <button onClick={() => setActiveModal('stock')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
-                            <Archive size={24} className="text-blue-400" />
-                            <span className="font-semibold">Voir le Stock</span>
-                        </button>
-                    <button onClick={() => setActiveModal('sales')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
-                        <History size={24} className="text-purple-400" />
-                        <span className="font-semibold">Historique des Ventes</span>
-                    </button>
-                    <button onClick={() => setActiveModal('payouts')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
-                        <CheckCircle size={24} className="text-green-400" />
-                        <span className="font-semibold">Historique des Paiements</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-export default PosDashboard;
+            {showContactVerificationModal && logged
