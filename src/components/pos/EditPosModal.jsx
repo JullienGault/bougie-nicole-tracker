@@ -29,10 +29,15 @@ const EditPosModal = ({ pos, onClose, onSave, hasOpenBalance }) => {
         try {
             const batch = writeBatch(db);
             const posDocRef = doc(db, "pointsOfSale", pos.id);
-            const userDocRef = doc(db, "users", pos.id);
-
+            
+            // Mise à jour du document pointsOfSale
             batch.update(posDocRef, { name: name, commissionRate: newRate });
-            batch.update(userDocRef, { displayName: name });
+
+            // On ne met à jour l'utilisateur que si le nom a changé
+            if (name !== pos.name) {
+                const userDocRef = doc(db, "users", pos.id);
+                batch.update(userDocRef, { displayName: name });
+            }
 
             await batch.commit();
 
