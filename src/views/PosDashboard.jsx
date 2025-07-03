@@ -1,6 +1,7 @@
 // src/views/PosDashboard.jsx
-import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
-import { db, onSnapshot, doc, collection, query, orderBy, where, updateDoc, arrayUnion, arrayRemove, writeBatch, addDoc, serverTimestamp } from '../../services/firebase';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
+// CHEMINS D'IMPORTATION CORRIGÉS
+import { db, onSnapshot, doc, collection, query, orderBy, where, updateDoc, arrayUnion, arrayRemove, writeBatch, addDoc, serverTimestamp } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 
 // Icons
@@ -30,7 +31,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
     const [posData, setPosData] = useState(null);
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [payouts, setPayouts] = useState([]);
-
+    
     const [showSaleModal, setShowSaleModal] = useState(false);
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
     const [showHistory, setShowHistory] = useState('stock');
@@ -47,7 +48,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
     useEffect(() => { if (!posId) return; const q = query(collection(db, `pointsOfSale/${posId}/stock`)); const unsub = onSnapshot(q, (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [posId]);
     useEffect(() => { if (!posId) return; const q = query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub;}, [posId]);
     useEffect(() => { if (!posId) return; const q = query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')); const unsub = onSnapshot(q, (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))); return unsub; }, [posId]);
-
+    
     // Fetch Delivery Requests (only for client view)
     useEffect(() => {
         if (!posId || isAdminView) return;
@@ -63,7 +64,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
         activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(posId)),
         archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(posId))
     }), [deliveryRequests, posId]);
-
+    
     const deliveriesToDisplay = deliveryTab === 'actives' ? activeDeliveries : archivedDeliveries;
 
     const toggleExpand = (requestId) => setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
@@ -89,7 +90,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
         }
         const product = products.find(p => p.id === sale.productId);
         if (!product) { showToast("Produit de la vente introuvable.", "error"); return; }
-
+        
         const stockId = product.hasScents ? `${sale.productId}_${sale.scent}` : sale.productId;
         const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, stockId);
         const saleDocRef = doc(db, `pointsOfSale/${posId}/sales`, sale.id);
@@ -97,16 +98,16 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
             const batch = writeBatch(db);
             const currentStockItem = stock.find(item => item.id === stockId);
             const newQuantity = (currentStockItem?.quantity || 0) + sale.quantity;
-
+            
             if (currentStockItem) { batch.update(stockDocRef, { quantity: newQuantity }); }
             else { batch.set(stockDocRef, { productId: sale.productId, productName: sale.productName, scent: sale.scent, quantity: sale.quantity, price: sale.unitPrice, hasScents: !!product.hasScents }); }
-
+            
             batch.delete(saleDocRef);
             await batch.commit();
             showToast("Vente annulée et stock restauré.", "success");
         } catch (error) { console.error("Erreur annulation vente: ", error); showToast("Erreur: impossible d'annuler la vente.", "error"); }
     };
-
+    
     const handleCreatePayout = async () => {
         if (unsettledSales.length === 0) {
             showToast("Aucune vente à régler pour créer un paiement.", "info");
@@ -187,7 +188,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
             {showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {saleToDelete && <ConfirmationModal title="Confirmer l'annulation" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName} ${saleToDelete.scent || ''} ?\nLe stock sera automatiquement restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} confirmText="Annuler la Vente" requiresReason={true} />}
             {payoutToConfirm && <ConfirmationModal title="Clôturer la Période" message={`Vous allez clôturer la période avec un montant net à reverser de ${formatPrice(kpis.netToBePaid)}. Êtes-vous sûr ?`} onConfirm={handleCreatePayout} onCancel={() => setPayoutToConfirm(null)} confirmText="Oui, Clôturer" confirmColor="bg-blue-600 hover:bg-blue-700" />}
-
+            
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
                 <div className="flex gap-4 mt-4 md:mt-0">
@@ -217,7 +218,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
                 <KpiCard title="Votre Commission" value={formatPercent(posData?.commissionRate)} icon={Percent} color="bg-purple-600" />
                 <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Coins} color="bg-pink-600" />
             </div>
-
+            
             <div className="lg:col-span-3 bg-gray-800 rounded-2xl p-6 mt-8">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="text-xl font-bold text-white">Gestion & Historique</h3>
