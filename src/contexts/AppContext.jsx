@@ -6,8 +6,9 @@ export const AppContext = React.createContext(null);
 
 export const AppProvider = ({ children, value }) => {
     const [toast, setToast] = useState(null);
-    // Renommé pour plus de clarté, contiendra la fonction pour changer de vue
-    const [changeAdminView, setChangeAdminView] = useState(null);
+    // Ce "handler" contiendra la fonction capable de changer la vue/modale active.
+    // Il sera fourni par le composant parent (AdminDashboard ou PosDashboard).
+    const [viewChangeHandler, setViewChangeHandler] = useState(null);
 
     const showToast = useCallback((message, type = 'success') => {
         setToast({ id: Date.now(), message, type });
@@ -16,10 +17,10 @@ export const AppProvider = ({ children, value }) => {
     const contextValue = useMemo(() => ({
         ...value,
         showToast,
-        // On expose la fonction et son setter
-        changeAdminView,
-        setChangeAdminView,
-    }), [value, showToast, changeAdminView]);
+        // On expose la fonction qui exécutera le changement de vue, et le setter pour l'enregistrer.
+        requestViewChange: viewChangeHandler,
+        setViewChangeHandler,
+    }), [value, showToast, viewChangeHandler]);
 
     return (
         <AppContext.Provider value={contextValue}>
