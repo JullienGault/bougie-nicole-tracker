@@ -31,6 +31,7 @@ const ProfileModal = ({ onClose }) => {
                 firstName: formData.firstName,
                 lastName: formData.lastName,
                 phone: formData.phone,
+                contactInfoLastConfirmedAt: serverTimestamp() // AJOUT : Mettre à jour la date de confirmation
             });
 
             await addDoc(collection(db, 'notifications'), {
