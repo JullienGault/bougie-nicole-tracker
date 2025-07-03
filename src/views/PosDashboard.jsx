@@ -20,7 +20,7 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 import InfoModal from '../components/common/InfoModal';
 
 const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) => {
-    const { showToast, loggedInUserData } = useContext(AppContext);
+    const { products, showToast, loggedInUserData } = useContext(AppContext);
     const currentUserData = isAdminView ? pos : loggedInUserData;
     const posId = currentUserData.uid;
 
@@ -71,6 +71,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
         activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(posId)),
         archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(posId))
     }), [deliveryRequests, posId]);
+
     const deliveriesToDisplay = deliveryTab === 'actives' ? activeDeliveries : archivedDeliveries;
     const toggleExpand = (requestId) => setExpandedRequestId(prevId => (prevId === requestId ? null : requestId));
     
@@ -110,6 +111,52 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
             showToast("Vente annulée et stock restauré.", "success");
         } catch (error) { showToast("Erreur lors de l'annulation de la vente.", "error"); }
     };
+    
+    const handleCreatePayout = async () => {
+        if (unsettledSales.length === 0) { showToast("Aucune vente à régler.", "info"); return; }
+        setPayoutToConfirm(null);
+        const batch = writeBatch(db);
+        const payoutDocRef = doc(collection(db, `pointsOfSale/${posId}/payouts`));
+        const salesToSettle = [...unsettledSales];
+        const grossRevenue = salesToSettle.reduce((acc, sale) => acc + sale.totalAmount, 0);
+        const commissionAmount = grossRevenue * (posData?.commissionRate || 0);
+        const netAmount = grossRevenue - commissionAmount;
+
+        batch.set(payoutDocRef, {
+            createdAt: serverTimestamp(), status: 'pending', grossRevenue, commissionAmount,
+            netAmount, commissionRateAtTheTime: posData?.commissionRate || 0,
+            salesCount: salesToSettle.length, paidAt: null
+        });
+        salesToSettle.forEach(sale => {
+            batch.update(doc(db, `pointsOfSale/${posId}/sales`, sale.id), { payoutId: payoutDocRef.id });
+        });
+        try {
+            await batch.commit();
+            showToast("Période de paiement clôturée !", "success");
+            onActionSuccess();
+        } catch(error) { showToast("Erreur lors de la clôture.", "error"); }
+    };
+
+    const handleUpdatePayoutStatus = async (payout) => {
+        if (!isAdminView) return;
+        const currentIndex = payoutStatusOrder.indexOf(payout.status);
+        if (currentIndex === -1 || currentIndex === payoutStatusOrder.length - 1) return;
+        const nextStatus = payoutStatusOrder[currentIndex + 1];
+        const payoutDocRef = doc(db, `pointsOfSale/${posId}/payouts`, payout.id);
+        setIsUpdatingPayout(payout.id);
+        try {
+            const dataToUpdate = { status: nextStatus };
+            if (nextStatus === 'received') dataToUpdate.paidAt = serverTimestamp();
+            await updateDoc(payoutDocRef, dataToUpdate);
+            await addDoc(collection(db, 'notifications'), {
+                recipientUid: posId,
+                message: `Le statut de votre paiement de ${formatPrice(payout.netAmount)} est passé à : "${PAYOUT_STATUSES[nextStatus].text}".`,
+                createdAt: serverTimestamp(), isRead: false, type: 'PAYOUT_UPDATE'
+            });
+            showToast(`Statut du paiement mis à jour.`, "success");
+        } catch (error) { showToast("Une erreur est survenue.", "error"); }
+        finally { setIsUpdatingPayout(null); }
+    };
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
@@ -118,7 +165,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
             {saleToDelete && <ConfirmationModal title="Annuler la Vente" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName} ? Le stock sera restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} requiresReason={true} />}
             {requestToCancel && <ConfirmationModal title="Annuler la Commande" message="Êtes-vous sûr de vouloir annuler cette commande ?" onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler"/>}
             {showInfoModal && <InfoModal title="Annulation Impossible" message="Contactez l'administrateur." onClose={() => setShowInfoModal(false)} />}
-            {payoutToConfirm && <ConfirmationModal title="Clôturer la Période" message={`Clôturer avec un montant net de ${formatPrice(kpis.netToBePaid)} ?`} onConfirm={() => {}} onCancel={() => setPayoutToConfirm(null)} confirmText="Oui, Clôturer" confirmColor="bg-blue-600 hover:bg-blue-700" />}
+            {payoutToConfirm && <ConfirmationModal title="Clôturer la Période" message={`Clôturer avec un montant net de ${formatPrice(kpis.netToBePaid)} ?`} onConfirm={handleCreatePayout} onCancel={() => setPayoutToConfirm(null)} confirmText="Oui, Clôturer" confirmColor="bg-blue-600 hover:bg-blue-700" />}
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
@@ -184,7 +231,7 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
                                             </div>
                                             {isExpanded && (
                                                 <div className="p-4 border-t border-gray-700">
-                                                    {/* Expanded content can be added here */}
+                                                    <p>Contenu détaillé de la livraison ici...</p>
                                                 </div>
                                             )}
                                         </div>
@@ -212,10 +259,36 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
                         <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Statut</th><th className="p-3">Actions</th></tr></thead><tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName}</td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3 text-xs">{sale.payoutId ? 'Réglée' : 'En cours'}</td><td className="p-3">{!sale.payoutId && <button onClick={() => setSaleToDelete(sale)} className="text-red-500"><Trash2 size={18}/></button>}</td></tr>))}</tbody></table></div>
                     )}
                     {showHistory === 'payouts' && (
-                        <div className="animate-fade-in overflow-x-auto">
+                         <div className="animate-fade-in overflow-x-auto">
                             <table className="w-full text-left">
-                                <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date Clôture</th><th className="p-3">Montant Net</th><th className="p-3">Statut</th><th className="p-3">Date Paiement</th></tr></thead>
-                                <tbody>{payouts.map(p => (<tr key={p.id} className="border-b border-gray-700/50"><td className="p-3">{formatDate(p.createdAt)}</td><td className="p-3 font-semibold">{formatPrice(p.netAmount)}</td><td className="p-3"><span className={`px-2 py-1 text-xs font-bold rounded-full ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>{PAYOUT_STATUSES[p.status]?.text || p.status}</span></td><td className="p-3">{p.paidAt ? formatDate(p.paidAt) : '-'}</td></tr>))}</tbody>
+                                <thead>
+                                    <tr className="border-b border-gray-700 text-gray-400 text-sm">
+                                        <th className="p-3">Date Clôture</th>
+                                        <th className="p-3">Montant Net</th>
+                                        <th className="p-3">Statut</th>
+                                        <th className="p-3">{isAdminView ? "Action" : "Date Paiement"}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {payouts.map(p => (
+                                        <tr key={p.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                            <td className="p-3">{formatDate(p.createdAt)}</td>
+                                            <td className="p-3 font-semibold">{formatPrice(p.netAmount)}</td>
+                                            <td className="p-3">
+                                                <span className={`px-2 py-1 text-xs font-bold rounded-full whitespace-nowrap ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>
+                                                    {PAYOUT_STATUSES[p.status]?.text || p.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-3">
+                                                {isAdminView && p.status !== 'received' ? (
+                                                    <button onClick={() => handleUpdatePayoutStatus(p)} disabled={isUpdatingPayout === p.id} className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded-lg flex items-center gap-2 disabled:opacity-50 whitespace-nowrap">
+                                                        {isUpdatingPayout === p.id ? <div className="animate-spin rounded-full h-4 w-4 border-b-2"></div> : <>Étape suivante <ArrowRightCircle size={14}/></>}
+                                                    </button>
+                                                ) : (p.paidAt ? formatDate(p.paidAt) : '-')}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
                             </table>
                         </div>
                     )}
