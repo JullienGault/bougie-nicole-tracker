@@ -22,19 +22,18 @@ export default function App() {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
     
+    // CORRECTION : État pour les parfums (scents) retiré
     const [products, setProducts] = useState([]);
-    const [scents, setScents] = useState([]);
 
     useEffect(() => { document.title = APP_TITLE; }, []);
 
+    // CORRECTION : Listener pour les parfums (scents) retiré
     useEffect(() => {
         const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), (snapshot) => {
             setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-        const unsubScents = onSnapshot(query(collection(db, 'scents'), orderBy('name')), (snapshot) => {
-            setScents(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        return () => { unsubProducts(); unsubScents(); };
+        // L'appel à la collection 'scents' a été supprimé ici
+        return () => { unsubProducts(); };
     }, []);
 
     useEffect(() => {
@@ -75,8 +74,8 @@ export default function App() {
         signOut(auth);
     }, []);
 
-    // CORRECTION : Ajout de setShowProfileModal au contexte pour le rendre accessible partout
-    const providerValue = { db, auth, loggedInUserData, products, scents, setShowProfileModal };
+    // CORRECTION : 'scents' retiré de la valeur du provider
+    const providerValue = { db, auth, loggedInUserData, products, setShowProfileModal };
 
     if (isLoading) {
         return <div className="bg-gray-900 min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>;
