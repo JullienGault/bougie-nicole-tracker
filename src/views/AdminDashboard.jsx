@@ -191,11 +191,125 @@ const AdminDashboard = () => {
 
     if (currentView === 'products') return <ProductManager onBack={() => setCurrentView('dashboard')} />;
     if (currentView === 'analytics') return <><div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700"><button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button></div><SalesAnalytics /></>;
-    if (selectedPos) return <><button onClick={() => setSelectedPos(null)} className="m-4 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button><PosDashboard pos={selectedPos} isAdminView={true} onActionSuccess={() => setRefreshTrigger(p => p + 1)} /></>;
+    if (selectedPos) return <><div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700"><button onClick={() => setSelectedPos(null)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button></div><PosDashboard pos={selectedPos} isAdminView={true} /></>;
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {/* ... Modales ... */}
+            {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
+            {posToEdit && <EditPosModal pos={posToEdit} onClose={() => setPosToEdit(null)} onSave={() => setRefreshTrigger(p => p+1)} hasOpenBalance={allPosBalances[posToEdit.id] > 0} />}
+            {posToEditUser && <EditPosUserModal posUser={posToEditUser} onClose={() => setPosToEditUser(null)} onSave={() => setRefreshTrigger(p => p+1)} />}
+            {posToToggleStatus && <ConfirmationModal title={`Confirmer la ${posToToggleStatus.status === 'active' ? 'désactivation' : 'réactivation'}`} message={`Voulez-vous vraiment ${posToToggleStatus.status === 'active' ? 'désactiver' : 'réactiver'} le compte de "${posToToggleStatus.name}" ?`} onConfirm={handleTogglePosStatus} onCancel={() => setPosToToggleStatus(null)} confirmText={posToToggleStatus.status === 'active' ? 'Oui, désactiver' : 'Oui, réactiver'} />}
+            {posToReconcile && <PayoutReconciliationModal pos={posToReconcile} unsettledSales={reconciliationData.sales} stock={reconciliationData.stock} onClose={() => setPosToReconcile(null)} onConfirm={handleCreatePayout} />}
+            {deliveryToProcess && <ProcessDeliveryModal request={deliveryToProcess} onClose={() => setDeliveryToProcess(null)} onCancelRequest={setDeliveryToCancel} />}
+            {deliveryToCancel && <ReasonPromptModal title="Annuler la commande" message={`Expliquez pourquoi vous annulez la livraison pour ${deliveryToCancel.posName}.`} onConfirm={handleCancelDeliveryRequest} onCancel={() => setDeliveryToCancel(null)} />}
+            {deliveryToArchive && <ConfirmationModal title="Archiver la demande" message="Voulez-vous archiver cette demande de votre vue ? Elle restera visible pour le point de vente." onConfirm={handleArchiveDelivery} onCancel={() => setDeliveryToArchive(null)} confirmText="Oui, archiver" confirmColor="bg-yellow-600 hover:bg-yellow-700" />}
+
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+                <div>
+                    <h2 className="text-3xl font-bold text-white">Tableau de Bord Administrateur</h2>
+                    <p className="text-gray-400">Gérez les dépôts, les produits et les livraisons.</p>
+                </div>
+                <div className="flex gap-4 mt-4 md:mt-0">
+                    <button onClick={() => setCurrentView('products')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Package size={20} /> Gérer le Catalogue</button>
+                    <button onClick={() => setShowCreateModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><UserPlus size={20} /> Ajouter un Dépôt</button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <KpiCard title="Chiffre d'Affaires (non clôturé)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
+                <KpiCard title="Commissions (non clôturées)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
+                <KpiCard title="Montant total à reverser" value={formatPrice(globalStats.toPay)} icon={Store} color="bg-pink-600" />
+                <button onClick={() => setCurrentView('analytics')} className="bg-gray-800 p-5 rounded-xl flex items-center gap-4 hover:bg-gray-700 transition-colors duration-200 w-full">
+                    <div className="p-3 rounded-lg bg-purple-600"><History size={28} className="text-white"/></div>
+                    <div><p className="text-gray-400 text-sm font-medium">Analyse des Ventes</p><p className="text-2xl font-bold text-white">Voir les stats</p></div>
+                </button>
+            </div>
+            
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                <div className="bg-gray-800 rounded-2xl p-6 xl:col-span-2">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
+                        <h3 className="text-xl font-bold text-white mb-4 sm:mb-0">Liste des Dépôts-Vente</h3>
+                        <div className="flex items-center gap-4 w-full sm:w-auto">
+                            <div className="relative flex-grow sm:flex-grow-0">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                <input type="text" placeholder="Rechercher..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-gray-700 p-2 pl-10 rounded-lg"/>
+                            </div>
+                            <select value={listFilter} onChange={e => setListFilter(e.target.value)} className="bg-gray-700 p-2 rounded-lg">
+                                <option value="active">Actifs ({activePosCount})</option>
+                                <option value="inactive">Inactifs ({inactivePosCount})</option>
+                                <option value="archived">Archivés ({archivedPosCount})</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="border-b border-gray-700 text-gray-400 text-sm">
+                                    <th className="p-3">Nom du Dépôt</th>
+                                    <th className="p-3">Contact</th>
+                                    <th className="p-3">Commission</th>
+                                    <th className="p-3">Solde à Payer</th>
+                                    <th className="p-3 text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {combinedPointsOfSale.map(pos => (
+                                    <tr key={pos.id} className={`border-b border-gray-700/50 ${pos.status === 'inactive' ? 'opacity-50' : ''}`}>
+                                        <td className="p-3 font-semibold">{pos.name}</td>
+                                        <td className="p-3">{pos.firstName} {pos.lastName}</td>
+                                        <td className="p-3">{formatPercent(pos.commissionRate)}</td>
+                                        <td className="p-3 font-bold text-green-400">{formatPrice(pos.balance)}</td>
+                                        <td className="p-3">
+                                            <div className="flex items-center justify-center gap-1 bg-gray-700/50 p-1 rounded-lg">
+                                                <button onClick={() => handleOpenReconciliation(pos)} className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-semibold flex items-center gap-1.5 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed" title="Clôturer" disabled={isReconLoading || pos.balance <= 0}>
+                                                    {isReconLoading && posToReconcile?.id === pos.id ? <Loader2 className="animate-spin" size={18}/> : <CircleDollarSign size={18}/>}
+                                                    <span className="hidden lg:inline">Clôturer</span>
+                                                </button>
+                                                <button onClick={() => setSelectedPos(pos)} className="p-2 text-gray-300 hover:bg-gray-600 rounded-md" title="Détails"><FileText size={18} /></button>
+                                                <button onClick={() => setPosToEditUser(pos)} className="p-2 text-gray-300 hover:bg-gray-600 rounded-md" title="Contact"><User size={18} /></button>
+                                                <button onClick={() => setPosToEdit(pos)} className="p-2 text-gray-300 hover:bg-gray-600 rounded-md" title="Paramètres"><Settings size={18} /></button>
+                                                <button onClick={() => setPosToToggleStatus(pos)} className={`p-2 rounded-md ${pos.status === 'active' ? 'text-red-500 hover:bg-red-500/10' : 'text-green-500 hover:bg-green-500/10'}`} title={pos.status === 'active' ? 'Désactiver' : 'Activer'}><Power size={18} /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                         {combinedPointsOfSale.length === 0 && <p className="text-center py-8 text-gray-400">Aucun dépôt ne correspond à vos critères.</p>}
+                    </div>
+                </div>
+
+                <div className="bg-gray-800 rounded-2xl p-6">
+                    <h3 className="text-xl font-bold text-white mb-6">Demandes de Livraison</h3>
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                        {deliveryRequests.filter(r => !r.archivedBy?.includes('admin')).map(req => {
+                            const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
+                            const Icon = statusConfig.icon;
+                            const isActionable = req.status !== 'delivered' && req.status !== 'cancelled';
+                            return (
+                                <div key={req.id} className="bg-gray-900/70 p-4 rounded-xl border border-gray-700/50">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-bold text-white">{req.posName}</p>
+                                            <p className="text-xs text-gray-400">{formatDate(req.createdAt)}</p>
+                                        </div>
+                                        <span className={`flex items-center gap-2 px-2 py-1 text-xs font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}><Icon size={14} /><span>{statusConfig.text}</span></span>
+                                    </div>
+                                    <div className="mt-4 flex justify-between items-center">
+                                        <p className="text-sm font-semibold">{req.items.reduce((acc, i) => acc + i.quantity, 0)} articles</p>
+                                        <div className="flex gap-2">
+                                            {!isActionable && <button onClick={() => setDeliveryToArchive(req)} className="p-2 text-yellow-400 hover:bg-yellow-500/10 rounded-md" title="Archiver"><Archive size={16}/></button>}
+                                            {isActionable && <button onClick={() => setDeliveryToCancel(req)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-md" title="Annuler la commande"><XCircle size={16}/></button>}
+                                            <button onClick={() => setDeliveryToProcess(req)} className="bg-indigo-600 text-white font-bold py-1.5 px-3 rounded-md text-sm flex items-center gap-2 hover:bg-indigo-700"><Truck size={16}/>Gérer</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                        {deliveryRequests.filter(r => !r.archivedBy?.includes('admin')).length === 0 && <p className="text-center py-8 text-gray-400">Aucune demande en cours.</p>}
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };
