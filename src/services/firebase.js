@@ -22,14 +22,14 @@ import {
     arrayRemove
 } from 'firebase/firestore';
 
-// La configuration provient de votre App.jsx original
+// La configuration provient maintenant des variables d'environnement
 const firebaseConfig = {
-    apiKey: "AIzaSyDUmxNBMQ2gWvCHWMrk0iowFpYVE1wMpMo",
-    authDomain: "bougienicole.firebaseapp.com",
-    projectId: "bougienicole",
-    storageBucket: "bougienicole.appspot.com",
-    messagingSenderId: "319062939476",
-    appId: "1:319062939476:web:ba2235b7ab762c37a39ac1"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Initialisation de Firebase
