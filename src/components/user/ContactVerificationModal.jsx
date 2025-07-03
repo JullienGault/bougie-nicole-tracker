@@ -1,4 +1,3 @@
-// src/components/user/ContactVerificationModal.jsx
 import React from 'react';
 import { ShieldCheck, Edit } from 'lucide-react';
 import { formatPhone } from '../../utils/formatters';
@@ -6,7 +5,6 @@ import { formatPhone } from '../../utils/formatters';
 const ContactVerificationModal = ({ userData, onConfirm, onModify, isConfirming }) => {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-80 backdrop-blur-sm flex items-center justify-center z-[80]">
-            {/* CORRECTION : max-w-2xl pour une modale plus large */}
             <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-2xl border border-yellow-500 animate-fade-in-up">
                 <div className="text-center mb-8">
                     <ShieldCheck className="mx-auto h-12 w-12 text-yellow-400" />
@@ -14,7 +12,6 @@ const ContactVerificationModal = ({ userData, onConfirm, onModify, isConfirming 
                     <p className="text-gray-400 mt-2 max-w-lg mx-auto">Pour assurer une bonne communication, veuillez vérifier que vos informations ci-dessous sont toujours à jour.</p>
                 </div>
 
-                {/* CORRECTION : Grille pour mieux organiser les informations */}
                 <div className="my-8 bg-gray-900/50 p-6 rounded-lg text-left grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                     <div>
                         <p className="text-sm text-gray-400">Nom complet</p>
