@@ -1,4 +1,3 @@
-// src/components/user/ProfileModal.jsx
 import React, { useState, useContext } from 'react';
 import { Save } from 'lucide-react';
 import { AppContext } from '../../contexts/AppContext';
@@ -31,7 +30,7 @@ const ProfileModal = ({ onClose }) => {
                 firstName: formData.firstName,
                 lastName: formData.lastName,
                 phone: formData.phone,
-                contactInfoLastConfirmedAt: serverTimestamp() // AJOUT : Mettre à jour la date de confirmation
+                contactInfoLastConfirmedAt: serverTimestamp()
             });
 
             await addDoc(collection(db, 'notifications'), {
@@ -39,13 +38,13 @@ const ProfileModal = ({ onClose }) => {
                 message: `Le dépôt "${loggedInUserData.displayName}" a mis à jour ses informations de contact.`,
                 createdAt: serverTimestamp(),
                 isRead: false,
-                type: 'PROFILE_UPDATE'
+                type: 'PROFILE_UPDATE',
+                relatedId: loggedInUserData.uid
             });
 
             showToast("Profil mis à jour avec succès !", "success");
             onClose();
         } catch (error) {
-            console.error("Erreur de mise à jour du profil: ", error);
             showToast("Erreur lors de la mise à jour.", "error");
         } finally {
             setIsLoading(false);
