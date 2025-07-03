@@ -19,7 +19,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
             newItems[index].maxQuantity = selectedStock ? selectedStock.quantity : 0;
             newItems[index].quantity = 1;
         }
-        if (field === 'quantity') {
+        if (field === 'quantity' && newItems[index].maxQuantity > 0) {
             newItems[index].quantity = Math.max(1, Math.min(Number(value), newItems[index].maxQuantity));
         }
         setItems(newItems);
@@ -47,16 +47,18 @@ const SaleModal = ({ posId, stock, onClose }) => {
                 break;
             }
 
+            // Correction de la logique de mise à jour du stock
             const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, item.stockId);
-            batch.update(stockDocRef, { quantity: stockItem.quantity - item.quantity });
+            const newQuantity = stockItem.quantity - item.quantity;
+            batch.update(stockDocRef, { quantity: newQuantity });
 
+            // Création du document de vente
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
-
             batch.set(saleDocRef, {
-                posId: posId,
-                productId: stockItem.productId,
+                posId: posId, 
+                productId: stockItem.productId, // Utilise la bonne propriété
                 productName: stockItem.productName,
-                scent: stockItem.scent,
+                scent: stockItem.scent || null, // Assure que scent est null s'il n'existe pas
                 quantity: item.quantity,
                 unitPrice: stockItem.price,
                 totalAmount: stockItem.price * item.quantity,
@@ -72,7 +74,7 @@ const SaleModal = ({ posId, stock, onClose }) => {
                 onClose();
             } catch (error) {
                 console.error("Erreur lors de la vente :", error);
-                showToast("Une erreur est survenue.", "error");
+                showToast("Une erreur est survenue lors de l'enregistrement.", "error");
             }
         }
         setIsLoading(false);
@@ -86,14 +88,14 @@ const SaleModal = ({ posId, stock, onClose }) => {
                     {items.map((item, index) => (
                         <div key={index} className="bg-gray-700/50 p-4 rounded-lg flex gap-4 items-end">
                             <div className="flex-grow">
-                                <label className="text-sm">Produit</label>
+                                <label className="text-sm text-gray-300">Produit</label>
                                 <select value={item.stockId} onChange={e => handleItemChange(index, 'stockId', e.target.value)} className="w-full bg-gray-600 p-2 rounded-lg mt-1">
                                     <option value="">-- Choisir un produit en stock --</option>
-                                    {availableStock.map(s => <option key={s.id} value={s.id}>{s.productName} {s.scent && `(${s.scent})`} - Stock: {s.quantity}</option>)}
+                                    {availableStock.map(s => <option key={s.id} value={s.id}>{s.productName} - Stock: {s.quantity}</option>)}
                                 </select>
                             </div>
                             <div className="w-32">
-                                <label className="text-sm">Quantité</label>
+                                <label className="text-sm text-gray-300">Quantité</label>
                                 <input type="number" value={item.quantity} onChange={e => handleItemChange(index, 'quantity', e.target.value)} min="1" max={item.maxQuantity} className="w-full bg-gray-600 p-2 rounded-lg mt-1" disabled={!item.stockId} />
                             </div>
                             {items.length > 1 && <button onClick={() => removeItem(index)} className="p-2 bg-red-600 rounded-lg text-white mb-px"><Trash2 size={20} /></button>}
