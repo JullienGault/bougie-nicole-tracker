@@ -19,7 +19,8 @@ import {
     deleteDoc,
     runTransaction,
     arrayUnion,
-    arrayRemove
+    arrayRemove,
+    documentId // <-- AJOUT DE L'IMPORT
 } from 'firebase/firestore';
 
 // La configuration provient maintenant des variables d'environnement
@@ -73,5 +74,6 @@ export {
     deleteDoc,
     runTransaction,
     arrayUnion,
-    arrayRemove
+    arrayRemove,
+    documentId // <-- AJOUT DE L'EXPORT
 };
