@@ -31,7 +31,8 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [showContactVerificationModal, setShowContactVerificationModal] = useState(false);
     const [isConfirmingContact, setIsConfirmingContact] = useState(false);
     const [deliveryToArchive, setDeliveryToArchive] = useState(null);
-    const [expandedCardId, setExpandedCardId] = useState(null);
+    
+    // L'état de la carte dépliée est retiré d'ici pour être mis dans son composant dédié
 
     useEffect(() => {
         if (!posId) return;
@@ -130,7 +131,9 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         );
     };
     
+    // COMPOSANT DÉDIÉ AVEC SON PROPRE ÉTAT POUR ÉVITER LE CLIGNOTEMENT
     const ActiveDeliveriesSection = () => {
+        const [expandedCardId, setExpandedCardId] = useState(null);
         const activeDeliveries = deliveryHistory.filter(req => !req.isArchived);
 
         const toggleCard = (id) => {
@@ -202,7 +205,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                     activeModal === 'payouts' ? 'Historique des Paiements' : 'Historique des Livraisons Archivées'
                 }>
                 {activeModal === 'deliveries' ? renderArchivedDeliveriesModal() : null }
-                {/* ... Autres rendus de modales */}
+                {/* Potentiellement d'autres rendus de modales ici */}
             </FullScreenDataModal>
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
