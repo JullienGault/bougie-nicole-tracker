@@ -57,7 +57,6 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         if (!deliveryToArchive || !posId) return;
         try {
             const deliveryDocRef = doc(db, "deliveryRequests", deliveryToArchive.id);
-            // On ajoute l'ID du POS à la liste de ceux qui ont archivé
             await updateDoc(deliveryDocRef, {
                 archivedBy: arrayUnion(posId)
             });
@@ -100,42 +99,16 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         setShowProfileModal(true);
     };
 
-    const renderArchivedDeliveriesModal = () => {
-        const archivedDeliveries = deliveryHistory.filter(req => req.archivedBy && req.archivedBy.includes(posId));
-
-        return (
-            <div>
-                {archivedDeliveries.length > 0 ? (
-                    <div className="space-y-4">
-                        {archivedDeliveries.map(req => {
-                            const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
-                            return (
-                                <div key={req.id} className="bg-gray-900/50 p-4 rounded-lg">
-                                    <div className="flex justify-between items-center">
-                                        <p className="font-bold text-white">Demande du {formatDate(req.createdAt)}</p>
-                                        <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}>
-                                            {statusConfig.text}
-                                        </span>
-                                    </div>
-                                    <ul className="mt-2 list-disc list-inside text-gray-300 text-sm">
-                                        {req.items.map((item, index) => (
-                                            <li key={item.productId + index}>{item.quantity} x {item.productName}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <p className="text-center text-gray-400 py-16">Aucune livraison archivée.</p>
-                )}
-            </div>
-        );
-    };
-    
-    const ActiveDeliveriesSection = () => {
+    const DeliveriesSection = () => {
         const [expandedCardId, setExpandedCardId] = useState(null);
-        const activeDeliveries = deliveryHistory.filter(req => !req.archivedBy || !req.archivedBy.includes(posId));
+        const [deliveryFilter, setDeliveryFilter] = useState('active');
+
+        const filteredDeliveries = deliveryHistory.filter(req => {
+            const hasBeenArchivedByPos = req.archivedBy && req.archivedBy.includes(posId);
+            if (deliveryFilter === 'active') return !hasBeenArchivedByPos;
+            if (deliveryFilter === 'archived') return hasBeenArchivedByPos;
+            return true;
+        });
 
         const toggleCard = (id) => {
             setExpandedCardId(expandedCardId === id ? null : id);
@@ -143,10 +116,17 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
 
         return (
             <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
-                <h3 className="text-xl font-bold text-white mb-4">Livraisons en cours</h3>
-                 {activeDeliveries.length > 0 ? (
+                <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-xl font-bold text-white">Suivi des Livraisons</h3>
+                     <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
+                        <button onClick={() => setDeliveryFilter('active')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>En cours</button>
+                        <button onClick={() => setDeliveryFilter('archived')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'archived' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Archivées</button>
+                    </div>
+                </div>
+
+                 {filteredDeliveries.length > 0 ? (
                     <div className="space-y-4">
-                        {activeDeliveries.map(req => {
+                        {filteredDeliveries.map(req => {
                             const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
                             const Icon = statusConfig.icon;
                             const isArchivable = req.status === 'delivered' || req.status === 'cancelled';
@@ -172,7 +152,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                                             <div className="p-5">
                                                 <DeliveryDetailsModal request={req} />
                                             </div>
-                                            {isArchivable && (
+                                            {isArchivable && deliveryFilter === 'active' && (
                                                 <div className="p-4 bg-gray-800/50 rounded-b-2xl flex justify-end">
                                                     <button onClick={(e) => { e.stopPropagation(); setDeliveryToArchive(req); }} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
                                                         <Archive size={16} /> Archiver
@@ -186,7 +166,9 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                         })}
                     </div>
                 ) : (
-                    <p className="text-center text-gray-400 py-8">Aucune livraison en cours.</p>
+                    <p className="text-center text-gray-400 py-8">
+                        {deliveryFilter === 'active' ? 'Aucune livraison en cours.' : 'Aucune livraison archivée.'}
+                    </p>
                 )}
             </div>
         );
@@ -203,9 +185,9 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
             <FullScreenDataModal isOpen={!!activeModal} onClose={() => setActiveModal(null)} title={
                     activeModal === 'stock' ? 'Votre Stock Actuel' :
                     activeModal === 'sales' ? 'Historique des Ventes' :
-                    activeModal === 'payouts' ? 'Historique des Paiements' : 'Historique des Livraisons Archivées'
+                    activeModal === 'payouts' ? 'Historique des Paiements' : ''
                 }>
-                {activeModal === 'deliveries' ? renderArchivedDeliveriesModal() : null }
+                 {/* Le contenu de la modale est maintenant géré directement dans le JSX principal si besoin */}
             </FullScreenDataModal>
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
@@ -238,7 +220,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                 </div>
             )}
 
-            {!isAdminView && <ActiveDeliveriesSection />}
+            {!isAdminView && <DeliveriesSection />}
             
             <div className="bg-gray-800 rounded-2xl p-6">
                 <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
@@ -246,7 +228,6 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                      <button onClick={() => setActiveModal('stock')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><Archive size={24} className="text-blue-400" /><span className="font-semibold">Voir le Stock</span></button>
                     <button onClick={() => setActiveModal('sales')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><History size={24} className="text-purple-400" /><span className="font-semibold">Historique des Ventes</span></button>
                     <button onClick={() => setActiveModal('payouts')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><CheckCircle size={24} className="text-green-400" /><span className="font-semibold">Historique des Paiements</span></button>
-                    <button onClick={() => setActiveModal('deliveries')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><Truck size={24} className="text-orange-400" /><span className="font-semibold">Historique des Livraisons</span></button>
                 </div>
             </div>
         </div>
