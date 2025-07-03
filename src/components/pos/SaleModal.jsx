@@ -1,8 +1,8 @@
-// src/components/pos/SaleModal.jsx
 import React, { useState, useMemo, useContext } from 'react';
 import { PlusCircle, Trash2, CheckCircle } from 'lucide-react';
 import { AppContext } from '../../contexts/AppContext';
 import { db, writeBatch, doc, collection, serverTimestamp } from '../../services/firebase';
+import { LOW_STOCK_THRESHOLD } from '../../constants';
 
 const SaleModal = ({ posId, stock, onClose }) => {
     const { showToast } = useContext(AppContext);
@@ -50,13 +50,25 @@ const SaleModal = ({ posId, stock, onClose }) => {
             const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, item.stockId);
             const newQuantity = stockItem.quantity - item.quantity;
             batch.update(stockDocRef, { quantity: newQuantity });
+            
+            if (stockItem.quantity > LOW_STOCK_THRESHOLD && newQuantity <= LOW_STOCK_THRESHOLD) {
+                const notificationRef = doc(collection(db, 'notifications'));
+                batch.set(notificationRef, {
+                    recipientUid: posId,
+                    message: `Stock bas pour ${stockItem.productName} (${newQuantity} restant). Pensez à faire une demande de livraison.`,
+                    createdAt: serverTimestamp(),
+                    isRead: false,
+                    type: 'LOW_STOCK_ALERT',
+                    relatedId: stockItem.productId 
+                });
+            }
 
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
             batch.set(saleDocRef, {
-                posId: posId, 
+                posId: posId,
                 productId: stockItem.productId,
                 productName: stockItem.productName,
-                scent: stockItem.scent || null,
+                scent: null,
                 quantity: item.quantity,
                 unitPrice: stockItem.price,
                 totalAmount: stockItem.price * item.quantity,
@@ -71,7 +83,6 @@ const SaleModal = ({ posId, stock, onClose }) => {
                 showToast("Vente enregistrée avec succès !", "success");
                 onClose();
             } catch (error) {
-                console.error("Erreur lors de la vente :", error);
                 showToast("Une erreur est survenue lors de l'enregistrement.", "error");
             }
         }
@@ -111,5 +122,4 @@ const SaleModal = ({ posId, stock, onClose }) => {
         </div>
     );
 };
-
 export default SaleModal;
