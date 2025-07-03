@@ -1,7 +1,7 @@
 // src/components/delivery/DeliveryDetailsModal.jsx
 import React from 'react';
 import { X, AlertTriangle, Check, Package } from 'lucide-react';
-import { DELIVERY_STATUS_STEPS, deliveryStatusOrder } from '../../constants';
+import { DELIVERY_STATUSES, deliveryStatusOrder } from '../../constants';
 
 const DeliveryDetailsModal = ({ request, onClose }) => {
 
@@ -23,13 +23,14 @@ const DeliveryDetailsModal = ({ request, onClose }) => {
                 {deliveryStatusOrder.map((step, index) => {
                     const isCompleted = index < currentIndex;
                     const isActive = index === currentIndex;
+                    const statusConfig = DELIVERY_STATUSES[step] || DELIVERY_STATUSES.default;
                     return (
                         <React.Fragment key={step}>
                             <div className="flex flex-col items-center text-center">
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${isCompleted ? 'bg-green-600' : isActive ? 'bg-blue-600 animate-pulse' : 'bg-gray-600'}`}>
                                     {isCompleted ? <Check size={20} /> : <Package size={20} />}
                                 </div>
-                                <p className={`mt-2 text-xs w-24 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{DELIVERY_STATUS_STEPS[step]}</p>
+                                <p className={`mt-2 text-xs w-24 ${isActive ? 'text-white font-bold' : 'text-gray-400'}`}>{statusConfig.text}</p>
                             </div>
                             {index < deliveryStatusOrder.length - 1 && (
                                 <div className={`flex-1 h-1 rounded-full ${isCompleted ? 'bg-green-600' : 'bg-gray-600'}`}></div>
