@@ -30,7 +30,6 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [payoutToView, setPayoutToView] = useState(null);
     const [showContactVerificationModal, setShowContactVerificationModal] = useState(false);
     const [isConfirmingContact, setIsConfirmingContact] = useState(false);
-    const [deliveryFilter, setDeliveryFilter] = useState('active');
     const [deliveryToArchive, setDeliveryToArchive] = useState(null);
     const [expandedCardId, setExpandedCardId] = useState(null);
 
@@ -75,7 +74,11 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         const commission = posData?.commissionRate || 0;
         const balance = grossRevenue - (grossRevenue * commission);
         const stockCount = stock.reduce((acc, item) => acc + item.quantity, 0);
-        return { unsettledBalance: balance, totalStock: stockCount, commissionRate: commission };
+        return { 
+            unsettledBalance: balance, 
+            totalStock: stockCount, 
+            commissionRate: commission,
+        };
     }, [unsettledSales, stock, posData]);
 
     const handleConfirmContact = async () => {
@@ -94,33 +97,52 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         setShowProfileModal(true);
     };
 
-    const renderModalContent = () => {
-        if (activeModal !== 'deliveries') {
-            // ... logiques pour les autres modales (stock, sales, etc.)
-            return null;
-        }
+    const renderArchivedDeliveriesModal = () => {
+        const archivedDeliveries = deliveryHistory.filter(req => req.isArchived);
 
-        const filteredDeliveries = deliveryHistory.filter(req => {
-            if (deliveryFilter === 'active') return !req.isArchived;
-            if (deliveryFilter === 'archived') return req.isArchived === true;
-            return true;
-        });
+        return (
+            <div>
+                {archivedDeliveries.length > 0 ? (
+                    <div className="space-y-4">
+                        {archivedDeliveries.map(req => {
+                            const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
+                            return (
+                                <div key={req.id} className="bg-gray-900/50 p-4 rounded-lg">
+                                    <div className="flex justify-between items-center">
+                                        <p className="font-bold text-white">Demande du {formatDate(req.createdAt)}</p>
+                                        <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}>
+                                            {statusConfig.text}
+                                        </span>
+                                    </div>
+                                    <ul className="mt-2 list-disc list-inside text-gray-300 text-sm">
+                                        {req.items.map((item, index) => (
+                                            <li key={item.productId + index}>{item.quantity} x {item.productName}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <p className="text-center text-gray-400 py-16">Aucune livraison archivée.</p>
+                )}
+            </div>
+        );
+    };
+    
+    const ActiveDeliveriesSection = () => {
+        const activeDeliveries = deliveryHistory.filter(req => !req.isArchived);
 
         const toggleCard = (id) => {
             setExpandedCardId(expandedCardId === id ? null : id);
         };
 
         return (
-            <div>
-                <div className="flex justify-end mb-4">
-                    <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
-                        <button onClick={() => setDeliveryFilter('active')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>En cours</button>
-                        <button onClick={() => setDeliveryFilter('archived')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'archived' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Archivées</button>
-                    </div>
-                </div>
-                {filteredDeliveries.length > 0 ? (
+            <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
+                <h3 className="text-xl font-bold text-white mb-4">Livraisons en cours</h3>
+                 {activeDeliveries.length > 0 ? (
                     <div className="space-y-4">
-                        {filteredDeliveries.map(req => {
+                        {activeDeliveries.map(req => {
                             const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
                             const Icon = statusConfig.icon;
                             const isArchivable = req.status === 'delivered' || req.status === 'cancelled';
@@ -142,11 +164,11 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                                     </div>
                                     
                                     {isExpanded && (
-                                        <div className="animate-fade-in">
-                                            <div className="p-5 border-t border-gray-700/50">
+                                        <div className="animate-fade-in border-t border-gray-700/50">
+                                            <div className="p-5">
                                                 <DeliveryDetailsModal request={req} />
                                             </div>
-                                            {isArchivable && deliveryFilter === 'active' && (
+                                            {isArchivable && (
                                                 <div className="p-4 bg-gray-800/50 rounded-b-2xl flex justify-end">
                                                     <button onClick={(e) => { e.stopPropagation(); setDeliveryToArchive(req); }} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
                                                         <Archive size={16} /> Archiver
@@ -160,7 +182,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                         })}
                     </div>
                 ) : (
-                    <p className="text-center text-gray-400 py-16">{deliveryFilter === 'active' ? 'Aucune demande en cours.' : 'Aucune demande archivée.'}</p>
+                    <p className="text-center text-gray-400 py-8">Aucune livraison en cours.</p>
                 )}
             </div>
         );
@@ -177,9 +199,10 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
             <FullScreenDataModal isOpen={!!activeModal} onClose={() => setActiveModal(null)} title={
                     activeModal === 'stock' ? 'Votre Stock Actuel' :
                     activeModal === 'sales' ? 'Historique des Ventes' :
-                    activeModal === 'payouts' ? 'Historique des Paiements' : 'Historique des Livraisons'
+                    activeModal === 'payouts' ? 'Historique des Paiements' : 'Historique des Livraisons Archivées'
                 }>
-                {renderModalContent()}
+                {activeModal === 'deliveries' ? renderArchivedDeliveriesModal() : null }
+                {/* ... Autres rendus de modales */}
             </FullScreenDataModal>
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
@@ -211,10 +234,12 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                     <KpiCard title="Taux de Commission" value={formatPercent(commissionRate)} icon={Percent} color="bg-pink-600" />
                 </div>
             )}
+
+            {!isAdminView && <ActiveDeliveriesSection />}
             
             <div className="bg-gray-800 rounded-2xl p-6">
                 <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                      <button onClick={() => setActiveModal('stock')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><Archive size={24} className="text-blue-400" /><span className="font-semibold">Voir le Stock</span></button>
                     <button onClick={() => setActiveModal('sales')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><History size={24} className="text-purple-400" /><span className="font-semibold">Historique des Ventes</span></button>
                     <button onClick={() => setActiveModal('payouts')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><CheckCircle size={24} className="text-green-400" /><span className="font-semibold">Historique des Paiements</span></button>
