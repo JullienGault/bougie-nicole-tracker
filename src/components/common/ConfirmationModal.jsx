@@ -37,3 +37,5 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
         </div>
     </div>
 );
+
+export default ConfirmationModal;
