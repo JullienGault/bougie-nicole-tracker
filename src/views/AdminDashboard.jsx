@@ -101,29 +101,100 @@ const AdminDashboard = () => {
         }
         return filteredList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
-
-    const handleArchiveDelivery = async () => { /* ... (inchangé) */ };
-    const handleCancelDeliveryRequest = async (reason) => { /* ... (inchangé) */ };
-    const handleTogglePosStatus = async () => { /* ... (inchangé) */ };
-    const handleOpenReconciliation = async (pos) => { /* ... (inchangé) */ };
-    const handleCreatePayout = async (reconciledData) => { /* ... (inchangé) */ };
-
-    const DeliveriesView = () => { /* ... (inchangé) */ };
     
-    const BackButton = () => (
+    // --- FONCTIONS CORRIGÉES ---
+
+    const handleBackToDashboard = () => {
+        setCurrentView('dashboard');
+        setSelectedPos(null);
+    };
+
+    const handleOpenReconciliation = async (pos) => {
+        setIsReconLoading(true);
+        setPosToReconcile(pos);
+        try {
+            const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
+            const salesSnapshot = await getDocs(salesQuery);
+            const sales = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            const stockQuery = query(collection(db, `pointsOfSale/${pos.id}/stock`));
+            const stockSnapshot = await getDocs(stockQuery);
+            const stock = stockSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            setReconciliationData({ sales, stock });
+        } catch (error) {
+            showToast("Erreur lors de la récupération des données.", "error");
+            setPosToReconcile(null);
+        }
+        setIsReconLoading(false);
+    };
+
+    const handleCreatePayout = async (reconciledData) => {
+        const { items, netAmount, grossRevenue } = reconciledData;
+        const payoutTimestamp = serverTimestamp();
+        
+        try {
+            const batch = writeBatch(db);
+            const payoutDocRef = doc(collection(db, `pointsOfSale/${posToReconcile.id}/payouts`));
+            const allSaleIds = items.flatMap(item => item.originalSaleIds);
+            
+            // Logique pour trouver la date de début de la période
+            const salesForPeriodQuery = query(collection(db, `pointsOfSale/${posToReconcile.id}/sales`), where('id', 'in', allSaleIds.length > 0 ? allSaleIds : [' ']));
+            const salesForPeriodSnap = await getDocs(salesForPeriodQuery);
+            const saleDates = salesForPeriodSnap.docs.map(d => d.data().createdAt.toDate());
+            const periodStart = saleDates.length > 0 ? new Date(Math.min(...saleDates)) : new Date();
+
+            batch.set(payoutDocRef, {
+                createdAt: payoutTimestamp,
+                grossRevenue,
+                commissionRate: posToReconcile.commissionRate,
+                netAmount,
+                items: items.map(({ originalSales, ...item }) => item),
+                posId: posToReconcile.id,
+                posName: posToReconcile.name,
+                status: 'pending',
+                period: { start: periodStart, end: new Date() }
+            });
+
+            allSaleIds.forEach(saleId => {
+                const saleDocRef = doc(db, `pointsOfSale/${posToReconcile.id}/sales`, saleId);
+                batch.update(saleDocRef, { payoutId: payoutDocRef.id, isArchived: true });
+            });
+
+            await batch.commit();
+            showToast("Paiement enregistré et ventes clôturées !", "success");
+            setPosToReconcile(null);
+            setRefreshTrigger(p => p + 1);
+        } catch (error) {
+            showToast("Erreur lors de la création du paiement.", "error");
+        }
+    };
+    
+    // --- AUTRES FONCTIONS (INCHANGÉES) ---
+    const handleTogglePosStatus = async () => { /* ... */ };
+    const handleCancelDeliveryRequest = async (reason) => { /* ... */ };
+    const handleArchiveDelivery = async () => { /* ... */ };
+
+
+    const BackButton = ({ onBack }) => (
         <div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700">
-            <button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button>
+            <button onClick={onBack} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                <ArrowRightCircle className="transform rotate-180" size={20} />
+                Retour
+            </button>
         </div>
     );
     
-    if (currentView === 'products') return <><BackButton /><ProductManager onBack={() => setCurrentView('dashboard')} /></>;
-    if (currentView === 'analytics') return <><BackButton /><SalesAnalytics /></>;
+    const DeliveriesView = () => { /* ... */ };
+    
+    if (currentView === 'products') return <><BackButton onBack={handleBackToDashboard} /><ProductManager onBack={handleBackToDashboard} /></>;
+    if (currentView === 'analytics') return <><BackButton onBack={handleBackToDashboard} /><SalesAnalytics /></>;
     if (currentView === 'deliveries') return <DeliveriesView />;
-    if (selectedPos) return <><BackButton /><PosDashboard pos={selectedPos} isAdminView={true} /></>;
+    if (selectedPos) return <><BackButton onBack={handleBackToDashboard} /><PosDashboard pos={selectedPos} isAdminView={true} /></>;
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {/* --- Modales (inchangées) --- */}
+            {/* --- Modales --- */}
             {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
             {posToEdit && <EditPosModal pos={posToEdit} onClose={() => setPosToEdit(null)} onSave={() => setRefreshTrigger(p => p+1)} hasOpenBalance={allPosBalances[posToEdit.id] > 0} />}
             {posToEditUser && <EditPosUserModal posUser={posToEditUser} onClose={() => setPosToEditUser(null)} onSave={() => setRefreshTrigger(p => p+1)} />}
@@ -131,7 +202,7 @@ const AdminDashboard = () => {
             {posToReconcile && <PayoutReconciliationModal pos={posToReconcile} unsettledSales={reconciliationData.sales} stock={reconciliationData.stock} onClose={() => setPosToReconcile(null)} onConfirm={handleCreatePayout} />}
             {deliveryToProcess && <ProcessDeliveryModal request={deliveryToProcess} onClose={() => setDeliveryToProcess(null)} onCancelRequest={setDeliveryToCancel} />}
             {deliveryToCancel && <ReasonPromptModal title="Annuler la commande" message={`Expliquez pourquoi vous annulez la livraison pour ${deliveryToCancel.posName}.`} onConfirm={handleCancelDeliveryRequest} onCancel={() => setDeliveryToCancel(null)} />}
-            {deliveryToArchive && <ConfirmationModal title="Archiver la demande" message="Voulez-vous archiver cette demande de votre vue ? Elle restera visible pour le point de vente." onConfirm={handleArchiveDelivery} onCancel={() => setDeliveryToArchive(null)} confirmText="Oui, archiver" confirmColor="bg-yellow-600 hover:bg-yellow-700" />}
+            {deliveryToArchive && <ConfirmationModal title="Archiver la demande" message="Voulez-vous archiver cette demande de votre vue ?" onConfirm={handleArchiveDelivery} onCancel={() => setDeliveryToArchive(null)} confirmText="Oui, archiver" confirmColor="bg-yellow-600 hover:bg-yellow-700" />}
 
             {/* --- En-tête --- */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
@@ -163,7 +234,6 @@ const AdminDashboard = () => {
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                             <input type="text" placeholder="Rechercher..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-gray-700 p-2 pl-10 rounded-lg"/>
                         </div>
-                        {/* MODIFICATION: Remplacement du select par des boutons/onglets */}
                         <div className="flex gap-1 p-1 bg-gray-900 rounded-lg">
                             <button onClick={() => setListFilter('active')} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${listFilter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Actifs ({activePosCount})</button>
                             <button onClick={() => setListFilter('inactive')} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${listFilter === 'inactive' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Inactifs ({inactivePosCount})</button>
@@ -190,7 +260,6 @@ const AdminDashboard = () => {
                                     <td className="p-3">{formatPercent(pos.commissionRate)}</td>
                                     <td className="p-3 font-bold text-green-400">{formatPrice(pos.balance)}</td>
                                     <td className="p-3">
-                                        {/* MODIFICATION: Ajout de texte aux boutons d'action */}
                                         <div className="flex items-center justify-center gap-2 flex-wrap">
                                             <button onClick={() => handleOpenReconciliation(pos)} className="px-3 py-2 bg-indigo-600 text-white rounded-md text-sm font-semibold flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed" title="Clôturer la période" disabled={isReconLoading || pos.balance <= 0}>
                                                 {isReconLoading && posToReconcile?.id === pos.id ? <Loader2 className="animate-spin" size={16}/> : <CircleDollarSign size={16}/>}
