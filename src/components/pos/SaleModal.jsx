@@ -47,18 +47,16 @@ const SaleModal = ({ posId, stock, onClose }) => {
                 break;
             }
 
-            // Correction de la logique de mise à jour du stock
             const stockDocRef = doc(db, `pointsOfSale/${posId}/stock`, item.stockId);
             const newQuantity = stockItem.quantity - item.quantity;
             batch.update(stockDocRef, { quantity: newQuantity });
 
-            // Création du document de vente
             const saleDocRef = doc(collection(db, `pointsOfSale/${posId}/sales`));
             batch.set(saleDocRef, {
                 posId: posId, 
-                productId: stockItem.productId, // Utilise la bonne propriété
+                productId: stockItem.productId,
                 productName: stockItem.productName,
-                scent: stockItem.scent || null, // Assure que scent est null s'il n'existe pas
+                scent: stockItem.scent || null,
                 quantity: item.quantity,
                 unitPrice: stockItem.price,
                 totalAmount: stockItem.price * item.quantity,
