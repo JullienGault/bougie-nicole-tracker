@@ -15,7 +15,6 @@ import ContactVerificationModal from '../components/user/ContactVerificationModa
 import DeliveryDetailsModal from '../components/delivery/DeliveryDetailsModal';
 
 const DeliveriesSection = React.memo(({ deliveryHistory, posId, onArchiveRequest, isAdminView }) => {
-    // ... code inchangé ...
     const [expandedCardId, setExpandedCardId] = useState(null);
     const [deliveryFilter, setDeliveryFilter] = useState('active');
 
@@ -31,7 +30,7 @@ const DeliveriesSection = React.memo(({ deliveryHistory, posId, onArchiveRequest
     };
 
     return (
-        <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
+        <div className="bg-gray-800 rounded-2xl p-6 animate-fade-in">
             <div className="flex justify-between items-center mb-6">
                 <h3 className="text-xl font-bold text-white">Suivi des Livraisons</h3>
                  <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
@@ -112,7 +111,6 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         return () => { unsubPos(); unsubStock(); unsubSales(); unsubPayouts(); unsubDeliveries(); };
     }, [posId]);
 
-    // ... code inchangé ...
     useEffect(() => {
         if (loggedInUserData && loggedInUserData.role === 'pos' && !isAdminView) {
             const lastConfirmed = loggedInUserData.contactInfoLastConfirmedAt?.toDate();
@@ -123,19 +121,42 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         }
     }, [loggedInUserData, isAdminView]);
 
-    const handleArchiveDelivery = async () => { /* ... (inchangé) ... */ };
-    const unsettledSales = useMemo(() => salesHistory.filter(s => !s.payoutId), [salesHistory]);
-
+    const handleArchiveDelivery = async () => {
+        if (!deliveryToArchive || !posId) return;
+        try {
+            const deliveryDocRef = doc(db, "deliveryRequests", deliveryToArchive.id);
+            await updateDoc(deliveryDocRef, { archivedBy: arrayUnion(posId) });
+            showToast("Demande archivée.", "success");
+        } catch (error) { showToast("Erreur lors de l'archivage.", "error"); }
+        finally { setDeliveryToArchive(null); }
+    };
+    
     const { unsettledBalance, totalStock, commissionRate } = useMemo(() => {
-        const grossRevenue = unsettledSales.reduce((acc, s) => acc + s.totalAmount, 0);
+        const grossRevenue = salesHistory.filter(s => !s.payoutId).reduce((acc, s) => acc + s.totalAmount, 0);
         const commission = posData?.commissionRate || 0;
         const balance = grossRevenue - (grossRevenue * commission);
         const stockCount = stock.reduce((acc, item) => acc + item.quantity, 0);
         return { unsettledBalance: balance, totalStock: stockCount, commissionRate: commission };
-    }, [unsettledSales, stock, posData]);
+    }, [salesHistory, stock, posData]);
 
-    const handleConfirmContact = async () => { /* ... (inchangé) ... */ };
-    const handleModifyContact = () => { /* ... (inchangé) ... */ };
+    const handleConfirmContact = async () => {
+        setIsConfirmingContact(true);
+        try {
+            const userDocRef = doc(db, "users", loggedInUserData.uid);
+            await updateDoc(userDocRef, { contactInfoLastConfirmedAt: serverTimestamp() });
+            showToast("Merci d'avoir confirmé vos informations !", "success");
+            setShowContactVerificationModal(false);
+        } catch (error) {
+            showToast("Une erreur est survenue.", "error");
+        } finally {
+            setIsConfirmingContact(false);
+        }
+    };
+
+    const handleModifyContact = () => {
+        setShowContactVerificationModal(false);
+        setShowProfileModal(true);
+    };
     
     const StockModalContent = ({ stockItems }) => (
         <div className="space-y-2">
@@ -203,12 +224,10 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const PayoutsHistoryModalContent = ({ payoutItems }) => (
          <div className="space-y-3">
             {payoutItems.length > 0 ? payoutItems.map(payout => {
-                const statusConfig = PAYOUT_STATUSES[payout.status] || {};
                 return (
                     <div key={payout.id} className="bg-gray-900/50 hover:bg-gray-900 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>
                             <p className="text-lg font-bold text-white">Paiement du {formatDate(payout.createdAt)}</p>
-                            {/* CORRECTION: Ajout d'une condition pour n'afficher la période que si elle existe */}
                             {payout.period && (
                                 <p className="text-sm text-gray-400">
                                     Période du {formatDate(payout.period.start)} au {formatDate(payout.period.end)}
@@ -251,33 +270,37 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                     )}
                 </div>
             </div>
-            
-            <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
-                <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-base">
-                    <div className="flex items-center gap-3"><User className="text-indigo-400" size={22}/> <span>{currentUserData.firstName} {currentUserData.lastName}</span></div>
-                    <div className="flex items-center gap-3"><Store className="text-indigo-400" size={22}/> <span>{currentUserData.displayName}</span></div>
-                    <div className="flex items-center gap-3"><Phone className="text-indigo-400" size={22}/> <span>{formatPhone(currentUserData.phone)}</span></div>
-                    <div className="flex items-center gap-3"><Mail className="text-indigo-400" size={22}/> <span>{currentUserData.email}</span></div>
-                </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <KpiCard title="Montant à reverser" value={formatPrice(unsettledBalance)} icon={DollarSign} color="bg-green-600" />
-                <KpiCard title="Articles en Stock" value={totalStock} icon={Package} color="bg-blue-600" />
-                <KpiCard title="Taux de Commission" value={formatPercent(commissionRate)} icon={Percent} color="bg-pink-600" />
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <KpiCard title="Montant à reverser" value={formatPrice(unsettledBalance)} icon={DollarSign} color="bg-green-600" />
+                    <KpiCard title="Articles en Stock" value={totalStock} icon={Package} color="bg-blue-600" />
+                    <KpiCard title="Taux de Commission" value={formatPercent(commissionRate)} icon={Percent} color="bg-pink-600" />
+                </div>
+
+                <div className="space-y-8 lg:row-start-1 lg:col-start-3">
+                    <div className="bg-gray-800 rounded-2xl p-6">
+                        <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
+                        <div className="space-y-3 text-base">
+                            <div className="flex items-center gap-3"><User className="text-indigo-400 flex-shrink-0" size={20}/> <span>{currentUserData.firstName} {currentUserData.lastName}</span></div>
+                            <div className="flex items-center gap-3"><Store className="text-indigo-400 flex-shrink-0" size={20}/> <span>{currentUserData.displayName}</span></div>
+                            <div className="flex items-center gap-3"><Phone className="text-indigo-400 flex-shrink-0" size={20}/> <span>{formatPhone(currentUserData.phone)}</span></div>
+                            <div className="flex items-center gap-3"><Mail className="text-indigo-400 flex-shrink-0" size={20}/> <span>{currentUserData.email}</span></div>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-gray-800 rounded-2xl p-6">
+                        <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
+                        <div className="space-y-3">
+                            <button onClick={() => setShowStockModal(true)} className="w-full bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><Archive size={22} className="text-blue-400" /><span className="font-semibold">Voir le Stock</span></button>
+                            <button onClick={() => setShowSalesHistoryModal(true)} className="w-full bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><History size={22} className="text-purple-400" /><span className="font-semibold">Historique des Ventes</span></button>
+                            <button onClick={() => setShowPayoutsHistoryModal(true)} className="w-full bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><CheckCircle size={22} className="text-green-400" /><span className="font-semibold">Historique des Paiements</span></button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <DeliveriesSection deliveryHistory={deliveryHistory} posId={posId} onArchiveRequest={setDeliveryToArchive} isAdminView={isAdminView} />
-            
-            <div className="bg-gray-800 rounded-2xl p-6">
-                <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                     <button onClick={() => setShowStockModal(true)} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><Archive size={24} className="text-blue-400" /><span className="font-semibold">Voir le Stock</span></button>
-                    <button onClick={() => setShowSalesHistoryModal(true)} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><History size={24} className="text-purple-400" /><span className="font-semibold">Historique des Ventes</span></button>
-                    <button onClick={() => setShowPayoutsHistoryModal(true)} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><CheckCircle size={24} className="text-green-400" /><span className="font-semibold">Historique des Paiements</span></button>
-                </div>
-            </div>
         </div>
     );
 };
