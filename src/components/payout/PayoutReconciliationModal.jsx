@@ -11,15 +11,15 @@ const PayoutReconciliationModal = ({ pos, unsettledSales, stock, onClose, onConf
         let items;
         if (payoutData) {
             // Mode "Lecture Seule" : On affiche les données du paiement passé
-            items = (payoutData.adjustments || []).map((adj, index) => ({
+            items = (payoutData.items || []).map((adj, index) => ({
                 id: adj.productId || index,
                 productName: adj.productName,
                 quantity: adj.finalQuantity,
-                unitPrice: (payoutData.grossRevenue / payoutData.salesCount), // Approximation
+                unitPrice: adj.unitPrice, // Utilisation du prix unitaire exact sauvegardé
                 status: 'confirmed',
                 currentStock: 'N/A', // Non pertinent pour un paiement passé
                 originalQuantity: adj.originalQuantity,
-                adjustmentReason: adj.reason
+                adjustmentReason: adj.adjustmentReason // Correction du nom de la propriété
             }));
         } else {
             // Mode "Réconciliation" pour l'admin
