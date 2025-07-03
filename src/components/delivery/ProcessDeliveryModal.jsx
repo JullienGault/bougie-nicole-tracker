@@ -13,11 +13,10 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     const [editableItems, setEditableItems] = useState(request.items);
     const [showReasonModal, setShowReasonModal] = useState(false);
 
-    // ... (Le composant DeliveryStatusTracker reste identique)
     const DeliveryStatusTracker = ({ status }) => {
         if (status === 'cancelled') {
             return (
-                <div className="flex items-center gap-4 bg-red-500/10 p-3 rounded-lg"><AlertTriangle className="h-8 w-8 text-red-500"/><div><h4 className="font-bold text-red-400">Commande Annulée</h4><p className="text-xs text-gray-400">Cette commande ne sera pas traitée.</p></div></div>
+                <div className="flex items-center gap-4 bg-red-500/10 p-3 rounded-lg"><AlertTriangle className="h-8 w-8 text-red-500" /><div><h4 className="font-bold text-red-400">Commande Annulée</h4><p className="text-xs text-gray-400">Cette commande ne sera pas traitée.</p></div></div>
             );
         }
         const currentIndex = deliveryStatusOrder.indexOf(status);
@@ -54,10 +53,10 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
             });
             await addDoc(collection(db, 'notifications'), {
                 recipientUid: request.posId, message: `Votre demande de livraison du ${formatDate(request.createdAt)} a été modifiée.`,
-                createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_MODIFIED'
+                createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_UPDATE'
             });
             showToast("Modifications enregistrées !", "success");
-        } catch (error) { showToast("Erreur lors de la sauvegarde.", "error"); } 
+        } catch (error) { showToast("Erreur lors de la sauvegarde.", "error"); }
         finally { setIsLoading(false); }
     };
 
@@ -73,18 +72,17 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
                     for (const item of editableItems) {
                         const product = products.find(p => p.id === item.productId);
                         if (!product) throw new Error(`Produit ID ${item.productId} non trouvé.`);
-                        
-                        // LOGIQUE SIMPLIFIÉE : l'ID du stock est juste l'ID du produit
+
                         const stockId = item.productId;
-                        
+
                         const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId);
                         const stockDoc = await transaction.get(stockDocRef);
-                        
+
                         if (stockDoc.exists()) {
                             transaction.update(stockDocRef, { quantity: (stockDoc.data().quantity || 0) + item.quantity });
                         } else {
-                            transaction.set(stockDocRef, { 
-                                productId: item.productId, productName: product.name, price: product.price, 
+                            transaction.set(stockDocRef, {
+                                productId: item.productId, productName: product.name, price: product.price,
                                 scent: null, quantity: item.quantity,
                             });
                         }
@@ -113,12 +111,12 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
 
     return (
         <>
-            {showReasonModal && <ReasonPromptModal title="Justifier les modifications" message="Veuillez expliquer pourquoi la commande est modifiée." onConfirm={handleSaveChanges} onCancel={() => setShowReasonModal(false)}/>}
+            {showReasonModal && <ReasonPromptModal title="Justifier les modifications" message="Veuillez expliquer pourquoi la commande est modifiée." onConfirm={handleSaveChanges} onCancel={() => setShowReasonModal(false)} />}
             <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
-                <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl" onClick={e=>e.stopPropagation()}>
+                <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl" onClick={e => e.stopPropagation()}>
                     <div className="flex justify-between items-start mb-6">
                         <div><h2 className="text-2xl font-bold text-white mb-2">Gérer la livraison pour :</h2><p className="text-indigo-400 text-xl font-semibold">{request.posName}</p></div>
-                        {canAdvance && <button onClick={() => onCancelRequest(request)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><XCircle size={18}/>Annuler la Commande</button>}
+                        {canAdvance && <button onClick={() => onCancelRequest(request)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><XCircle size={18} />Annuler la Commande</button>}
                     </div>
                     <div className="mb-8"><DeliveryStatusTracker status={request.status} /></div>
                     <div className="bg-gray-700/50 p-4 rounded-lg max-h-64 overflow-y-auto custom-scrollbar">
@@ -129,17 +127,17 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
                                     <tr key={index} className="border-b border-gray-700/50">
                                         <td className="p-2">{item.productName || 'Inconnu'}</td>
                                         <td className="p-2"><input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(index, e.target.value)} className="w-20 bg-gray-600 p-1 rounded-md text-center" disabled={!canAdvance} /></td>
-                                        <td className="p-2">{canAdvance && <button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18}/></button>}</td>
+                                        <td className="p-2">{canAdvance && <button onClick={() => handleRemoveItem(index)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={18} /></button>}</td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
                     <div className="mt-8 flex justify-between items-center">
-                        {canAdvance ? <button onClick={() => setShowReasonModal(true)} disabled={isLoading} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"><Save size={18}/> Enregistrer Modifications</button> : <div />}
+                        {canAdvance ? <button onClick={() => setShowReasonModal(true)} disabled={isLoading} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"><Save size={18} /> Enregistrer Modifications</button> : <div />}
                         <div className="flex gap-4">
                             <button type="button" onClick={onClose} className="bg-gray-600 font-bold py-2 px-4 rounded-lg">Fermer</button>
-                            {canAdvance && <button onClick={handleAdvanceStatus} disabled={isLoading} className={`${isLastStep ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50`}>{isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : isLastStep ? <><CheckCircleIcon size={18}/>Confirmer la Livraison</> : <><Truck size={18}/>Étape Suivante</>}</button>}
+                            {canAdvance && <button onClick={handleAdvanceStatus} disabled={isLoading} className={`${isLastStep ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50`}>{isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : isLastStep ? <><CheckCircleIcon size={18} />Confirmer la Livraison</> : <><Truck size={18} />Étape Suivante</>}</button>}
                         </div>
                     </div>
                 </div>
