@@ -7,8 +7,7 @@ import { AppContext } from '../contexts/AppContext';
 import { Package, Store, UserPlus, History, DollarSign, HandCoins, ChevronUp, ChevronDown, Wrench, Check, ArrowRightCircle, Search } from 'lucide-react';
 
 // Utils
-import { formatPrice, formatPercent } from '../utils/formatters';
-import { formatDate } from '../utils/formatters';
+import { formatPrice, formatPercent, formatDate } from '../utils/formatters';
 
 // Constants
 import { DELIVERY_STATUS_STEPS, deliveryStatusOrder } from '../constants';
@@ -26,12 +25,12 @@ import SalesAnalytics from './SalesAnalytics';
 
 const AdminDashboard = () => {
     const { loggedInUserData, showToast, products } = useContext(AppContext);
-
+    
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [posUsers, setPosUsers] = useState([]);
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [allPosBalances, setAllPosBalances] = useState({});
-    const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0, topPos: [], topProducts: [] });
+    const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0 });
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [selectedPos, setSelectedPos] = useState(null);
@@ -113,11 +112,6 @@ const AdminDashboard = () => {
         return filteredList.sort((a, b) => a.name.localeCompare(b.name));
     }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
 
-    const { activeDeliveries, archivedDeliveries } = useMemo(() => ({
-        activeDeliveries: deliveryRequests.filter(req => !req.archivedBy?.includes(loggedInUserData.uid)),
-        archivedDeliveries: deliveryRequests.filter(req => req.archivedBy?.includes(loggedInUserData.uid))
-    }), [deliveryRequests, loggedInUserData.uid]);
-
     const handleCancelDelivery = async (reason) => {
         if (!requestToCancel) return;
         setIsLoading(true);
@@ -143,32 +137,60 @@ const AdminDashboard = () => {
             const posUpdate = { status: newStatus };
             if (newStatus === 'inactive' && shouldArchive) posUpdate.isArchived = true;
             if (newStatus === 'active') posUpdate.isArchived = false;
-
+    
             batch.update(doc(db, "pointsOfSale", id), posUpdate);
             batch.update(doc(db, "users", id), { status: newStatus });
-
+    
             await batch.commit();
             showToast(`Le compte "${name}" est maintenant ${newStatus}.`, "success");
         } catch (error) { showToast("Erreur lors du changement de statut.", "error"); }
         finally { setPosToToggleStatus(null); setShouldArchive(false); }
     };
 
-    // Render logic
     if (currentView === 'analytics') return <><div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700"><button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button></div><SalesAnalytics /></>;
     if (currentView === 'products') return <ProductManager onBack={() => setCurrentView('dashboard')} />;
     if (selectedPos) return <><button onClick={() => setSelectedPos(null)} className="m-4 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button><PosDashboard pos={selectedPos} isAdminView={true} onActionSuccess={() => setRefreshTrigger(p => p + 1)} /></>;
-
+    
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {/* Modals */}
             {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
             {posToEdit && <EditPosModal pos={posToEdit} hasOpenBalance={posToEdit.balance > 0} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
             {posToEditUser && <EditPosUserModal posUser={posToEditUser} onClose={() => setPosToEditUser(null)} onSave={() => {}} />}
-            {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={<div><p>{`Rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`}</p>{posToToggleStatus.status === 'active' && <div className="flex items-center gap-3 mt-4"><input id="archive-cb" type="checkbox" checked={shouldArchive} onChange={(e) => setShouldArchive(e.target.checked)} /><label htmlFor="archive-cb">Archiver aussi</label></div>}</div>} onConfirm={handleTogglePosStatus} onCancel={() => setPosToToggleStatus(null)} confirmText="Oui, confirmer" />}
-            {requestToProcess && <ProcessDeliveryModal request={requestToProcess} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
-            {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Annuler cette commande ? Fournir un motif.`} requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />}
+            
+            {/* THIS IS THE CORRECTED PART */}
+            {posToToggleStatus && <ConfirmationModal
+                title="Confirmer le changement de statut"
+                message={(
+                    <div>
+                        <p className="mb-4">
+                            {`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`}
+                        </p>
+                        {posToToggleStatus.status === 'active' && (
+                            <div className="flex items-center justify-center gap-3 bg-gray-700/50 p-3 rounded-lg">
+                                <input
+                                    id="archive-checkbox"
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded bg-gray-600 border-gray-500 text-indigo-600 focus:ring-indigo-500"
+                                    checked={shouldArchive}
+                                    onChange={(e) => setShouldArchive(e.target.checked)}
+                                />
+                                <label htmlFor="archive-checkbox" className="text-sm text-gray-300">
+                                    Archiver également ce compte
+                                </label>
+                            </div>
+                        )}
+                    </div>
+                )}
+                onConfirm={handleTogglePosStatus}
+                onCancel={() => { setPosToToggleStatus(null); setShouldArchive(false); }}
+                confirmText="Oui, confirmer"
+                confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}
+            />}
+            {/* END OF CORRECTION */}
 
-            {/* Header */}
+            {requestToProcess && <ProcessDeliveryModal request={requestToProcess} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
+            {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Vous êtes sur le point d'annuler cette commande. Veuillez fournir un motif (obligatoire).`} confirmText="Confirmer l'Annulation" confirmColor="bg-red-600 hover:bg-red-700" requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />}
+
             <div className="flex flex-col md:flex-row justify-between items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord Admin</h2><p className="text-gray-400">Gestion des dépôts et du catalogue.</p></div>
                 <div className="flex flex-wrap gap-4 mt-4 md:mt-0">
@@ -178,7 +200,6 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {/* KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <KpiCard title="CA (Période en cours)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
                 <KpiCard title="Commissions (Période en cours)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
@@ -186,9 +207,7 @@ const AdminDashboard = () => {
                 <KpiCard title="Dépôts Actifs" value={combinedPointsOfSale.filter(p=>p.status==='active').length} icon={Store} color="bg-purple-600" />
             </div>
 
-            {/* Main Content */}
             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                {/* PoS List */}
                 <table className="w-full text-left">
                     <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead>
                     <tbody>
