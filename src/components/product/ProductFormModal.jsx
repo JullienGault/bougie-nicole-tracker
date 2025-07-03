@@ -11,7 +11,6 @@ const ProductFormModal = ({ product, onClose }) => {
     const [name, setName] = useState(product?.name || '');
     const [price, setPrice] = useState(product?.price || 0);
     const [imageUrl, setImageUrl] = useState(product?.imageUrl || '');
-    const [hasScents, setHasScents] = useState(product?.hasScents || false);
     const [isLoading, setIsLoading] = useState(false);
 
     const handleSubmit = async (e) => {
@@ -26,7 +25,6 @@ const ProductFormModal = ({ product, onClose }) => {
             name,
             price: Number(price),
             imageUrl: imageUrl.trim(),
-            hasScents,
             updatedAt: serverTimestamp(),
         };
 
@@ -66,23 +64,11 @@ const ProductFormModal = ({ product, onClose }) => {
                         <label className="block text-sm font-medium text-gray-300 mb-2">URL de l'image (optionnel)</label>
                         <input type="url" value={imageUrl} onChange={e => setImageUrl(e.target.value)} className="w-full bg-gray-700 p-3 rounded-lg" placeholder="https://exemple.com/image.jpg"/>
                     </div>
-                    <div className="flex items-center gap-3 bg-gray-700/50 p-3 rounded-lg">
-                        <input
-                            id="has-scents-checkbox"
-                            type="checkbox"
-                            className="h-4 w-4 rounded bg-gray-600 border-gray-500 text-indigo-600 focus:ring-indigo-500"
-                            checked={hasScents}
-                            onChange={(e) => setHasScents(e.target.checked)}
-                        />
-                        <label htmlFor="has-scents-checkbox" className="text-sm text-gray-300">
-                            Ce produit a des parfums
-                        </label>
-                    </div>
-
+                    
                     <div className="flex justify-end gap-4 pt-4">
                         <button type="button" onClick={onClose} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg">Annuler</button>
                         <button type="submit" disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-60">
-                        {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/> {isEditing ? "Enregistrer" : "Créer"}</>}
+                           {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2"></div> : <><Save size={18}/> {isEditing ? "Enregistrer" : "Créer"}</>}
                         </button>
                     </div>
                 </form>
