@@ -22,17 +22,14 @@ export default function App() {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
     
-    // CORRECTION : État pour les parfums (scents) retiré
     const [products, setProducts] = useState([]);
 
     useEffect(() => { document.title = APP_TITLE; }, []);
 
-    // CORRECTION : Listener pour les parfums (scents) retiré
     useEffect(() => {
         const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), (snapshot) => {
             setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
         });
-        // L'appel à la collection 'scents' a été supprimé ici
         return () => { unsubProducts(); };
     }, []);
 
@@ -74,8 +71,8 @@ export default function App() {
         signOut(auth);
     }, []);
 
-    // CORRECTION : 'scents' retiré de la valeur du provider
-    const providerValue = { db, auth, loggedInUserData, products, setShowProfileModal };
+    // CORRECTION : On fournit un tableau vide pour `scents` pour éviter les crashs.
+    const providerValue = { db, auth, loggedInUserData, products, scents: [], setShowProfileModal };
 
     if (isLoading) {
         return <div className="bg-gray-900 min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>;
