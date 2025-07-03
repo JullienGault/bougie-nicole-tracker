@@ -20,7 +20,6 @@ import SalesAnalytics from './SalesAnalytics';
 const AdminDashboard = () => {
     const { showToast, setChangeAdminView } = useContext(AppContext);
 
-    // États existants
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [posUsers, setPosUsers] = useState([]);
     const [allPosBalances, setAllPosBalances] = useState({});
@@ -41,9 +40,7 @@ const AdminDashboard = () => {
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [deliveryToProcess, setDeliveryToProcess] = useState(null);
     const [deliveryToCancel, setDeliveryToCancel] = useState(null);
-
-    // NOUVEAUX ÉTATS POUR LA VUE DES LIVRAISONS
-    const [deliveryFilter, setDeliveryFilter] = useState('active'); // 'active' vs 'archived'
+    const [deliveryFilter, setDeliveryFilter] = useState('active');
     const [deliveryToArchive, setDeliveryToArchive] = useState(null);
 
     useEffect(() => {
@@ -57,21 +54,66 @@ const AdminDashboard = () => {
         setChangeAdminView(() => setCurrentView);
         return () => setChangeAdminView(null);
     }, [setChangeAdminView]);
-
+    
     useEffect(() => {
-        if (pointsOfSale.length === 0) return;
-        const fetchAllCurrentData = async () => { /* ... */ };
+        if (pointsOfSale.length === 0 && currentView === 'dashboard') return;
+        const fetchAllCurrentData = async () => {
+            const balances = {};
+            let currentSales = [];
+            for (const pos of pointsOfSale) {
+                if(!pos || !pos.id) continue;
+                const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
+                const salesSnapshot = await getDocs(salesQuery);
+                const salesData = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate }));
+                currentSales = [...currentSales, ...salesData];
+                const gross = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0);
+                balances[pos.id] = gross - (gross * (pos.commissionRate || 0));
+            }
+            setAllPosBalances(balances);
+            const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
+            const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
+            setGlobalStats({ revenue, commission, toPay: revenue - commission });
+        };
         fetchAllCurrentData();
-    }, [pointsOfSale, refreshTrigger]);
+    }, [pointsOfSale, refreshTrigger, currentView]);
 
-    const { active: activePosCount, inactive: inactivePosCount, archived: archivedPosCount } = useMemo(() => { /* ... */ }, [pointsOfSale]);
-    const combinedPointsOfSale = useMemo(() => { /* ... */ }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
-    const handleCancelDeliveryRequest = async (reason) => { /* ... */ };
-    const handleTogglePosStatus = async () => { /* ... */ };
-    const handleOpenReconciliation = async (pos) => { /* ... */ };
-    const handleCreatePayout = async (reconciledData) => { /* ... */ };
+    // CORRECTION APPLIQUÉE ICI
+    const { active: activePosCount, inactive: inactivePosCount, archived: archivedPosCount } = useMemo(() => {
+        // Ajout d'une protection pour s'assurer que `pointsOfSale` est bien un tableau.
+        if (!Array.isArray(pointsOfSale)) {
+            return { active: 0, inactive: 0, archived: 0 };
+        }
+        return pointsOfSale.reduce((counts, pos) => {
+            if (pos && pos.isArchived) {
+                counts.archived++;
+            } else if (pos && pos.status === 'active') {
+                counts.active++;
+            } else {
+                // Inclut les dépôts inactifs ou ceux sans statut défini
+                counts.inactive++;
+            }
+            return counts;
+        }, { active: 0, inactive: 0, archived: 0 });
+    }, [pointsOfSale]);
 
-    // NOUVELLE FONCTION POUR ARCHIVER UNE LIVRAISON
+
+    const combinedPointsOfSale = useMemo(() => {
+        let combined = pointsOfSale.map(pos => {
+            const user = posUsers.find(u => u.id === pos.id) || {};
+            return { ...user, ...pos, uid: pos.id, balance: allPosBalances[pos.id] || 0, isArchived: pos.isArchived || false };
+        });
+        let filteredList;
+        if (listFilter === 'active') filteredList = combined.filter(p => p.status === 'active' && !p.isArchived);
+        else if (listFilter === 'inactive') filteredList = combined.filter(p => p.status === 'inactive' && !p.isArchived);
+        else if (listFilter === 'archived') filteredList = combined.filter(p => p.isArchived);
+        else filteredList = combined;
+        if (searchTerm) {
+            const lowerCaseSearch = searchTerm.toLowerCase();
+            filteredList = filteredList.filter(pos => pos.name?.toLowerCase().includes(lowerCaseSearch) || pos.firstName?.toLowerCase().includes(lowerCaseSearch) || pos.lastName?.toLowerCase().includes(lowerCaseSearch));
+        }
+        return filteredList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
+
     const handleArchiveDelivery = async () => {
         if (!deliveryToArchive) return;
         try {
@@ -86,7 +128,63 @@ const AdminDashboard = () => {
         }
     };
 
-    // VUE DES LIVRAISONS ENTIÈREMENT REFAITE
+    const handleCancelDeliveryRequest = async (reason) => {
+        if (!deliveryToCancel) return;
+        try {
+            const requestDocRef = doc(db, 'deliveryRequests', deliveryToCancel.id);
+            await updateDoc(requestDocRef, { status: 'cancelled', cancellationReason: reason });
+            await addDoc(collection(db, 'notifications'), { recipientUid: deliveryToCancel.posId, message: `Votre demande de livraison a été annulée. Motif : ${reason}`, createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_UPDATE' });
+            showToast("La demande a bien été annulée.", "success");
+        } catch (error) { showToast("Erreur lors de l'annulation.", "error"); }
+        finally { setDeliveryToCancel(null); }
+    };
+    
+    const handleTogglePosStatus = async () => {
+        if (!posToToggleStatus) return;
+        const { id, name, status } = posToToggleStatus;
+        const newStatus = status === 'active' ? 'inactive' : 'active';
+        try {
+            const batch = writeBatch(db);
+            const posUpdate = { status: newStatus };
+            if (newStatus === 'inactive' && shouldArchive) posUpdate.isArchived = true;
+            if (newStatus === 'active') posUpdate.isArchived = false;
+            batch.update(doc(db, "pointsOfSale", id), posUpdate);
+            batch.update(doc(db, "users", id), { status: newStatus });
+            await batch.commit();
+            showToast(`Le compte "${name}" est maintenant ${newStatus}.`, "success");
+        } catch (error) { showToast("Erreur lors du changement de statut.", "error"); }
+        finally { setPosToToggleStatus(null); setShouldArchive(false); }
+    };
+
+    const handleOpenReconciliation = async (pos) => {
+        setIsReconLoading(true);
+        try {
+            const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
+            const salesSnapshot = await getDocs(salesQuery);
+            const sales = salesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const stockSnapshot = await getDocs(collection(db, `pointsOfSale/${pos.id}/stock`));
+            const stock = stockSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setReconciliationData({ sales, stock });
+            setPosToReconcile(pos);
+        } catch (error) { showToast("Impossible de charger les données de réconciliation.", "error"); }
+        finally { setIsReconLoading(false); }
+    };
+
+    const handleCreatePayout = async (reconciledData) => {
+        if (!posToReconcile) return;
+        try {
+            await runTransaction(db, async (transaction) => {
+                const payoutRef = doc(collection(db, `pointsOfSale/${posToReconcile.id}/payouts`));
+                transaction.set(payoutRef, { ...reconciledData, posId: posToReconcile.id, posName: posToReconcile.name, status: 'pending', createdAt: serverTimestamp() });
+                reconciledData.items.forEach(item => { item.originalSaleIds.forEach(saleId => { const saleRef = doc(db, `pointsOfSale/${posToReconcile.id}/sales`, saleId); transaction.update(saleRef, { payoutId: payoutRef.id }); }); });
+                reconciledData.items.forEach(item => { const stockRef = doc(db, `pointsOfSale/${posToReconcile.id}/stock`, item.productId); const currentStockItem = reconciliationData.stock.find(s => s.id === item.productId); const currentQuantity = currentStockItem?.quantity || 0; transaction.update(stockRef, { quantity: currentQuantity - (item.originalQuantity - item.finalQuantity) }); });
+            });
+            showToast("La période a été clôturée avec succès !", "success");
+            setPosToReconcile(null);
+            setRefreshTrigger(p => p + 1);
+        } catch (error) { showToast("Une erreur est survenue lors de la clôture.", "error"); }
+    };
+
     const renderDeliveriesView = () => {
         const filteredDeliveries = deliveryRequests.filter(req => {
             if (deliveryFilter === 'active') return !req.isArchived;
@@ -170,16 +268,7 @@ const AdminDashboard = () => {
             {posToReconcile && (<PayoutReconciliationModal pos={posToReconcile} unsettledSales={reconciliationData.sales} stock={reconciliationData.stock} onClose={() => setPosToReconcile(null)} onConfirm={handleCreatePayout} />)}
             {deliveryToProcess && <ProcessDeliveryModal request={deliveryToProcess} onClose={() => setDeliveryToProcess(null)} onCancelRequest={() => { setDeliveryToCancel(deliveryToProcess); setDeliveryToProcess(null); }} />}
             {deliveryToCancel && <ReasonPromptModal title="Annuler la livraison" message="Veuillez indiquer le motif de l'annulation." onConfirm={handleCancelDeliveryRequest} onCancel={() => setDeliveryToCancel(null)} />}
-            
-            {/* NOUVELLE MODALE DE CONFIRMATION POUR L'ARCHIVAGE */}
-            {deliveryToArchive && <ConfirmationModal
-                title="Confirmer l'archivage"
-                message="Voulez-vous vraiment archiver cette demande ? Elle ne sera plus visible dans la liste principale."
-                onConfirm={handleArchiveDelivery}
-                onCancel={() => setDeliveryToArchive(null)}
-                confirmText="Oui, archiver"
-                confirmColor="bg-yellow-600 hover:bg-yellow-700"
-            />}
+            {deliveryToArchive && <ConfirmationModal title="Confirmer l'archivage" message="Voulez-vous vraiment archiver cette demande ? Elle ne sera plus visible dans la liste principale." onConfirm={handleArchiveDelivery} onCancel={() => setDeliveryToArchive(null)} confirmText="Oui, archiver" confirmColor="bg-yellow-600 hover:bg-yellow-700" />}
 
             <div className="flex flex-col md:flex-row justify-between items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord Admin</h2><p className="text-gray-400">Gestion des dépôts et du catalogue.</p></div>
