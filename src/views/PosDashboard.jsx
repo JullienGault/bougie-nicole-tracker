@@ -14,7 +14,7 @@ import FullScreenDataModal from '../components/common/FullScreenDataModal';
 import ContactVerificationModal from '../components/user/ContactVerificationModal';
 import DeliveryDetailsModal from '../components/delivery/DeliveryDetailsModal';
 
-const DeliveriesSection = React.memo(({ deliveryHistory, posId, onArchiveRequest }) => {
+const DeliveriesSection = React.memo(({ deliveryHistory, posId, onArchiveRequest, isAdminView }) => {
     const [expandedCardId, setExpandedCardId] = useState(null);
     const [deliveryFilter, setDeliveryFilter] = useState('active');
 
@@ -99,8 +99,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [showStockModal, setShowStockModal] = useState(false);
     const [showSalesHistoryModal, setShowSalesHistoryModal] = useState(false);
     const [showPayoutsHistoryModal, setShowPayoutsHistoryModal] = useState(false);
-    const [salesFilter, setSalesFilter] = useState('active'); // 'active' ou 'archived'
-
+    
     useEffect(() => {
         if (!posId) return;
         const unsubPos = onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); });
@@ -141,17 +140,56 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         const stockCount = stock.reduce((acc, item) => acc + item.quantity, 0);
         return { unsettledBalance: balance, totalStock: stockCount, commissionRate: commission };
     }, [unsettledSales, stock, posData]);
+    
+    const handleConfirmContact = async () => {
+        setIsConfirmingContact(true);
+        try {
+            const userDocRef = doc(db, "users", loggedInUserData.uid);
+            await updateDoc(userDocRef, { contactInfoLastConfirmedAt: serverTimestamp() });
+            showToast("Merci d'avoir confirmé vos informations !", "success");
+            setShowContactVerificationModal(false);
+        } catch (error) {
+            showToast("Une erreur est survenue.", "error");
+        } finally {
+            setIsConfirmingContact(false);
+        }
+    };
 
-    const handleConfirmContact = async () => { /* ... (inchangé) ... */ };
-    const handleModifyContact = () => { /* ... (inchangé) ... */ };
-    const StockModalContent = () => { /* ... (inchangé) ... */ };
+    const handleModifyContact = () => {
+        setShowContactVerificationModal(false);
+        setShowProfileModal(true);
+    };
+
+    const StockModalContent = () => (
+        <div className="space-y-2">
+            <div className="grid grid-cols-4 gap-4 px-4 pb-2 border-b border-gray-700 text-xs text-gray-400 font-semibold uppercase">
+                <div className="col-span-2">Produit</div>
+                <div className="text-center">Stock Actuel</div>
+                <div className="text-center">Statut</div>
+            </div>
+            {stock.map(item => (
+                <div key={item.id} className="grid grid-cols-4 items-center gap-4 bg-gray-900/50 hover:bg-gray-900 p-4 rounded-lg">
+                    <div className="col-span-2 font-semibold text-white">{item.productName}</div>
+                    <div className="text-center text-2xl font-bold">{item.quantity}</div>
+                    <div className="flex justify-center">
+                        {item.quantity <= LOW_STOCK_THRESHOLD ? 
+                            <span className="px-3 py-1 text-xs font-bold rounded-full bg-red-500/10 text-red-400">Stock Bas</span> : 
+                            <span className="px-3 py-1 text-xs font-bold rounded-full bg-green-500/10 text-green-400">En Stock</span>}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
 
     const SalesHistoryModalContent = () => {
+        const [salesFilter, setSalesFilter] = useState('active');
+
+        // MODIFICATION: La logique de filtrage se base maintenant sur la présence de `payoutId`.
         const filteredSales = useMemo(() => {
             if (salesFilter === 'archived') {
-                return salesHistory.filter(sale => sale.isArchived === true);
+                return salesHistory.filter(sale => sale.payoutId);
             }
-            return salesHistory.filter(sale => !sale.isArchived);
+            return salesHistory.filter(sale => !sale.payoutId);
         }, [salesHistory, salesFilter]);
 
         return (
@@ -186,11 +224,31 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         );
     };
 
-    const PayoutsHistoryModalContent = () => { /* ... (inchangé) ... */ };
+    const PayoutsHistoryModalContent = () => (
+         <div className="space-y-3">
+            {payouts.length > 0 ? payouts.map(payout => {
+                const statusConfig = PAYOUT_STATUSES[payout.status] || {};
+                return (
+                    <div key={payout.id} className="bg-gray-900/50 hover:bg-gray-900 p-4 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <p className="text-lg font-bold text-white">Paiement du {formatDate(payout.createdAt)}</p>
+                            <p className="text-sm text-gray-400">Période du {formatDate(payout.period.start)} au {formatDate(payout.period.end)}</p>
+                        </div>
+                        <div className="flex items-center gap-6">
+                            <div className="text-right">
+                                <p className="text-xs text-gray-400">Montant Net Reversé</p>
+                                <p className="text-2xl font-bold text-green-400">{formatPrice(payout.netAmount)}</p>
+                            </div>
+                            <button onClick={() => setPayoutToView(payout)} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg text-sm hover:bg-indigo-700">Voir Détail</button>
+                        </div>
+                    </div>
+                )
+            }) : <p className="text-center py-16 text-gray-400">Aucun historique de paiement pour le moment.</p>}
+        </div>
+    );
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {/* ... Modales (inchangées) ... */}
             {!isAdminView && showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {!isAdminView && showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {payoutToView && posData && <PayoutReconciliationModal pos={posData} stock={stock} unsettledSales={[]} payoutData={payoutToView} onClose={() => setPayoutToView(null)} isReadOnly={true} />}
@@ -229,7 +287,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                 <KpiCard title="Taux de Commission" value={formatPercent(commissionRate)} icon={Percent} color="bg-pink-600" />
             </div>
 
-            <DeliveriesSection deliveryHistory={deliveryHistory} posId={posId} onArchiveRequest={setDeliveryToArchive} />
+            <DeliveriesSection deliveryHistory={deliveryHistory} posId={posId} onArchiveRequest={setDeliveryToArchive} isAdminView={isAdminView} />
             
             <div className="bg-gray-800 rounded-2xl p-6">
                 <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
