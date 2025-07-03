@@ -14,7 +14,7 @@ const ConfirmationModal = ({ title, message, onConfirm, onCancel, confirmText = 
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 animate-fade-in" onClick={onCancel}>
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[90] animate-fade-in" onClick={onCancel}>
             <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-700 animate-fade-in-up" onClick={e => e.stopPropagation()}>
                 <div className="text-center">
                     <AlertTriangle className="mx-auto h-12 w-12 text-yellow-400" />
