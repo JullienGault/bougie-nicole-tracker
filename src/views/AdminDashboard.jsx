@@ -21,12 +21,11 @@ import PosDashboard from './PosDashboard';
 import SalesAnalytics from './SalesAnalytics';
 
 const AdminDashboard = () => {
-    const { loggedInUserData, showToast, products } = useContext(AppContext);
+    const { showToast } = useContext(AppContext);
     
     // States
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [posUsers, setPosUsers] = useState([]);
-    const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [allPosBalances, setAllPosBalances] = useState({});
     const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0 });
     const [showCreateModal, setShowCreateModal] = useState(false);
@@ -37,7 +36,6 @@ const AdminDashboard = () => {
     const [shouldArchive, setShouldArchive] = useState(false);
     const [requestToProcess, setRequestToProcess] = useState(null);
     const [requestToCancel, setRequestToCancel] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
     const [currentView, setCurrentView] = useState('dashboard');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
@@ -51,27 +49,40 @@ const AdminDashboard = () => {
         const unsubUsers = onSnapshot(query(collection(db, "users"), where("role", "==", "pos")), 
             (snapshot) => setPosUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
         );
-        const unsubRequests = onSnapshot(query(collection(db, "deliveryRequests"), orderBy('createdAt', 'desc')), 
-            (snapshot) => setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-        );
-        return () => { // Cleanup listeners on component unmount
+        return () => { 
             unsubPointsOfSale();
             unsubUsers();
-            unsubRequests();
         };
     }, []);
-    
-    // =======================================================
-    // CORRECTION APPLIQUÉE ICI
-    // J'ai renommé les variables pour qu'elles correspondent
-    // =======================================================
+
+    useEffect(() => {
+        if (pointsOfSale.length === 0) return;
+        const fetchAllCurrentData = async () => {
+            const balances = {};
+            let currentSales = [];
+            for (const pos of pointsOfSale) {
+                const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
+                const salesSnapshot = await getDocs(salesQuery);
+                const salesData = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate }));
+                currentSales = [...currentSales, ...salesData];
+                const gross = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0);
+                balances[pos.id] = gross - (gross * (pos.commissionRate || 0));
+            }
+            setAllPosBalances(balances);
+            const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
+            const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
+            setGlobalStats({ revenue, commission, toPay: revenue - commission });
+        };
+        fetchAllCurrentData();
+    }, [pointsOfSale, refreshTrigger]);
+
     const { active: activePosCount, inactive: inactivePosCount, archived: archivedPosCount } = useMemo(() => {
         return pointsOfSale.reduce((counts, pos) => {
             if (pos.isArchived) {
                 counts.archived++;
             } else if (pos.status === 'active') {
                 counts.active++;
-            } else if (pos.status === 'inactive') {
+            } else {
                 counts.inactive++;
             }
             return counts;
@@ -145,12 +156,12 @@ const AdminDashboard = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <KpiCard title="CA (Période en cours)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
-                <KpiCard title="Commissions (Période en cours)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
-                <KpiCard title="Net à Reverser (Total)" value={formatPrice(globalStats.toPay)} icon={Package} color="bg-pink-600" />
-                <KpiCard title="Dépôts Actifs" value={activePosCount} icon={Store} color="bg-purple-600" />
+                <KpiCard title="CA (Période en cours)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" tooltip="Chiffre d'Affaires Brut : Montant total de toutes les ventes non encore réglées."/>
+                <KpiCard title="Commissions (Période en cours)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" tooltip="Montant total des commissions générées sur les ventes non encore réglées."/>
+                <KpiCard title="Net à Reverser (Total)" value={formatPrice(globalStats.toPay)} icon={Package} color="bg-pink-600" tooltip="Somme totale due à tous les dépôts pour les ventes non encore réglées."/>
+                <KpiCard title="Dépôts Actifs" value={activePosCount} icon={Store} color="bg-purple-600" tooltip="Nombre total de dépôts-ventes avec un statut 'actif'."/>
             </div>
-
+            
             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
                      <div className="border-b border-gray-700">
@@ -160,36 +171,4 @@ const AdminDashboard = () => {
                             <button onClick={() => setListFilter('archived')} className={`${listFilter === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archivés ({archivedPosCount})</button>
                         </nav>
                     </div>
-                    <div className="relative w-full sm:w-auto sm:max-w-xs mt-4 sm:mt-0">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <input type="text" placeholder="Rechercher un dépôt..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-gray-700 p-2 pl-10 rounded-lg"/>
-                    </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead>
-                        <tbody>
-                            {combinedPointsOfSale.map(pos => (
-                                <tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                                    <td className="p-3 font-medium flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${pos.isArchived ? 'bg-gray-500' : (pos.status === 'active' ? 'bg-green-500' : 'bg-red-500')}`} title={pos.isArchived ? 'Archivé' : (pos.status === 'active' ? 'Actif' : 'Inactif')}></span>{pos.name}</td>
-                                    <td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td>
-                                    <td className="p-3">{formatPercent(pos.commissionRate)}</td>
-                                    <td className="p-3 space-x-2 text-sm whitespace-nowrap">
-                                        <button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button>
-                                        <button onClick={() => setPosToEditUser(pos)} className="text-cyan-400 p-1 hover:text-cyan-300">Infos Contact</button>
-                                        <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Paramètres</button>
-                                        <button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}>{pos.status === 'active' ? 'Désactiver' : 'Activer'}</button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    {combinedPointsOfSale.length === 0 && <p className="text-center text-gray-400 py-8">Aucun dépôt-vente ne correspond aux filtres actuels.</p>}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-export default AdminDashboard;
+                    <div className="relative w-full sm:w-auto sm:max-w-xs mt-4 sm:mt-
