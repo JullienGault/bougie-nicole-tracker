@@ -17,6 +17,77 @@ import ProductManager from '../components/product/ProductManager';
 import PosDashboard from './PosDashboard';
 import SalesAnalytics from './SalesAnalytics';
 
+// --- Composant pour la vue des livraisons (EXTRAIT ET CORRIGÉ) ---
+const DeliveriesView = React.memo(({ requests, onBack, onProcess, onCancel, onArchive }) => {
+    const [deliveryFilter, setDeliveryFilter] = useState('active');
+
+    const filteredDeliveries = useMemo(() => {
+        return requests.filter(req => {
+            const isArchivedByAdmin = req.archivedBy?.includes('admin');
+            if (deliveryFilter === 'active') return !isArchivedByAdmin;
+            if (deliveryFilter === 'archived') return isArchivedByAdmin;
+            return true;
+        });
+    }, [requests, deliveryFilter]);
+
+    return (
+        <div className="p-4 sm:p-8 animate-fade-in">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
+                <div className="flex items-center gap-4">
+                    <button onClick={onBack} className="bg-gray-600 hover:bg-gray-500 p-2 rounded-full text-white">
+                        <ArrowRightCircle className="transform rotate-180" size={24} />
+                    </button>
+                    <div>
+                        <h2 className="text-3xl font-bold text-white">Demandes de Livraison</h2>
+                        <p className="text-gray-400">Gérez toutes les demandes en cours et passées.</p>
+                    </div>
+                </div>
+                <div className="flex gap-2 p-1 bg-gray-900 rounded-lg mt-4 sm:mt-0">
+                    <button onClick={() => setDeliveryFilter('active')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>En cours</button>
+                    <button onClick={() => setDeliveryFilter('archived')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'archived' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Archivées</button>
+                </div>
+            </div>
+            <div className="space-y-4">
+                 {filteredDeliveries.map(req => {
+                    const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
+                    const Icon = statusConfig.icon;
+                    const isActionable = req.status !== 'delivered' && req.status !== 'cancelled';
+                    const isArchivable = !isActionable && deliveryFilter === 'active';
+
+                    return (
+                        <div key={req.id} className="bg-gray-800 p-5 rounded-xl border border-gray-700/50 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                            <div className="flex-1">
+                                <div className="flex justify-between items-start mb-2">
+                                    <p className="font-bold text-white text-lg">{req.posName}</p>
+                                    <span className={`flex sm:hidden items-center gap-2 px-2 py-1 text-xs font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}><Icon size={14} /><span>{statusConfig.text}</span></span>
+                                </div>
+                                <div className="flex items-baseline gap-4">
+                                    <p className="text-base font-semibold">{req.items.reduce((acc, i) => acc + i.quantity, 0)} articles demandés</p>
+                                    <p className="text-xs text-gray-400">{formatDate(req.createdAt)}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 sm:gap-4">
+                                <span className={`hidden sm:flex items-center gap-2 px-2.5 py-1.5 text-sm font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}><Icon size={16} /><span>{statusConfig.text}</span></span>
+                                <div className="flex items-center gap-2">
+                                    {isArchivable && <button onClick={() => onArchive(req)} className="p-2 text-yellow-400 hover:bg-yellow-500/10 rounded-md" title="Archiver"><Archive size={18}/></button>}
+                                    {isActionable && <button onClick={() => onCancel(req)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-md" title="Annuler la commande"><XCircle size={18}/></button>}
+                                    <button onClick={() => onProcess(req)} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2 hover:bg-indigo-700"><Truck size={16}/>Gérer</button>
+                                </div>
+                            </div>
+                        </div>
+                    )
+                })}
+                {filteredDeliveries.length === 0 && 
+                    <div className="col-span-full text-center py-16 text-gray-400">
+                        <p>Aucune demande de livraison ne correspond à ce filtre.</p>
+                    </div>
+                }
+            </div>
+        </div>
+    );
+});
+
+// --- Composant principal ---
 const AdminDashboard = () => {
     const { showToast, setChangeAdminView } = useContext(AppContext);
 
@@ -119,7 +190,7 @@ const AdminDashboard = () => {
             const stock = stockSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             setReconciliationData({ sales, stock });
-            setPosToReconcile(pos); // On met à jour l'état seulement si tout réussit
+            setPosToReconcile(pos); 
         } catch (error) {
             showToast("Erreur lors de la récupération des données de réconciliation.", "error");
             console.error(error);
@@ -167,7 +238,7 @@ const AdminDashboard = () => {
             showToast("Erreur lors de la création du paiement.", "error");
         } finally {
             setPosToReconcile(null);
-            setReconciliationData({ sales: [], stock: [] });
+            setReconciliationData({ sales, stock: [] });
             setRefreshTrigger(p => p + 1);
         }
     };
@@ -230,77 +301,9 @@ const AdminDashboard = () => {
         </div>
     );
     
-    const DeliveriesView = () => {
-        const [deliveryFilter, setDeliveryFilter] = useState('active');
-        const filteredDeliveries = useMemo(() => {
-            return deliveryRequests.filter(req => {
-                const isArchivedByAdmin = req.archivedBy?.includes('admin');
-                if (deliveryFilter === 'active') return !isArchivedByAdmin;
-                if (deliveryFilter === 'archived') return isArchivedByAdmin;
-                return true;
-            });
-        }, [deliveryRequests, deliveryFilter]);
-
-        return (
-            <div className="p-4 sm:p-8 animate-fade-in">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
-                    <div className="flex items-center gap-4">
-                        <button onClick={handleBackToDashboard} className="bg-gray-600 hover:bg-gray-500 p-2 rounded-full text-white">
-                            <ArrowRightCircle className="transform rotate-180" size={24} />
-                        </button>
-                        <div>
-                            <h2 className="text-3xl font-bold text-white">Demandes de Livraison</h2>
-                            <p className="text-gray-400">Gérez toutes les demandes en cours et passées.</p>
-                        </div>
-                    </div>
-                    <div className="flex gap-2 p-1 bg-gray-900 rounded-lg mt-4 sm:mt-0">
-                        <button onClick={() => setDeliveryFilter('active')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>En cours</button>
-                        <button onClick={() => setDeliveryFilter('archived')} className={`px-4 py-1.5 rounded-md text-sm font-semibold ${deliveryFilter === 'archived' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-700'}`}>Archivées</button>
-                    </div>
-                </div>
-                <div className="space-y-4">
-                     {filteredDeliveries.map(req => {
-                        const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
-                        const Icon = statusConfig.icon;
-                        const isActionable = req.status !== 'delivered' && req.status !== 'cancelled';
-                        const isArchivable = !isActionable && deliveryFilter === 'active';
-
-                        return (
-                            <div key={req.id} className="bg-gray-800 p-5 rounded-xl border border-gray-700/50 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                                <div className="flex-1">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <p className="font-bold text-white text-lg">{req.posName}</p>
-                                        <span className={`flex sm:hidden items-center gap-2 px-2 py-1 text-xs font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}><Icon size={14} /><span>{statusConfig.text}</span></span>
-                                    </div>
-                                    <div className="flex items-baseline gap-4">
-                                        <p className="text-base font-semibold">{req.items.reduce((acc, i) => acc + i.quantity, 0)} articles demandés</p>
-                                        <p className="text-xs text-gray-400">{formatDate(req.createdAt)}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2 sm:gap-4">
-                                    <span className={`hidden sm:flex items-center gap-2 px-2.5 py-1.5 text-sm font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}><Icon size={16} /><span>{statusConfig.text}</span></span>
-                                    <div className="flex items-center gap-2">
-                                        {isArchivable && <button onClick={() => setDeliveryToArchive(req)} className="p-2 text-yellow-400 hover:bg-yellow-500/10 rounded-md" title="Archiver"><Archive size={18}/></button>}
-                                        {isActionable && <button onClick={() => setDeliveryToCancel(req)} className="p-2 text-red-500 hover:bg-red-500/10 rounded-md" title="Annuler la commande"><XCircle size={18}/></button>}
-                                        <button onClick={() => setDeliveryToProcess(req)} className="bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg text-sm flex items-center gap-2 hover:bg-indigo-700"><Truck size={16}/>Gérer</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )
-                    })}
-                    {filteredDeliveries.length === 0 && 
-                        <div className="col-span-full text-center py-16 text-gray-400">
-                            <p>Aucune demande de livraison ne correspond à ce filtre.</p>
-                        </div>
-                    }
-                </div>
-            </div>
-        );
-    };
-    
     if (currentView === 'products') return <><BackButton onBack={handleBackToDashboard} /><ProductManager onBack={handleBackToDashboard} /></>;
     if (currentView === 'analytics') return <><BackButton onBack={handleBackToDashboard} /><SalesAnalytics /></>;
-    if (currentView === 'deliveries') return <DeliveriesView />;
+    if (currentView === 'deliveries') return <DeliveriesView requests={deliveryRequests} onBack={handleBackToDashboard} onProcess={setDeliveryToProcess} onCancel={setDeliveryToCancel} onArchive={setDeliveryToArchive} />;
     if (selectedPos) return <><BackButton onBack={handleBackToDashboard} /><PosDashboard pos={selectedPos} isAdminView={true} /></>;
 
     return (
