@@ -6,8 +6,8 @@ export const AppContext = React.createContext(null);
 
 export const AppProvider = ({ children, value }) => {
     const [toast, setToast] = useState(null);
-    // NOUVEL ÉTAT POUR LA MODALE GLOBALE
-    const [globalModal, setGlobalModal] = useState(null);
+    // Renommé pour plus de clarté, contiendra la fonction pour changer de vue
+    const [changeAdminView, setChangeAdminView] = useState(null);
 
     const showToast = useCallback((message, type = 'success') => {
         setToast({ id: Date.now(), message, type });
@@ -16,10 +16,10 @@ export const AppProvider = ({ children, value }) => {
     const contextValue = useMemo(() => ({
         ...value,
         showToast,
-        // NOUVELLES VALEURS DANS LE CONTEXTE
-        globalModal,
-        setGlobalModal
-    }), [value, showToast, globalModal]);
+        // On expose la fonction et son setter
+        changeAdminView,
+        setChangeAdminView,
+    }), [value, showToast, changeAdminView]);
 
     return (
         <AppContext.Provider value={contextValue}>
