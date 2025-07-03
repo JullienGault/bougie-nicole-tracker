@@ -1,3 +1,4 @@
+// src/constants/index.js
 import { Truck, User, Percent, AlertTriangle, PackageCheck } from 'lucide-react';
 
 export const APP_NAME = "Bougie Nicole - Gestion Dépôts";
@@ -24,7 +25,8 @@ export const NOTIFICATION_CONFIG = {
     NEW_DELIVERY_REQUEST: {
         icon: Truck,
         color: 'text-blue-400',
-        action: 'OPEN_DELIVERY_MODAL'
+        // MODIFICATION ICI
+        action: 'OPEN_DELIVERY_VIEW'
     },
     DELIVERY_UPDATE: {
         icon: PackageCheck,
