@@ -171,4 +171,36 @@ const AdminDashboard = () => {
                             <button onClick={() => setListFilter('archived')} className={`${listFilter === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archivés ({archivedPosCount})</button>
                         </nav>
                     </div>
-                    <div className="relative w-full sm:w-auto sm:max-w-xs mt-4 sm:mt-
+                    <div className="relative w-full sm:w-auto sm:max-w-xs mt-4 sm:mt-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <input type="text" placeholder="Rechercher un dépôt..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-gray-700 p-2 pl-10 rounded-lg"/>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead>
+                        <tbody>
+                            {combinedPointsOfSale.map(pos => (
+                                <tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                    <td className="p-3 font-medium flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${pos.isArchived ? 'bg-gray-500' : (pos.status === 'active' ? 'bg-green-500' : 'bg-red-500')}`} title={pos.isArchived ? 'Archivé' : (pos.status === 'active' ? 'Actif' : 'Inactif')}></span>{pos.name}</td>
+                                    <td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td>
+                                    <td className="p-3">{formatPercent(pos.commissionRate)}</td>
+                                    <td className="p-3 space-x-2 text-sm whitespace-nowrap">
+                                        <button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button>
+                                        <button onClick={() => setPosToEditUser(pos)} className="text-cyan-400 p-1 hover:text-cyan-300">Infos Contact</button>
+                                        <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Paramètres</button>
+                                        <button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}>{pos.status === 'active' ? 'Désactiver' : 'Activer'}</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {combinedPointsOfSale.length === 0 && <p className="text-center text-gray-400 py-8">Aucun dépôt-vente ne correspond aux filtres actuels.</p>}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default AdminDashboard;
