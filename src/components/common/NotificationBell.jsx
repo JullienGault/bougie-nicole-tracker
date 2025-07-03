@@ -13,8 +13,9 @@ const NotificationBell = () => {
     useEffect(() => {
         if (!loggedInUserData || !db) return;
 
+        // L'admin écoute les notifs pour 'all_admins', le POS écoute les siennes
         const recipientIds = loggedInUserData.role === 'admin'
-            ? [loggedInUserData.uid, 'all_admins']
+            ? ['all_admins']
             : [loggedInUserData.uid];
 
         const q = query(
