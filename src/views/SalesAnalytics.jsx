@@ -1,7 +1,12 @@
 // src/views/SalesAnalytics.jsx
-import React, { useState, useEffect, useContext } from 'react';
-import { db, collection, query, where, getDocs } from '../../services/firebase';
+import React, { useState, useEffect } from 'react';
+// CHEMIN D'IMPORTATION CORRIGÉ
+import { db, collection, query, where, getDocs } from '../services/firebase';
+
+// Icons
 import { CircleDollarSign, HandCoins, Package, CheckCircle } from 'lucide-react';
+
+// Components & Utils
 import KpiCard from '../components/common/KpiCard';
 import { formatPrice } from '../utils/formatters';
 
@@ -40,7 +45,7 @@ const SalesAnalytics = () => {
                     }));
                     allSales = allSales.concat(monthSales);
                 }
-
+                
                 if (allSales.length === 0) {
                     setMonthlyData({ revenue: 0, commission: 0, netIncome: 0, salesCount: 0, topPos: [], topProducts: [] });
                     setIsLoading(false);
@@ -59,10 +64,10 @@ const SalesAnalytics = () => {
                     const productKey = `${sale.productName} ${sale.scent || ''}`.trim();
                     salesByProduct[productKey] = (salesByProduct[productKey] || 0) + sale.quantity;
                 });
-
+                
                 const topPos = Object.entries(salesByPos).sort(([,a],[,b]) => b-a).slice(0, 5);
                 const topProducts = Object.entries(salesByProduct).sort(([,a],[,b]) => b-a).slice(0, 5);
-
+                
                 setMonthlyData({
                     revenue,
                     salesCount: allSales.length,
