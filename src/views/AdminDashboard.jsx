@@ -1,4 +1,3 @@
-// src/views/AdminDashboard.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
@@ -83,9 +82,8 @@ const AdminDashboard = () => {
     }, [pointsOfSale]);
 
     const combinedPointsOfSale = useMemo(() => {
-        // CORRECTION : On s'assure que si un utilisateur n'est pas trouvé, on ne fait pas planter l'application.
         let combined = pointsOfSale.map(pos => {
-            const user = posUsers.find(u => u.id === pos.id) || {}; // Utilise un objet vide si l'utilisateur n'est pas trouvé
+            const user = posUsers.find(u => u.id === pos.id) || {};
             return {
                 ...user,
                 ...pos,
@@ -142,7 +140,6 @@ const AdminDashboard = () => {
             setReconciliationData({ sales, stock });
             setPosToReconcile(pos);
         } catch (error) {
-            console.error("Erreur lors de la préparation de la réconciliation :", error);
             showToast("Impossible de charger les données de réconciliation.", "error");
         } finally {
             setIsReconLoading(false);
@@ -172,13 +169,10 @@ const AdminDashboard = () => {
                 });
 
                 reconciledData.items.forEach(item => {
-                    const adjustment = item.finalQuantity - item.originalQuantity;
-                    if (adjustment !== 0) {
-                        const stockRef = doc(db, `pointsOfSale/${posToReconcile.id}/stock`, item.productId);
-                        const currentStockItem = reconciliationData.stock.find(s => s.id === item.productId);
-                        const currentQuantity = currentStockItem?.quantity || 0;
-                        transaction.update(stockRef, { quantity: currentQuantity - (item.originalQuantity - item.finalQuantity) });
-                    }
+                    const stockRef = doc(db, `pointsOfSale/${posToReconcile.id}/stock`, item.productId);
+                    const currentStockItem = reconciliationData.stock.find(s => s.id === item.productId);
+                    const currentQuantity = currentStockItem?.quantity || 0;
+                    transaction.update(stockRef, { quantity: currentQuantity - (item.originalQuantity - item.finalQuantity) });
                 });
             });
 
@@ -187,7 +181,6 @@ const AdminDashboard = () => {
             setRefreshTrigger(p => p + 1);
 
         } catch (error) {
-            console.error("Erreur lors de la clôture de la période :", error);
             showToast("Une erreur est survenue lors de la clôture.", "error");
         }
     };
