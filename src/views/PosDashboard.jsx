@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { db, onSnapshot, doc, collection, query, orderBy, updateDoc, serverTimestamp } from '../services/firebase';
+import { db, onSnapshot, doc, collection, query, orderBy, where, updateDoc, serverTimestamp } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Truck, PlusCircle, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail } from 'lucide-react';
-import { LOW_STOCK_THRESHOLD, PAYOUT_STATUSES } from '../constants';
+import { LOW_STOCK_THRESHOLD, PAYOUT_STATUSES, DELIVERY_STATUS_STEPS } from '../constants';
 import { formatPrice, formatDate, formatPercent, formatPhone } from '../utils/formatters';
 import KpiCard from '../components/common/KpiCard';
 import SaleModal from '../components/pos/SaleModal';
@@ -20,6 +20,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [salesHistory, setSalesHistory] = useState([]);
     const [posData, setPosData] = useState(null);
     const [payouts, setPayouts] = useState([]);
+    const [deliveryHistory, setDeliveryHistory] = useState([]);
     const [activeModal, setActiveModal] = useState(null);
     const [showSaleModal, setShowSaleModal] = useState(false);
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
@@ -27,10 +28,24 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [showContactVerificationModal, setShowContactVerificationModal] = useState(false);
     const [isConfirmingContact, setIsConfirmingContact] = useState(false);
 
-    useEffect(() => { if (!posId) return; const unsub = onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); }); return unsub; }, [posId]);
-    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/stock`)), (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), productId: doc.id })))); return unsub; }, [posId]);
-    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')), (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [posId]);
-    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')), (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))); return unsub; }, [posId]);
+    useEffect(() => {
+        if (!posId) return;
+        const unsubPos = onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); });
+        const unsubStock = onSnapshot(query(collection(db, `pointsOfSale/${posId}/stock`)), (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), productId: doc.id }))));
+        const unsubSales = onSnapshot(query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')), (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+        const unsubPayouts = onSnapshot(query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')), (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubDeliveries = onSnapshot(query(collection(db, "deliveryRequests"), where("posId", "==", posId), orderBy("createdAt", "desc")), (snapshot) => {
+            setDeliveryHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        
+        return () => {
+            unsubPos();
+            unsubStock();
+            unsubSales();
+            unsubPayouts();
+            unsubDeliveries();
+        };
+    }, [posId]);
 
     useEffect(() => {
         if (loggedInUserData && loggedInUserData.role === 'pos' && !isAdminView) {
@@ -133,6 +148,28 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                         </tbody>
                     </table>
                 );
+            case 'deliveries':
+                return (
+                    <div className="space-y-3">
+                        {deliveryHistory.map(req => (
+                            <div key={req.id} className="bg-gray-900/50 p-4 rounded-lg">
+                                <div className="flex justify-between items-center">
+                                    <p className="font-bold text-white">Demande du {formatDate(req.createdAt)}</p>
+                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${
+                                        req.status === 'delivered' ? 'bg-green-500/10 text-green-400' :
+                                        req.status === 'cancelled' ? 'bg-red-500/10 text-red-400' :
+                                        'bg-blue-500/10 text-blue-400'
+                                    }`}>{DELIVERY_STATUS_STEPS[req.status] || 'Inconnu'}</span>
+                                </div>
+                                <ul className="mt-2 list-disc list-inside text-gray-300 text-sm">
+                                    {req.items.map((item, index) => (
+                                        <li key={item.productId + index}>{item.quantity} x {item.productName}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                );
             default:
                 return null;
         }
@@ -143,4 +180,80 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
             {!isAdminView && showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {!isAdminView && showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {payoutToView && posData && <PayoutReconciliationModal pos={posData} stock={stock} unsettledSales={[]} payoutData={payoutToView} onClose={() => setPayoutToView(null)} isReadOnly={true} />}
-            {showContactVerificationModal && logged
+            {showContactVerificationModal && loggedInUserData && (
+                <ContactVerificationModal 
+                    userData={loggedInUserData} 
+                    onConfirm={handleConfirmContact} 
+                    onModify={handleModifyContact}
+                    isConfirming={isConfirmingContact} 
+                />
+            )}
+            
+            <FullScreenDataModal
+                isOpen={!!activeModal}
+                onClose={() => setActiveModal(null)}
+                title={
+                    activeModal === 'stock' ? 'Votre Stock Actuel' :
+                    activeModal === 'sales' ? 'Historique des Ventes' :
+                    activeModal === 'payouts' ? 'Historique des Paiements' :
+                    'Historique des Livraisons'
+                }
+            >
+                {renderModalContent()}
+            </FullScreenDataModal>
+            
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+                <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
+                <div className="flex gap-4 mt-4 md:mt-0">
+                    {!isAdminView && (
+                        <>
+                            <button onClick={() => setShowDeliveryModal(true)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Truck size={20} /> Demander une Livraison</button>
+                            <button onClick={() => setShowSaleModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><PlusCircle size={20} /> Nouvelle Vente</button>
+                        </>
+                    )}
+                </div>
+            </div>
+            
+            <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
+                <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-base">
+                    <div className="flex items-center gap-3"><User className="text-indigo-400" size={22}/> <span>{currentUserData.firstName} {currentUserData.lastName}</span></div>
+                    <div className="flex items-center gap-3"><Store className="text-indigo-400" size={22}/> <span>{currentUserData.displayName}</span></div>
+                    <div className="flex items-center gap-3"><Phone className="text-indigo-400" size={22}/> <span>{formatPhone(currentUserData.phone)}</span></div>
+                    <div className="flex items-center gap-3"><Mail className="text-indigo-400" size={22}/> <span>{currentUserData.email}</span></div>
+                </div>
+            </div>
+
+            {!isAdminView && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <KpiCard title="Montant à reverser" value={formatPrice(unsettledBalance)} icon={DollarSign} color="bg-green-600" />
+                    <KpiCard title="Articles en Stock" value={totalStock} icon={Package} color="bg-blue-600" />
+                    <KpiCard title="Taux de Commission" value={formatPercent(commissionRate)} icon={Percent} color="bg-pink-600" />
+                </div>
+            )}
+            
+            <div className="bg-gray-800 rounded-2xl p-6">
+                <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                     <button onClick={() => setActiveModal('stock')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
+                            <Archive size={24} className="text-blue-400" />
+                            <span className="font-semibold">Voir le Stock</span>
+                        </button>
+                    <button onClick={() => setActiveModal('sales')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
+                        <History size={24} className="text-purple-400" />
+                        <span className="font-semibold">Historique des Ventes</span>
+                    </button>
+                    <button onClick={() => setActiveModal('payouts')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
+                        <CheckCircle size={24} className="text-green-400" />
+                        <span className="font-semibold">Historique des Paiements</span>
+                    </button>
+                    <button onClick={() => setActiveModal('deliveries')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
+                        <Truck size={24} className="text-orange-400" />
+                        <span className="font-semibold">Historique des Livraisons</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+export default PosDashboard;
