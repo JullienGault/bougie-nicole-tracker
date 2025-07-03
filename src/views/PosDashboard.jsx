@@ -1,3 +1,4 @@
+// src/views/PosDashboard.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, onSnapshot, doc, collection, query, orderBy, where, updateDoc, serverTimestamp } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
@@ -10,6 +11,8 @@ import DeliveryRequestModal from '../components/delivery/DeliveryRequestModal';
 import PayoutReconciliationModal from '../components/payout/PayoutReconciliationModal';
 import FullScreenDataModal from '../components/common/FullScreenDataModal';
 import ContactVerificationModal from '../components/user/ContactVerificationModal';
+// NOUVEL IMPORT
+import DeliveryDetailsModal from '../components/delivery/DeliveryDetailsModal';
 
 const PosDashboard = ({ isAdminView = false, pos }) => {
     const { showToast, loggedInUserData, setShowProfileModal } = useContext(AppContext);
@@ -27,6 +30,9 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [payoutToView, setPayoutToView] = useState(null);
     const [showContactVerificationModal, setShowContactVerificationModal] = useState(false);
     const [isConfirmingContact, setIsConfirmingContact] = useState(false);
+    // NOUVEL ÉTAT POUR LA MODALE DE DÉTAIL DE LIVRAISON
+    const [deliveryToView, setDeliveryToView] = useState(null);
+
 
     useEffect(() => {
         if (!posId) return;
@@ -37,7 +43,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         const unsubDeliveries = onSnapshot(query(collection(db, "deliveryRequests"), where("posId", "==", posId), orderBy("createdAt", "desc")), (snapshot) => {
             setDeliveryHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         });
-        
+
         return () => {
             unsubPos();
             unsubStock();
@@ -117,11 +123,10 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                                     <div className="col-span-4 sm:col-span-1 text-center text-lg font-bold">{sale.quantity}</div>
                                     <div className="col-span-4 sm:col-span-2 text-right text-lg font-bold text-green-400">{formatPrice(sale.totalAmount)}</div>
                                     <div className="col-span-4 sm:col-span-2 flex justify-center">
-                                        <span className={`px-3 py-1 text-xs font-bold rounded-full ${
-                                            sale.payoutId 
-                                            ? 'bg-green-500/10 text-green-400' 
+                                        <span className={`px-3 py-1 text-xs font-bold rounded-full ${sale.payoutId
+                                            ? 'bg-green-500/10 text-green-400'
                                             : 'bg-yellow-500/10 text-yellow-400'
-                                        }`}>
+                                            }`}>
                                             {sale.payoutId ? 'Réglée' : 'En cours'}
                                         </span>
                                     </div>
@@ -132,7 +137,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                 );
             case 'payouts':
                 return (
-                     <table className="w-full text-left">
+                    <table className="w-full text-left">
                         <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date Clôture</th><th className="p-3">Montant Net</th><th className="p-3">Statut</th><th className="p-3">Action</th></tr></thead>
                         <tbody>
                             {payouts.map(p => (
@@ -152,14 +157,16 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                 return (
                     <div className="space-y-3">
                         {deliveryHistory.map(req => (
-                            <div key={req.id} className="bg-gray-900/50 p-4 rounded-lg">
+                            // MODIFICATION ICI: ajout du onClick pour ouvrir les détails
+                            <div key={req.id} className="bg-gray-900/50 p-4 rounded-lg hover:bg-gray-900 cursor-pointer" onClick={() => { setDeliveryToView(req); setActiveModal(null); }}>
                                 <div className="flex justify-between items-center">
                                     <p className="font-bold text-white">Demande du {formatDate(req.createdAt)}</p>
-                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${
-                                        req.status === 'delivered' ? 'bg-green-500/10 text-green-400' :
+                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${req.status === 'delivered' ? 'bg-green-500/10 text-green-400' :
                                         req.status === 'cancelled' ? 'bg-red-500/10 text-red-400' :
-                                        'bg-blue-500/10 text-blue-400'
-                                    }`}>{DELIVERY_STATUS_STEPS[req.status] || 'Inconnu'}</span>
+                                            'bg-blue-500/10 text-blue-400'
+                                        }`}>
+                                        {DELIVERY_STATUS_STEPS[req.status] || 'Inconnu'}
+                                    </span>
                                 </div>
                                 <ul className="mt-2 list-disc list-inside text-gray-300 text-sm">
                                     {req.items.map((item, index) => (
@@ -177,31 +184,34 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
+            {/* MODALES */}
             {!isAdminView && showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {!isAdminView && showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {payoutToView && posData && <PayoutReconciliationModal pos={posData} stock={stock} unsettledSales={[]} payoutData={payoutToView} onClose={() => setPayoutToView(null)} isReadOnly={true} />}
             {showContactVerificationModal && loggedInUserData && (
-                <ContactVerificationModal 
-                    userData={loggedInUserData} 
-                    onConfirm={handleConfirmContact} 
+                <ContactVerificationModal
+                    userData={loggedInUserData}
+                    onConfirm={handleConfirmContact}
                     onModify={handleModifyContact}
-                    isConfirming={isConfirmingContact} 
+                    isConfirming={isConfirmingContact}
                 />
             )}
-            
+            {/* NOUVELLE MODALE */}
+            {deliveryToView && <DeliveryDetailsModal request={deliveryToView} onClose={() => setDeliveryToView(null)} />}
+
             <FullScreenDataModal
                 isOpen={!!activeModal}
                 onClose={() => setActiveModal(null)}
                 title={
                     activeModal === 'stock' ? 'Votre Stock Actuel' :
-                    activeModal === 'sales' ? 'Historique des Ventes' :
-                    activeModal === 'payouts' ? 'Historique des Paiements' :
-                    'Historique des Livraisons'
+                        activeModal === 'sales' ? 'Historique des Ventes' :
+                            activeModal === 'payouts' ? 'Historique des Paiements' :
+                                'Historique des Livraisons'
                 }
             >
                 {renderModalContent()}
             </FullScreenDataModal>
-            
+
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
                 <div className="flex gap-4 mt-4 md:mt-0">
@@ -213,14 +223,14 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                     )}
                 </div>
             </div>
-            
+
             <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
                 <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-base">
-                    <div className="flex items-center gap-3"><User className="text-indigo-400" size={22}/> <span>{currentUserData.firstName} {currentUserData.lastName}</span></div>
-                    <div className="flex items-center gap-3"><Store className="text-indigo-400" size={22}/> <span>{currentUserData.displayName}</span></div>
-                    <div className="flex items-center gap-3"><Phone className="text-indigo-400" size={22}/> <span>{formatPhone(currentUserData.phone)}</span></div>
-                    <div className="flex items-center gap-3"><Mail className="text-indigo-400" size={22}/> <span>{currentUserData.email}</span></div>
+                    <div className="flex items-center gap-3"><User className="text-indigo-400" size={22} /> <span>{currentUserData.firstName} {currentUserData.lastName}</span></div>
+                    <div className="flex items-center gap-3"><Store className="text-indigo-400" size={22} /> <span>{currentUserData.displayName}</span></div>
+                    <div className="flex items-center gap-3"><Phone className="text-indigo-400" size={22} /> <span>{formatPhone(currentUserData.phone)}</span></div>
+                    <div className="flex items-center gap-3"><Mail className="text-indigo-400" size={22} /> <span>{currentUserData.email}</span></div>
                 </div>
             </div>
 
@@ -231,14 +241,14 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                     <KpiCard title="Taux de Commission" value={formatPercent(commissionRate)} icon={Percent} color="bg-pink-600" />
                 </div>
             )}
-            
+
             <div className="bg-gray-800 rounded-2xl p-6">
                 <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                     <button onClick={() => setActiveModal('stock')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
-                            <Archive size={24} className="text-blue-400" />
-                            <span className="font-semibold">Voir le Stock</span>
-                        </button>
+                    <button onClick={() => setActiveModal('stock')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
+                        <Archive size={24} className="text-blue-400" />
+                        <span className="font-semibold">Voir le Stock</span>
+                    </button>
                     <button onClick={() => setActiveModal('sales')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors">
                         <History size={24} className="text-purple-400" />
                         <span className="font-semibold">Historique des Ventes</span>
