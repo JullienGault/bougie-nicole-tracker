@@ -1,0 +1,6 @@
+# Fichiers d'environnement
+.env
+
+# Autres fichiers à ignorer...
+node_modules
+dist
