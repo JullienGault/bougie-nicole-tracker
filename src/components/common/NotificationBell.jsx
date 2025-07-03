@@ -41,9 +41,7 @@ const NotificationBell = () => {
 
         const config = NOTIFICATION_CONFIG[notification.type] || NOTIFICATION_CONFIG.DEFAULT;
         
-        // Si une action est définie pour ce type de notif et qu'un gestionnaire de vue est dispo...
         if (config.action && requestViewChange) {
-            // ...on l'appelle en lui passant l'action et l'ID associé (ex: ID du dépôt).
             requestViewChange(config.action, notification.relatedId);
         }
 
@@ -67,9 +65,8 @@ const NotificationBell = () => {
             <button onClick={() => setIsPanelOpen(!isPanelOpen)} className="relative p-2 text-gray-400 hover:text-white">
                 <Bell size={22} />
                 {unreadCount > 0 && (
-                    <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                    <span className="absolute top-0 right-0 flex items-center justify-center bg-red-600 text-white text-xs font-bold rounded-full h-5 min-w-[1.25rem] px-1 transform translate-x-1/2 -translate-y-1/2">
+                        {unreadCount}
                     </span>
                 )}
             </button>
