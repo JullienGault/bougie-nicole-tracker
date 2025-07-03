@@ -1,6 +1,6 @@
 // src/views/PosDashboard.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { db, onSnapshot, doc, collection, query, orderBy, where, updateDoc, serverTimestamp } from '../services/firebase';
+import { db, onSnapshot, doc, collection, query, orderBy, where, updateDoc, serverTimestamp, arrayUnion } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Truck, PlusCircle, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail, ChevronDown } from 'lucide-react';
 import { LOW_STOCK_THRESHOLD, PAYOUT_STATUSES, DELIVERY_STATUSES } from '../constants';
@@ -31,8 +31,6 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [showContactVerificationModal, setShowContactVerificationModal] = useState(false);
     const [isConfirmingContact, setIsConfirmingContact] = useState(false);
     const [deliveryToArchive, setDeliveryToArchive] = useState(null);
-    
-    // L'état de la carte dépliée est retiré d'ici pour être mis dans son composant dédié
 
     useEffect(() => {
         if (!posId) return;
@@ -56,12 +54,16 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     }, [loggedInUserData, isAdminView]);
 
     const handleArchiveDelivery = async () => {
-        if (!deliveryToArchive) return;
+        if (!deliveryToArchive || !posId) return;
         try {
             const deliveryDocRef = doc(db, "deliveryRequests", deliveryToArchive.id);
-            await updateDoc(deliveryDocRef, { isArchived: true });
+            // On ajoute l'ID du POS à la liste de ceux qui ont archivé
+            await updateDoc(deliveryDocRef, {
+                archivedBy: arrayUnion(posId)
+            });
             showToast("Demande archivée.", "success");
         } catch (error) {
+            console.error("Erreur d'archivage:", error);
             showToast("Erreur lors de l'archivage.", "error");
         } finally {
             setDeliveryToArchive(null);
@@ -99,7 +101,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     };
 
     const renderArchivedDeliveriesModal = () => {
-        const archivedDeliveries = deliveryHistory.filter(req => req.isArchived);
+        const archivedDeliveries = deliveryHistory.filter(req => req.archivedBy && req.archivedBy.includes(posId));
 
         return (
             <div>
@@ -131,10 +133,9 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         );
     };
     
-    // COMPOSANT DÉDIÉ AVEC SON PROPRE ÉTAT POUR ÉVITER LE CLIGNOTEMENT
     const ActiveDeliveriesSection = () => {
         const [expandedCardId, setExpandedCardId] = useState(null);
-        const activeDeliveries = deliveryHistory.filter(req => !req.isArchived);
+        const activeDeliveries = deliveryHistory.filter(req => !req.archivedBy || !req.archivedBy.includes(posId));
 
         const toggleCard = (id) => {
             setExpandedCardId(expandedCardId === id ? null : id);
@@ -205,7 +206,6 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                     activeModal === 'payouts' ? 'Historique des Paiements' : 'Historique des Livraisons Archivées'
                 }>
                 {activeModal === 'deliveries' ? renderArchivedDeliveriesModal() : null }
-                {/* Potentiellement d'autres rendus de modales ici */}
             </FullScreenDataModal>
             
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
