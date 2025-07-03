@@ -1,18 +1,9 @@
-// src/views/PosDashboard.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, onSnapshot, doc, collection, query, orderBy, updateDoc, serverTimestamp } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-
-// Icons
-import { Truck, PlusCircle, CircleDollarSign, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail } from 'lucide-react';
-
-// Constants
+import { Truck, PlusCircle, CircleDollarSign, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail, ShoppingBag, Calendar } from 'lucide-react';
 import { LOW_STOCK_THRESHOLD, PAYOUT_STATUSES } from '../constants';
-
-// Utils
 import { formatPrice, formatDate, formatPercent, formatPhone } from '../utils/formatters';
-
-// Components
 import KpiCard from '../components/common/KpiCard';
 import SaleModal from '../components/pos/SaleModal';
 import DeliveryRequestModal from '../components/delivery/DeliveryRequestModal';
@@ -21,7 +12,6 @@ import FullScreenDataModal from '../components/common/FullScreenDataModal';
 import ContactVerificationModal from '../components/user/ContactVerificationModal';
 
 const PosDashboard = ({ isAdminView = false, pos }) => {
-    // CORRECTION : Récupération de setShowProfileModal depuis le contexte
     const { showToast, loggedInUserData, setShowProfileModal } = useContext(AppContext);
     const currentUserData = isAdminView ? pos : loggedInUserData;
     const posId = currentUserData.uid;
@@ -30,23 +20,18 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [salesHistory, setSalesHistory] = useState([]);
     const [posData, setPosData] = useState(null);
     const [payouts, setPayouts] = useState([]);
-    
-    // States pour les modales
     const [activeModal, setActiveModal] = useState(null);
     const [showSaleModal, setShowSaleModal] = useState(false);
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
     const [payoutToView, setPayoutToView] = useState(null);
-
-    // États pour la vérification
     const [showContactVerificationModal, setShowContactVerificationModal] = useState(false);
     const [isConfirmingContact, setIsConfirmingContact] = useState(false);
 
-    // Listeners Firestore
     useEffect(() => { if (!posId) return; const unsub = onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); }); return unsub; }, [posId]);
     useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/stock`)), (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), productId: doc.id })))); return unsub; }, [posId]);
     useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')), (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [posId]);
     useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')), (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))); return unsub; }, [posId]);
-    
+
     useEffect(() => {
         if (loggedInUserData && loggedInUserData.role === 'pos' && !isAdminView) {
             const lastConfirmed = loggedInUserData.contactInfoLastConfirmedAt?.toDate();
@@ -56,7 +41,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
             }
         }
     }, [loggedInUserData, isAdminView]);
-    
+
     const unsettledSales = useMemo(() => salesHistory.filter(s => !s.payoutId), [salesHistory]);
 
     const { unsettledBalance, totalStock, commissionRate } = useMemo(() => {
@@ -64,9 +49,13 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         const commission = posData?.commissionRate || 0;
         const balance = grossRevenue - (grossRevenue * commission);
         const stockCount = stock.reduce((acc, item) => acc + item.quantity, 0);
-        return { unsettledBalance: balance, totalStock: stockCount, commissionRate: commission };
+        return {
+            unsettledBalance: balance,
+            totalStock: stockCount,
+            commissionRate: commission
+        };
     }, [unsettledSales, stock, posData]);
-    
+
     const handleConfirmContact = async () => {
         setIsConfirmingContact(true);
         try {
@@ -81,12 +70,11 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         }
     };
 
-    // CORRECTION : Cette fonction utilise maintenant le setShowProfileModal du contexte
     const handleModifyContact = () => {
         setShowContactVerificationModal(false);
-        setShowProfileModal(true); // Ouvre la modale de profil gérée par App.jsx
+        setShowProfileModal(true);
     };
-    
+
     const renderModalContent = () => {
         switch (activeModal) {
             case 'stock':
@@ -98,10 +86,41 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                 );
             case 'sales':
                 return (
-                    <table className="w-full text-left">
-                        <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Statut</th></tr></thead>
-                        <tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName}</td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3 text-xs">{sale.payoutId ? 'Réglée' : 'En cours'}</td></tr>))}</tbody>
-                    </table>
+                    <div className="space-y-4">
+                        {salesHistory.map(sale => (
+                            <div key={sale.id} className="bg-gray-900/50 p-4 rounded-lg flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                                <div className="flex-grow">
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <ShoppingBag className="text-indigo-400" size={20} />
+                                        <h4 className="font-bold text-lg text-white">{sale.productName}</h4>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                                        <Calendar size={14} />
+                                        <span>{formatDate(sale.createdAt)}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-6 text-center w-full sm:w-auto">
+                                    <div className="flex-1">
+                                        <p className="text-xs text-gray-400 uppercase font-semibold">Quantité</p>
+                                        <p className="text-lg font-bold">{sale.quantity}</p>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-xs text-gray-400 uppercase font-semibold">Total</p>
+                                        <p className="text-lg font-bold text-green-400">{formatPrice(sale.totalAmount)}</p>
+                                    </div>
+                                </div>
+                                <div className="w-full sm:w-auto text-center sm:text-right mt-2 sm:mt-0">
+                                    <span className={`px-3 py-1 text-xs font-bold rounded-full ${
+                                        sale.payoutId 
+                                        ? 'bg-green-500/10 text-green-400' 
+                                        : 'bg-yellow-500/10 text-yellow-400'
+                                    }`}>
+                                        {sale.payoutId ? 'Réglée' : 'En cours'}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 );
             case 'payouts':
                 return (
@@ -125,10 +144,9 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
                 return null;
         }
     };
-    
+
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {/* Modales */}
             {!isAdminView && showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {!isAdminView && showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {payoutToView && posData && <PayoutReconciliationModal pos={posData} stock={stock} unsettledSales={[]} payoutData={payoutToView} onClose={() => setPayoutToView(null)} isReadOnly={true} />}
