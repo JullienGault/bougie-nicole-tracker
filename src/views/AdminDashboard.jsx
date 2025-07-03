@@ -4,6 +4,7 @@ import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, update
 import { AppContext } from '../contexts/AppContext';
 import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle } from 'lucide-react';
 import { formatPrice, formatPercent, formatDate } from '../utils/formatters';
+import { DELIVERY_STATUSES } from '../constants';
 import KpiCard from '../components/common/KpiCard';
 import CreatePosModal from '../components/pos/CreatePosModal';
 import EditPosModal from '../components/pos/EditPosModal';
@@ -17,10 +18,8 @@ import PosDashboard from './PosDashboard';
 import SalesAnalytics from './SalesAnalytics';
 
 const AdminDashboard = () => {
-    // MODIFICATION: setGlobalModal remplacé par setChangeAdminView
     const { showToast, setChangeAdminView } = useContext(AppContext);
 
-    // États existants
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [posUsers, setPosUsers] = useState([]);
     const [allPosBalances, setAllPosBalances] = useState({});
@@ -37,42 +36,23 @@ const AdminDashboard = () => {
     const [posToReconcile, setPosToReconcile] = useState(null);
     const [reconciliationData, setReconciliationData] = useState({ sales: [], stock: [] });
     const [isReconLoading, setIsReconLoading] = useState(false);
-
-    // États pour la gestion des livraisons
-    const [currentView, setCurrentView] = useState('dashboard'); // 'dashboard', 'products', 'analytics', 'deliveries'
+    const [currentView, setCurrentView] = useState('dashboard');
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [deliveryToProcess, setDeliveryToProcess] = useState(null);
     const [deliveryToCancel, setDeliveryToCancel] = useState(null);
-    
-    // Récupération des données (inchangé)
+
     useEffect(() => {
-        const unsubPointsOfSale = onSnapshot(query(collection(db, "pointsOfSale"), orderBy('name')),
-            (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-        );
-        const unsubUsers = onSnapshot(query(collection(db, "users"), where("role", "==", "pos")),
-            (snapshot) => setPosUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
-        );
-        const unsubDeliveries = onSnapshot(query(collection(db, "deliveryRequests"), orderBy("createdAt", "desc")),
-            (snapshot) => {
-                setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            }
-        );
-        return () => {
-            unsubPointsOfSale();
-            unsubUsers();
-            unsubDeliveries();
-        };
+        const unsubPointsOfSale = onSnapshot(query(collection(db, "pointsOfSale"), orderBy('name')), (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+        const unsubUsers = onSnapshot(query(collection(db, "users"), where("role", "==", "pos")), (snapshot) => setPosUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+        const unsubDeliveries = onSnapshot(query(collection(db, "deliveryRequests"), orderBy("createdAt", "desc")), (snapshot) => { setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))); });
+        return () => { unsubPointsOfSale(); unsubUsers(); unsubDeliveries(); };
     }, []);
 
-    // LOGIQUE CORRIGÉE : Fournir la fonction pour changer de vue au contexte
     useEffect(() => {
-        // On donne au contexte la fonction `setCurrentView` de ce composant.
         setChangeAdminView(() => setCurrentView);
-        // Au démontage du composant, on nettoie la fonction.
         return () => setChangeAdminView(null);
     }, [setChangeAdminView]);
-
-    // ... (Le reste des fonctions et des useMemo reste identique)
+    
     useEffect(() => {
         if (pointsOfSale.length === 0) return;
         const fetchAllCurrentData = async () => {
@@ -96,13 +76,9 @@ const AdminDashboard = () => {
 
     const { active: activePosCount, inactive: inactivePosCount, archived: archivedPosCount } = useMemo(() => {
         return pointsOfSale.reduce((counts, pos) => {
-            if (pos.isArchived) {
-                counts.archived++;
-            } else if (pos.status === 'active') {
-                counts.active++;
-            } else {
-                counts.inactive++;
-            }
+            if (pos.isArchived) { counts.archived++; }
+            else if (pos.status === 'active') { counts.active++; }
+            else { counts.inactive++; }
             return counts;
         }, { active: 0, inactive: 0, archived: 0 });
     }, [pointsOfSale]);
@@ -134,6 +110,7 @@ const AdminDashboard = () => {
         } catch (error) { showToast("Erreur lors de l'annulation.", "error"); }
         finally { setDeliveryToCancel(null); }
     };
+    
     const handleTogglePosStatus = async () => {
         if (!posToToggleStatus) return;
         const { id, name, status } = posToToggleStatus;
@@ -170,7 +147,7 @@ const AdminDashboard = () => {
         try {
             await runTransaction(db, async (transaction) => {
                 const payoutRef = doc(collection(db, `pointsOfSale/${posToReconcile.id}/payouts`));
-                transaction.set(payoutRef, { ...reconciledData, posId: posToReconcile.id, posName: posToReconcile.name, status: 'pending', createdAt: serverTimestamp(), });
+                transaction.set(payoutRef, { ...reconciledData, posId: posToReconcile.id, posName: posToReconcile.name, status: 'pending', createdAt: serverTimestamp() });
                 reconciledData.items.forEach(item => { item.originalSaleIds.forEach(saleId => { const saleRef = doc(db, `pointsOfSale/${posToReconcile.id}/sales`, saleId); transaction.update(saleRef, { payoutId: payoutRef.id }); }); });
                 reconciledData.items.forEach(item => { const stockRef = doc(db, `pointsOfSale/${posToReconcile.id}/stock`, item.productId); const currentStockItem = reconciliationData.stock.find(s => s.id === item.productId); const currentQuantity = currentStockItem?.quantity || 0; transaction.update(stockRef, { quantity: currentQuantity - (item.originalQuantity - item.finalQuantity) }); });
             });
@@ -179,40 +156,44 @@ const AdminDashboard = () => {
             setRefreshTrigger(p => p + 1);
         } catch (error) { showToast("Une erreur est survenue lors de la clôture.", "error"); }
     };
-    
-    // Le JSX pour la vue des livraisons (inchangé)
+
     const renderDeliveriesView = () => (
         <div className="bg-gray-800 rounded-2xl p-6 mt-8 animate-fade-in">
-            <h3 className="text-xl font-bold text-white mb-4">Demandes de Livraison en Attente</h3>
+            <h3 className="text-xl font-bold text-white mb-4">Demandes de Livraison</h3>
             <div className="overflow-x-auto">
                 <table className="w-full text-left">
                     <thead>
                         <tr className="border-b border-gray-700 text-gray-400 text-sm">
                             <th className="p-3">Date</th>
                             <th className="p-3">Dépôt</th>
-                            <th className="p-3">Articles</th>
+                            <th className="p-3 text-center">Articles</th>
                             <th className="p-3">Statut</th>
-                            <th className="p-3">Actions</th>
+                            <th className="p-3 text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {deliveryRequests.map(req => (
-                            <tr key={req.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                                <td className="p-3">{formatDate(req.createdAt)}</td>
-                                <td className="p-3 font-medium">{req.posName}</td>
-                                <td className="p-3">{req.items.reduce((acc, item) => acc + item.quantity, 0)}</td>
-                                <td className="p-3">
-                                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${req.status === 'delivered' ? 'bg-green-500/10 text-green-400' : req.status === 'cancelled' ? 'bg-red-500/10 text-red-400' : 'bg-blue-500/10 text-blue-400'}`}>
-                                        {req.status}
-                                    </span>
-                                </td>
-                                <td className="p-3">
-                                    <button onClick={() => setDeliveryToProcess(req)} className="bg-indigo-600 text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-indigo-700">
-                                        Gérer
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
+                        {deliveryRequests.map(req => {
+                            const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
+                            const Icon = statusConfig.icon;
+                            return (
+                                <tr key={req.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                    <td className="p-3 text-sm text-gray-300">{formatDate(req.createdAt)}</td>
+                                    <td className="p-3 font-medium">{req.posName}</td>
+                                    <td className="p-3 text-center">{req.items.reduce((acc, item) => acc + item.quantity, 0)}</td>
+                                    <td className="p-3">
+                                        <span className={`flex items-center gap-2 px-2 py-1 text-xs font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}>
+                                            <Icon size={14} />
+                                            <span>{statusConfig.text}</span>
+                                        </span>
+                                    </td>
+                                    <td className="p-3 text-right">
+                                        <button onClick={() => setDeliveryToProcess(req)} className="bg-indigo-600 text-white px-3 py-1.5 rounded-md text-xs font-bold hover:bg-indigo-700">
+                                            Gérer
+                                        </button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
                 {deliveryRequests.length === 0 && <p className="text-center text-gray-400 py-8">Aucune demande de livraison.</p>}
@@ -220,7 +201,6 @@ const AdminDashboard = () => {
         </div>
     );
 
-    // Rendu principal (inchangé)
     if (currentView === 'products') return <ProductManager onBack={() => setCurrentView('dashboard')} />;
     if (currentView === 'analytics') return <><div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700"><button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button></div><SalesAnalytics /></>;
     if (selectedPos) return <><button onClick={() => setSelectedPos(null)} className="m-4 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button><PosDashboard pos={selectedPos} isAdminView={true} onActionSuccess={() => setRefreshTrigger(p => p + 1)} /></>;
