@@ -2,7 +2,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Package, User, LogOut } from 'lucide-react';
 
-// Imports depuis notre nouvelle structure
 import { auth, db, onAuthStateChanged, signInWithEmailAndPassword, signOut, onSnapshot, doc, collection, query, orderBy } from './services/firebase';
 import { AppProvider } from './contexts/AppContext';
 import { APP_NAME, APP_TITLE } from './constants';
@@ -23,13 +22,11 @@ export default function App() {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
     
-    // Données globales
     const [products, setProducts] = useState([]);
     const [scents, setScents] = useState([]);
 
     useEffect(() => { document.title = APP_TITLE; }, []);
 
-    // Listeners pour les données globales
     useEffect(() => {
         const unsubProducts = onSnapshot(query(collection(db, 'products'), orderBy('name')), (snapshot) => {
             setProducts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -40,35 +37,46 @@ export default function App() {
         return () => { unsubProducts(); unsubScents(); };
     }, []);
 
-    // Listener pour l'authentification
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (authUser) => {
-            if (authUser) {
-                setLoggedInUser(authUser);
-                const unsubUser = onSnapshot(doc(db, 'users', authUser.uid), (doc) => {
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                setLoggedInUser(user);
+                const unsubUser = onSnapshot(doc(db, 'users', user.uid), (doc) => {
                     if (doc.exists()) {
-                        setLoggedInUserData({ uid: authUser.uid, email: authUser.email, ...doc.data() });
-                    } else { signOut(auth); }
+                        setLoggedInUserData({ uid: user.uid, email: user.email, ...doc.data() });
+                    } else {
+                        signOut(auth);
+                    }
                     setIsLoading(false);
                 });
                 return () => unsubUser();
             } else {
-                setLoggedInUser(null); setLoggedInUserData(null); setIsLoading(false);
+                setLoggedInUser(null);
+                setLoggedInUserData(null);
+                setIsLoading(false);
             }
         });
         return () => unsubscribe();
     }, []);
 
     const handleLogin = useCallback(async (email, password) => {
-        setLoginError(null); setIsLoggingIn(true);
-        try { await signInWithEmailAndPassword(auth, email, password); } 
-        catch (error) { setLoginError("Email ou mot de passe incorrect."); } 
-        finally { setIsLoggingIn(false); }
+        setLoginError(null);
+        setIsLoggingIn(true);
+        try {
+            await signInWithEmailAndPassword(auth, email, password);
+        } catch (error) {
+            setLoginError("Email ou mot de passe incorrect.");
+        } finally {
+            setIsLoggingIn(false);
+        }
     }, []);
 
-    const handleLogout = useCallback(() => { signOut(auth); }, []);
+    const handleLogout = useCallback(() => {
+        signOut(auth);
+    }, []);
 
-    const providerValue = { db, auth, loggedInUserData, products, scents };
+    // AJOUT : Ajout de setShowProfileModal au contexte pour le rendre accessible partout
+    const providerValue = { db, auth, loggedInUserData, products, scents, setShowProfileModal };
 
     if (isLoading) {
         return <div className="bg-gray-900 min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>;
