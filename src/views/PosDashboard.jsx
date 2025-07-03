@@ -20,8 +20,7 @@ import ConfirmationModal from '../components/common/ConfirmationModal';
 import InfoModal from '../components/common/InfoModal';
 
 const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) => {
-    const { products, showToast, loggedInUserData } = useContext(AppContext);
-
+    const { showToast, loggedInUserData } = useContext(AppContext);
     const currentUserData = isAdminView ? pos : loggedInUserData;
     const posId = currentUserData.uid;
 
@@ -41,10 +40,10 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
     const [payoutToConfirm, setPayoutToConfirm] = useState(null);
     const [isUpdatingPayout, setIsUpdatingPayout] = useState(null);
 
-    useEffect(() => { if (!posId) return; onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); }); }, [posId]);
-    useEffect(() => { if (!posId) return; onSnapshot(query(collection(db, `pointsOfSale/${posId}/stock`)), (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); }, [posId]);
-    useEffect(() => { if (!posId) return; onSnapshot(query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')), (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); }, [posId]);
-    useEffect(() => { if (!posId) return; onSnapshot(query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')), (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))); }, [posId]);
+    useEffect(() => { if (!posId) return; const unsub = onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); }); return unsub; }, [posId]);
+    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/stock`)), (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [posId]);
+    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')), (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [posId]);
+    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')), (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))); return unsub; }, [posId]);
     useEffect(() => {
         if (!posId || isAdminView) return;
         const q = query(collection(db, `deliveryRequests`), where("posId", "==", posId), orderBy('createdAt', 'desc'));
@@ -111,14 +110,12 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
             showToast("Vente annulée et stock restauré.", "success");
         } catch (error) { showToast("Erreur lors de l'annulation de la vente.", "error"); }
     };
-    
-    // Reste des Handlers... (CreatePayout, UpdatePayoutStatus...)
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
             {showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
-            {saleToDelete && <ConfirmationModal title="Confirmer l'annulation" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName}? Le stock sera restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} confirmText="Annuler la Vente" requiresReason={true} />}
+            {saleToDelete && <ConfirmationModal title="Annuler la Vente" message={`Annuler la vente de ${saleToDelete.quantity} x ${saleToDelete.productName} ? Le stock sera restauré.`} onConfirm={handleDeleteSale} onCancel={() => setSaleToDelete(null)} requiresReason={true} />}
             {requestToCancel && <ConfirmationModal title="Annuler la Commande" message="Êtes-vous sûr de vouloir annuler cette commande ?" onConfirm={handleClientCancel} onCancel={() => setRequestToCancel(null)} confirmText="Oui, Annuler"/>}
             {showInfoModal && <InfoModal title="Annulation Impossible" message="Contactez l'administrateur." onClose={() => setShowInfoModal(false)} />}
             {payoutToConfirm && <ConfirmationModal title="Clôturer la Période" message={`Clôturer avec un montant net de ${formatPrice(kpis.netToBePaid)} ?`} onConfirm={() => {}} onCancel={() => setPayoutToConfirm(null)} confirmText="Oui, Clôturer" confirmColor="bg-blue-600 hover:bg-blue-700" />}
@@ -126,11 +123,14 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
                 <div className="flex gap-4 mt-4 md:mt-0">
-                    {!isAdminView && <>
-                        <button onClick={() => setShowDeliveryModal(true)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Truck size={20} /> Demander une Livraison</button>
-                        <button onClick={() => setShowSaleModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><PlusCircle size={20} /> Nouvelle Vente</button>
-                    </>}
-                    {isAdminView && <button onClick={() => setPayoutToConfirm(true)} disabled={kpis.netToBePaid <= 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"><CircleDollarSign size={20} /> Clôturer la période</button>}
+                    {!isAdminView ? (
+                        <>
+                            <button onClick={() => setShowDeliveryModal(true)} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Truck size={20} /> Demander une Livraison</button>
+                            <button onClick={() => setShowSaleModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><PlusCircle size={20} /> Nouvelle Vente</button>
+                        </>
+                    ) : (
+                        <button onClick={() => setPayoutToConfirm(true)} disabled={kpis.netToBePaid <= 0} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 disabled:opacity-50"><CircleDollarSign size={20} /> Clôturer la période</button>
+                    )}
                 </div>
             </div>
 
@@ -147,10 +147,10 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                 <KpiCard title="Stock Total" value={kpis.totalStock} icon={Archive} color="bg-blue-600" />
-                 <KpiCard title="CA Brut (période)" value={formatPrice(kpis.totalRevenue)} icon={DollarSign} color="bg-green-600" />
-                 <KpiCard title="Votre Commission" value={formatPercent(posData?.commissionRate)} icon={Percent} color="bg-purple-600" />
-                 <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Coins} color="bg-pink-600" />
+                <KpiCard title="Stock Total" value={kpis.totalStock} icon={Archive} color="bg-blue-600" tooltip="Nombre total d'articles actuellement dans votre stock."/>
+                <KpiCard title="CA Brut (période)" value={formatPrice(kpis.totalRevenue)} icon={DollarSign} color="bg-green-600" tooltip="Montant total de vos ventes depuis le dernier paiement."/>
+                <KpiCard title="Votre Commission" value={formatPercent(posData?.commissionRate)} icon={Percent} color="bg-purple-600" tooltip="Le taux de commission qui vous est appliqué sur chaque vente."/>
+                <KpiCard title="Net à reverser" value={formatPrice(kpis.netToBePaid)} icon={Coins} color="bg-pink-600" tooltip="Le montant qui vous sera reversé pour la période de ventes en cours."/>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 mt-8">
@@ -179,19 +179,19 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
                                                     </div>
                                                     {isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                                                 </button>
-                                                {deliveryTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver"><ArchiveRestore size={18}/></button>}
-                                                {deliveryTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver"><ArchiveRestore size={18}/></button>}
+                                                {deliveryTab === 'actives' && isArchivable && <button onClick={() => handleArchive(req.id)} title="Archiver" className="p-4 text-gray-500 hover:text-indigo-400"><Archive size={18}/></button>}
+                                                {deliveryTab === 'archived' && <button onClick={() => handleUnarchive(req.id)} title="Désarchiver" className="p-4 text-gray-500 hover:text-indigo-400"><ArchiveRestore size={18}/></button>}
                                             </div>
                                             {isExpanded && (
                                                 <div className="p-4 border-t border-gray-700">
-                                                    {/* Expanded content here */}
+                                                    {/* Expanded content can be added here */}
                                                 </div>
                                             )}
                                         </div>
                                     );
                                 })}
                             </div>
-                        ) : <p className="text-center text-gray-400 pt-8">Aucune demande.</p>}
+                        ) : <p className="text-center text-gray-400 pt-8">Aucune demande de livraison.</p>}
                     </div>
                 </div>
 
@@ -211,7 +211,14 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
                     {showHistory === 'sales' && (
                         <div className="animate-fade-in overflow-x-auto"><table className="w-full text-left"><thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date</th><th className="p-3">Produit</th><th className="p-3">Qté</th><th className="p-3">Total</th><th className="p-3">Statut</th><th className="p-3">Actions</th></tr></thead><tbody>{salesHistory.map(sale => (<tr key={sale.id} className="border-b border-gray-700/50"><td className="p-3">{formatDate(sale.createdAt)}</td><td className="p-3">{sale.productName}</td><td className="p-3">{sale.quantity}</td><td className="p-3 font-semibold">{formatPrice(sale.totalAmount)}</td><td className="p-3 text-xs">{sale.payoutId ? 'Réglée' : 'En cours'}</td><td className="p-3">{!sale.payoutId && <button onClick={() => setSaleToDelete(sale)} className="text-red-500"><Trash2 size={18}/></button>}</td></tr>))}</tbody></table></div>
                     )}
-                    {showHistory === 'payouts' && ( <div className="animate-fade-in overflow-x-auto"> ... </div> )}
+                    {showHistory === 'payouts' && (
+                        <div className="animate-fade-in overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date Clôture</th><th className="p-3">Montant Net</th><th className="p-3">Statut</th><th className="p-3">Date Paiement</th></tr></thead>
+                                <tbody>{payouts.map(p => (<tr key={p.id} className="border-b border-gray-700/50"><td className="p-3">{formatDate(p.createdAt)}</td><td className="p-3 font-semibold">{formatPrice(p.netAmount)}</td><td className="p-3"><span className={`px-2 py-1 text-xs font-bold rounded-full ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>{PAYOUT_STATUSES[p.status]?.text || p.status}</span></td><td className="p-3">{p.paidAt ? formatDate(p.paidAt) : '-'}</td></tr>))}</tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             </div>
              <div className="bg-gray-800 rounded-2xl p-6 mt-8">
