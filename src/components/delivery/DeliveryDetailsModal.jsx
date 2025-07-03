@@ -1,9 +1,11 @@
 // src/components/delivery/DeliveryDetailsModal.jsx
 import React from 'react';
-import { X, AlertTriangle, Check, Package } from 'lucide-react';
+import { AlertTriangle, Check, Package } from 'lucide-react';
 import { DELIVERY_STATUSES, deliveryStatusOrder } from '../../constants';
 
-const DeliveryDetailsModal = ({ request, onClose }) => {
+// Ce composant n'est plus une modale, mais un bloc de contenu.
+// Il ne reçoit donc plus de fonction "onClose".
+const DeliveryDetailsModal = ({ request }) => {
 
     const DeliveryStatusTracker = ({ status }) => {
         if (status === 'cancelled') {
@@ -43,46 +45,34 @@ const DeliveryDetailsModal = ({ request, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[70]" onClick={onClose}>
-            <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl border-gray-700" onClick={e => e.stopPropagation()}>
-                <header className="flex justify-between items-start mb-6">
-                    <div>
-                        <h2 className="text-2xl font-bold text-white">Détail de la Livraison</h2>
-                        <p className="text-gray-400">Suivi de votre demande du {new Date(request.createdAt?.toDate()).toLocaleDateString('fr-FR')}</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white"><X size={24} /></button>
-                </header>
+        // L'élément racine est maintenant un simple <div>
+        <div>
+            <section className="mb-6 p-4 bg-gray-900/50 rounded-lg">
+                <DeliveryStatusTracker status={request.status} />
+            </section>
 
-                <section className="mb-8 p-4 bg-gray-900/50 rounded-lg">
-                    <DeliveryStatusTracker status={request.status} />
-                </section>
-
-                <section>
-                    <h3 className="text-lg font-semibold mb-4">Articles Demandés</h3>
-                    <div className="bg-gray-700/50 p-4 rounded-lg max-h-60 overflow-y-auto custom-scrollbar">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="border-b border-gray-600 text-sm">
-                                    <th className="p-2">Produit</th>
-                                    <th className="p-2 text-center w-32">Quantité Demandée</th>
+            <section>
+                <h3 className="text-lg font-semibold mb-4">Articles Demandés</h3>
+                <div className="bg-gray-700/50 p-4 rounded-lg max-h-60 overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="border-b border-gray-600 text-sm">
+                                <th className="p-2">Produit</th>
+                                <th className="p-2 text-center w-32">Quantité</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {request.items.map((item, index) => (
+                                <tr key={index} className="border-b border-gray-700/50">
+                                    <td className="p-3 font-medium">{item.productName}</td>
+                                    <td className="p-3 text-center font-bold">{item.quantity}</td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {request.items.map((item, index) => (
-                                    <tr key={index} className="border-b border-gray-700/50">
-                                        <td className="p-3 font-medium">{item.productName}</td>
-                                        <td className="p-3 text-center font-bold">{item.quantity}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
-
-                <footer className="mt-8 flex justify-end">
-                    <button onClick={onClose} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-6 rounded-lg">Fermer</button>
-                </footer>
-            </div>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            {/* Le bouton "Fermer" a été retiré, car la fermeture se fait en repliant la carte. */}
         </div>
     );
 };
