@@ -10,7 +10,7 @@ const PayoutReconciliationModal = ({ pos, unsettledSales, stock, onClose, onConf
     useEffect(() => {
         let items;
         if (payoutData) {
-            // Mode "Lecture Seule" : On affiche les données du paiement passé
+            // Mode "Lecture Seule"
             items = (payoutData.items || []).map((adj, index) => ({
                 id: adj.productId || index,
                 productName: adj.productName,
@@ -22,7 +22,7 @@ const PayoutReconciliationModal = ({ pos, unsettledSales, stock, onClose, onConf
                 adjustmentReason: adj.adjustmentReason
             }));
         } else {
-            // Mode "Réconciliation" pour l'admin
+            // Mode "Réconciliation"
             const salesByProduct = unsettledSales.reduce((acc, sale) => {
                 const productId = sale.productId;
                 if (!acc[productId]) {
@@ -33,10 +33,15 @@ const PayoutReconciliationModal = ({ pos, unsettledSales, stock, onClose, onConf
                 return acc;
             }, {});
             
-            items = Object.values(salesByProduct).map(groupedSale => {
-                const stockItem = stock.find(s => s.id === groupedSale.productId);
-                return { ...groupedSale, id: groupedSale.productId, status: 'pending', currentStock: stockItem?.quantity || 0, adjustmentReason: '' };
-            });
+            items = Object.values(salesByProduct).map(groupedSale => ({
+                ...groupedSale,
+                id: groupedSale.productId,
+                status: 'pending',
+                currentStock: stock.find(s => s.id === groupedSale.productId)?.quantity || 0,
+                adjustmentReason: '',
+                // Pré-calculer la quantité originale pour un accès facile
+                originalQuantity: groupedSale.originalSales.reduce((acc, s) => acc + s.quantity, 0)
+            }));
         }
         setReconciliationItems(items);
     }, [unsettledSales, stock, isReadOnly, payoutData]);
@@ -62,9 +67,12 @@ const PayoutReconciliationModal = ({ pos, unsettledSales, stock, onClose, onConf
             grossRevenue: reconciliationItems.reduce((acc, item) => acc + (item.unitPrice * item.quantity), 0),
             commissionRate: pos.commissionRate,
             items: reconciliationItems.map(item => ({
-                productId: item.productId, productName: item.productName, finalQuantity: item.quantity,
-                originalQuantity: item.originalSales.reduce((acc, s) => acc + s.quantity, 0),
-                unitPrice: item.unitPrice, adjustmentReason: item.adjustmentReason,
+                productId: item.productId,
+                productName: item.productName,
+                finalQuantity: item.quantity,
+                originalQuantity: item.originalQuantity,
+                unitPrice: item.unitPrice,
+                adjustmentReason: item.adjustmentReason,
                 originalSaleIds: item.originalSales.map(s => s.id)
             }))
         };
@@ -86,30 +94,42 @@ const PayoutReconciliationModal = ({ pos, unsettledSales, stock, onClose, onConf
                 </div>
 
                 <div className="flex-grow p-6 overflow-y-auto custom-scrollbar">
+                    {/* EN-TÊTE DE TABLEAU MODIFIÉ */}
                     <div className="w-full text-left text-xs text-gray-400 uppercase grid grid-cols-12 gap-4 px-4 pb-2 border-b border-gray-700 font-semibold">
                         <div className="col-span-4">Produit</div>
                         <div className="col-span-2 text-center">Vendu</div>
+                        <div className="col-span-1 text-center font-bold">Ajust.</div>
                         <div className="col-span-2 text-center">Stock Restant</div>
-                        <div className="col-span-4 text-right pr-2">Actions</div>
+                        <div className="col-span-3 text-right pr-2">Actions</div>
                     </div>
+
                     <div className="space-y-2 mt-2">
                         {reconciliationItems.map(item => {
-                            const originalQuantity = item.originalSales?.reduce((acc, s) => acc + s.quantity, 0) || item.originalQuantity;
-                            const stockApresVentes = item.currentStock + originalQuantity - item.quantity;
+                            const stockApresVentes = item.currentStock + item.originalQuantity - item.quantity;
+                            const adjustment = item.quantity - item.originalQuantity;
+                            
                             return (
                                 <div key={item.id} className={`p-4 rounded-lg transition-all ${item.status === 'editing' ? 'bg-red-900/20 ring-1 ring-red-500' : 'bg-gray-900/50'}`}>
+                                    {/* LIGNE DE TABLEAU MODIFIÉE */}
                                     <div className="grid grid-cols-12 gap-4 items-center">
                                         <div className="col-span-4 font-bold text-white">{item.productName}</div>
                                         <div className="col-span-2 text-center">
                                             <input type="number" value={item.quantity} onChange={e => handleQuantityChange(item.id, e.target.value)} disabled={isReadOnly || item.status !== 'editing'} className="w-20 bg-gray-700 p-1 rounded-md text-center disabled:bg-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed"/>
                                         </div>
+                                        {/* NOUVELLE COLONNE AJUSTEMENT */}
+                                        <div className="col-span-1 text-center font-bold">
+                                            {adjustment > 0 && <span className="text-green-400">+{adjustment}</span>}
+                                            {adjustment < 0 && <span className="text-red-400">{adjustment}</span>}
+                                            {adjustment === 0 && <span className="text-gray-500">0</span>}
+                                        </div>
                                         <div className="col-span-2 text-center text-gray-400 font-mono">{isReadOnly ? 'N/A' : stockApresVentes}</div>
-                                        <div className="col-span-4 flex justify-end gap-2">
+                                        <div className="col-span-3 flex justify-end gap-2">
                                             {!isReadOnly && item.status === 'pending' && ( <> <button onClick={() => handleStatusChange(item.id, 'confirmed')} className="p-2 bg-green-600 rounded-lg text-white hover:bg-green-500" title="Confirmer"><Check size={18} /></button> <button onClick={() => handleStatusChange(item.id, 'editing')} className="p-2 bg-yellow-600 rounded-lg text-white hover:bg-yellow-500" title="Ajuster"><Edit size={18} /></button> </> )}
                                             {!isReadOnly && item.status === 'editing' && ( <button onClick={() => item.adjustmentReason.trim() ? handleStatusChange(item.id, 'confirmed') : alert('Le motif est obligatoire.')} className="p-2 bg-blue-600 rounded-lg text-white hover:bg-blue-500" title="Sauvegarder"><Save size={18} /></button> )}
                                             {item.status === 'confirmed' && ( <span className="text-green-400 font-bold text-sm flex items-center gap-1"><Check size={16}/> Validé</span> )}
                                         </div>
                                     </div>
+
                                     {item.adjustmentReason && <p className="text-xs text-yellow-400/80 mt-2 pl-1 italic">Motif : {item.adjustmentReason}</p>}
                                     {!isReadOnly && item.status === 'editing' && ( <div className="mt-3 animate-fade-in col-span-12"> <label className="text-xs text-yellow-400 flex items-center gap-2"><AlertTriangle size={14}/>Motif de l'ajustement</label> <input type="text" value={item.adjustmentReason} onChange={e => handleReasonChange(item.id, e.target.value)} placeholder="Ex: Produit offert..." className="w-full bg-gray-700 p-2 rounded-lg mt-1 text-sm"/> </div> )}
                                 </div>
