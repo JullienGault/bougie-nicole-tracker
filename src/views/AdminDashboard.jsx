@@ -45,23 +45,35 @@ const AdminDashboard = () => {
 
     // Fetching Data
     useEffect(() => {
-        onSnapshot(query(collection(db, "pointsOfSale"), orderBy('name')), 
+        const unsubPointsOfSale = onSnapshot(query(collection(db, "pointsOfSale"), orderBy('name')), 
             (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
         );
-        onSnapshot(query(collection(db, "users"), where("role", "==", "pos")), 
+        const unsubUsers = onSnapshot(query(collection(db, "users"), where("role", "==", "pos")), 
             (snapshot) => setPosUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
         );
-        onSnapshot(query(collection(db, "deliveryRequests"), orderBy('createdAt', 'desc')), 
+        const unsubRequests = onSnapshot(query(collection(db, "deliveryRequests"), orderBy('createdAt', 'desc')), 
             (snapshot) => setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
         );
+        return () => { // Cleanup listeners on component unmount
+            unsubPointsOfSale();
+            unsubUsers();
+            unsubRequests();
+        };
     }, []);
-
-    // Memoized Calculations
-    const { activePosCount, inactivePosCount, archivedPosCount } = useMemo(() => {
+    
+    // =======================================================
+    // CORRECTION APPLIQUÉE ICI
+    // J'ai renommé les variables pour qu'elles correspondent
+    // =======================================================
+    const { active: activePosCount, inactive: inactivePosCount, archived: archivedPosCount } = useMemo(() => {
         return pointsOfSale.reduce((counts, pos) => {
-            if (pos.isArchived) counts.archived++;
-            else if (pos.status === 'active') counts.active++;
-            else if (pos.status === 'inactive') counts.inactive++;
+            if (pos.isArchived) {
+                counts.archived++;
+            } else if (pos.status === 'active') {
+                counts.active++;
+            } else if (pos.status === 'inactive') {
+                counts.inactive++;
+            }
             return counts;
         }, { active: 0, inactive: 0, archived: 0 });
     }, [pointsOfSale]);
@@ -117,14 +129,12 @@ const AdminDashboard = () => {
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {/* Modals */}
             {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
             {posToEdit && <EditPosModal pos={posToEdit} hasOpenBalance={posToEdit.balance > 0} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
             {posToEditUser && <EditPosUserModal posUser={posToEditUser} onClose={() => setPosToEditUser(null)} onSave={() => {}} />}
             {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={(<div><p>{`Rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`}</p>{posToToggleStatus.status === 'active' && <div className="flex items-center gap-3 mt-4"><input id="archive-cb" type="checkbox" checked={shouldArchive} onChange={(e) => setShouldArchive(e.target.checked)} /><label htmlFor="archive-cb">Archiver aussi</label></div>}</div>)} onConfirm={handleTogglePosStatus} onCancel={() => {setPosToToggleStatus(null); setShouldArchive(false);}} confirmText="Oui, confirmer" />}
             {requestToProcess && <ProcessDeliveryModal request={requestToProcess} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
 
-            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord Admin</h2><p className="text-gray-400">Gestion des dépôts et du catalogue.</p></div>
                 <div className="flex flex-wrap gap-4 mt-4 md:mt-0">
@@ -134,7 +144,6 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {/* KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <KpiCard title="CA (Période en cours)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
                 <KpiCard title="Commissions (Période en cours)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
@@ -142,11 +151,7 @@ const AdminDashboard = () => {
                 <KpiCard title="Dépôts Actifs" value={activePosCount} icon={Store} color="bg-purple-600" />
             </div>
 
-            {/* PoS List Section */}
             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                {/* ======================================================= */}
-                {/* SECTION MANQUANTE QUI A ÉTÉ RAJOUTÉE */}
-                {/* ======================================================= */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
                      <div className="border-b border-gray-700">
                         <nav className="-mb-px flex gap-6" aria-label="Tabs">
@@ -157,18 +162,9 @@ const AdminDashboard = () => {
                     </div>
                     <div className="relative w-full sm:w-auto sm:max-w-xs mt-4 sm:mt-0">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Rechercher un dépôt..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="w-full bg-gray-700 p-2 pl-10 rounded-lg"
-                        />
+                        <input type="text" placeholder="Rechercher un dépôt..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full bg-gray-700 p-2 pl-10 rounded-lg"/>
                     </div>
                 </div>
-                {/* ======================================================= */}
-                {/* FIN DE LA SECTION RAJOUTÉE                             */}
-                {/* ======================================================= */}
 
                 <div className="overflow-x-auto">
                     <table className="w-full text-left">
@@ -176,19 +172,14 @@ const AdminDashboard = () => {
                         <tbody>
                             {combinedPointsOfSale.map(pos => (
                                 <tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                                    <td className="p-3 font-medium flex items-center gap-2">
-                                        <span className={`h-2.5 w-2.5 rounded-full ${pos.isArchived ? 'bg-gray-500' : (pos.status === 'active' ? 'bg-green-500' : 'bg-red-500')}`} title={pos.isArchived ? 'Archivé' : (pos.status === 'active' ? 'Actif' : 'Inactif')}></span>
-                                        {pos.name}
-                                    </td>
+                                    <td className="p-3 font-medium flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${pos.isArchived ? 'bg-gray-500' : (pos.status === 'active' ? 'bg-green-500' : 'bg-red-500')}`} title={pos.isArchived ? 'Archivé' : (pos.status === 'active' ? 'Actif' : 'Inactif')}></span>{pos.name}</td>
                                     <td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td>
                                     <td className="p-3">{formatPercent(pos.commissionRate)}</td>
                                     <td className="p-3 space-x-2 text-sm whitespace-nowrap">
                                         <button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button>
                                         <button onClick={() => setPosToEditUser(pos)} className="text-cyan-400 p-1 hover:text-cyan-300">Infos Contact</button>
                                         <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Paramètres</button>
-                                        <button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}>
-                                            {pos.status === 'active' ? 'Désactiver' : 'Activer'}
-                                        </button>
+                                        <button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}>{pos.status === 'active' ? 'Désactiver' : 'Activer'}</button>
                                     </td>
                                 </tr>
                             ))}
