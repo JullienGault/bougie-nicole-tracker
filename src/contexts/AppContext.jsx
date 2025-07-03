@@ -6,6 +6,8 @@ export const AppContext = React.createContext(null);
 
 export const AppProvider = ({ children, value }) => {
     const [toast, setToast] = useState(null);
+    // NOUVEL ÉTAT POUR LA MODALE GLOBALE
+    const [globalModal, setGlobalModal] = useState(null);
 
     const showToast = useCallback((message, type = 'success') => {
         setToast({ id: Date.now(), message, type });
@@ -14,7 +16,10 @@ export const AppProvider = ({ children, value }) => {
     const contextValue = useMemo(() => ({
         ...value,
         showToast,
-    }), [value, showToast]);
+        // NOUVELLES VALEURS DANS LE CONTEXTE
+        globalModal,
+        setGlobalModal
+    }), [value, showToast, globalModal]);
 
     return (
         <AppContext.Provider value={contextValue}>
