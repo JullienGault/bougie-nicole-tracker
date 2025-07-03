@@ -1,5 +1,5 @@
 // src/views/AdminDashboard.jsx
-import React, { useState, useEffect, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction, arrayUnion } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle, Archive } from 'lucide-react';
@@ -89,7 +89,7 @@ const DeliveriesView = React.memo(({ requests, onBack, onProcess, onCancel, onAr
 
 // --- COMPOSANT PRINCIPAL ---
 const AdminDashboard = () => {
-    const { showToast, setChangeAdminView } = useContext(AppContext);
+    const { showToast, setViewChangeHandler } = useContext(AppContext);
 
     // États du composant
     const [pointsOfSale, setPointsOfSale] = useState([]);
@@ -121,10 +121,30 @@ const AdminDashboard = () => {
         return () => { unsubPointsOfSale(); unsubUsers(); unsubDeliveries(); };
     }, []);
 
+    const handleAdminViewChange = useCallback((action, relatedId) => {
+        switch(action) {
+            case 'OPEN_DELIVERY_VIEW':
+                setSelectedPos(null);
+                setCurrentView('deliveries');
+                break;
+            case 'VIEW_POS_DETAILS':
+                const posData = pointsOfSale.find(p => p.id === relatedId);
+                const userData = posUsers.find(u => u.id === relatedId);
+                if (posData && userData) {
+                    setSelectedPos({ ...userData, ...posData, uid: posData.id });
+                } else {
+                    showToast("Dépôt associé à la notification introuvable.", "error");
+                }
+                break;
+            default:
+                break;
+        }
+    }, [pointsOfSale, posUsers, showToast]);
+
     useEffect(() => {
-        setChangeAdminView(() => setCurrentView);
-        return () => setChangeAdminView(null);
-    }, [setChangeAdminView]);
+        setViewChangeHandler(() => handleAdminViewChange);
+        return () => setViewChangeHandler(null);
+    }, [setViewChangeHandler, handleAdminViewChange]);
     
     useEffect(() => {
         if (pointsOfSale.length === 0 && currentView === 'dashboard') return;
