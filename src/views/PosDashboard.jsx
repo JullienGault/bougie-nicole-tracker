@@ -1,13 +1,13 @@
 // src/views/PosDashboard.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { db, onSnapshot, doc, collection, query, orderBy, where, updateDoc, writeBatch, addDoc, serverTimestamp } from '../services/firebase';
+import { db, onSnapshot, doc, collection, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 
 // Icons
-import { Truck, PlusCircle, CircleDollarSign, Archive, DollarSign, Percent, Coins, User, Store, Phone, Mail, ArrowRightCircle, Trash2, Package, History, CheckCircle } from 'lucide-react';
+import { Truck, PlusCircle, CircleDollarSign, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail } from 'lucide-react';
 
 // Constants
-import { LOW_STOCK_THRESHOLD, PAYOUT_STATUSES, payoutStatusOrder } from '../constants';
+import { LOW_STOCK_THRESHOLD, PAYOUT_STATUSES } from '../constants';
 
 // Utils
 import { formatPrice, formatDate, formatPercent, formatPhone } from '../utils/formatters';
@@ -17,10 +17,10 @@ import KpiCard from '../components/common/KpiCard';
 import SaleModal from '../components/pos/SaleModal';
 import DeliveryRequestModal from '../components/delivery/DeliveryRequestModal';
 import PayoutReconciliationModal from '../components/payout/PayoutReconciliationModal';
-import FullScreenDataModal from '../components/common/FullScreenDataModal'; // Import de la nouvelle modale
+import FullScreenDataModal from '../components/common/FullScreenDataModal';
 
-const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) => {
-    const { showToast, loggedInUserData } = useContext(AppContext);
+const PosDashboard = ({ isAdminView = false, pos }) => {
+    const { loggedInUserData } = useContext(AppContext);
     const currentUserData = isAdminView ? pos : loggedInUserData;
     const posId = currentUserData.uid;
 
@@ -30,18 +30,17 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
     const [payouts, setPayouts] = useState([]);
     
     // State pour gérer les modales
-    const [activeModal, setActiveModal] = useState(null); // 'stock', 'sales', 'payouts', ou null
+    const [activeModal, setActiveModal] = useState(null);
     const [showSaleModal, setShowSaleModal] = useState(false);
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
     const [showReconciliationModal, setShowReconciliationModal] = useState(false);
     const [payoutToView, setPayoutToView] = useState(null);
-    const [isUpdatingPayout, setIsUpdatingPayout] = useState(null);
 
-    // ... Listeners Firestore ...
-    useEffect(() => { if (!posId) return; onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); }); }, [posId]);
-    useEffect(() => { if (!posId) return; onSnapshot(query(collection(db, `pointsOfSale/${posId}/stock`)), (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), productId: doc.id })))); }, [posId]);
-    useEffect(() => { if (!posId) return; onSnapshot(query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')), (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); }, [posId]);
-    useEffect(() => { if (!posId) return; onSnapshot(query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')), (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))); }, [posId]);
+    // Listeners Firestore
+    useEffect(() => { if (!posId) return; const unsub = onSnapshot(doc(db, "pointsOfSale", posId), (doc) => { if (doc.exists()) setPosData(doc.data()); }); return unsub; }, [posId]);
+    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/stock`)), (snapshot) => setStock(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), productId: doc.id })))); return unsub; }, [posId]);
+    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/sales`), orderBy('createdAt', 'desc')), (snapshot) => setSalesHistory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))); return unsub; }, [posId]);
+    useEffect(() => { if (!posId) return; const unsub = onSnapshot(query(collection(db, `pointsOfSale/${posId}/payouts`), orderBy('createdAt', 'desc')), (snapshot) => setPayouts(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))); return unsub; }, [posId]);
     
     const unsettledSales = useMemo(() => salesHistory.filter(s => !s.payoutId), [salesHistory]);
 
@@ -58,11 +57,6 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
         };
     }, [unsettledSales, stock, posData]);
 
-    // ... Handlers (handleCreatePayout, handleUpdatePayoutStatus) ...
-    const handleCreatePayout = async (reconciledData) => { /* ... */ };
-    const handleUpdatePayoutStatus = async (payout) => { /* ... */ };
-
-    // Fonction pour générer le contenu de la modale en fonction de l'état
     const renderModalContent = () => {
         switch (activeModal) {
             case 'stock':
@@ -104,10 +98,9 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
     
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {/* Les modales sont maintenant en haut du composant */}
             {!isAdminView && showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {!isAdminView && showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
-            {isAdminView && showReconciliationModal && posData && <PayoutReconciliationModal pos={posData} unsettledSales={unsettledSales} stock={stock} onClose={() => setShowReconciliationModal(false)} onConfirm={handleCreatePayout} />}
+            {isAdminView && showReconciliationModal && posData && <PayoutReconciliationModal pos={posData} unsettledSales={unsettledSales} stock={stock} onClose={() => setShowReconciliationModal(false)} onConfirm={() => {}} />}
             {payoutToView && posData && <PayoutReconciliationModal pos={posData} stock={stock} unsettledSales={[]} payoutData={payoutToView} onClose={() => setPayoutToView(null)} isReadOnly={true} />}
             
             <FullScreenDataModal
@@ -137,15 +130,15 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
                     )}
                 </div>
             </div>
-
+            
             {!isAdminView && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                    <KpiCard title="Votre Solde Actuel" value={formatPrice(unsettledBalance)} icon={DollarSign} color="bg-green-600" />
+                    <KpiCard title="Montant à reverser" value={formatPrice(unsettledBalance)} icon={DollarSign} color="bg-green-600" />
                     <KpiCard title="Articles en Stock" value={totalStock} icon={Package} color="bg-blue-600" />
                     <KpiCard title="Taux de Commission" value={formatPercent(commissionRate)} icon={Percent} color="bg-pink-600" />
                 </div>
             )}
-            
+
             <div className="bg-gray-800 rounded-2xl p-6 mb-8 animate-fade-in">
                 <h3 className="text-xl font-bold text-white mb-4">Informations de Contact</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-base">
@@ -156,7 +149,6 @@ const PosDashboard = ({ isAdminView = false, pos, onActionSuccess = () => {} }) 
                 </div>
             </div>
             
-            {/* Le bloc "Gestion & Historique" est remplacé par des boutons */}
             <div className="bg-gray-800 rounded-2xl p-6">
                 <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
