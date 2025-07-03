@@ -101,7 +101,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     return (
         <>
             {showReasonModal && <ReasonPromptModal title="Justifier les modifications" message="Veuillez expliquer pourquoi la commande est modifiée." onConfirm={handleSaveChanges} onCancel={() => setShowReasonModal(false)}/>}
-            <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={onClose}>
+            <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80]" onClick={onClose}>
                 <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl" onClick={e=>e.stopPropagation()}>
                     <div className="flex justify-between items-start mb-6">
                         <div><h2 className="text-2xl font-bold text-white mb-2">Gérer la livraison pour :</h2><p className="text-indigo-400 text-xl font-semibold">{request.posName}</p></div>
