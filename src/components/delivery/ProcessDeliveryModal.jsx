@@ -50,7 +50,7 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
             await updateDoc(requestDocRef, { items: editableItems, modificationReason: reason, originalItems: request.originalItems || request.items });
             await addDoc(collection(db, 'notifications'), { recipientUid: request.posId, message: `Votre demande de livraison du ${formatDate(request.createdAt)} a été modifiée.`, createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_UPDATE' });
             showToast("Modifications enregistrées !", "success");
-        } catch (error) { showToast("Erreur lors de la sauvegarde.", "error"); } 
+        } catch (error) { showToast("Erreur lors de la sauvegarde.", "error"); }
         finally { setIsLoading(false); }
     };
 
@@ -66,11 +66,11 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
                     for (const item of editableItems) {
                         const product = products.find(p => p.id === item.productId);
                         if (!product) throw new Error(`Produit ID ${item.productId} non trouvé.`);
-                        
+
                         const stockId = item.productId;
                         const stockDocRef = doc(db, `pointsOfSale/${request.posId}/stock`, stockId);
                         const stockDoc = await transaction.get(stockDocRef);
-                        
+
                         if (stockDoc.exists()) {
                             transaction.update(stockDocRef, { quantity: (stockDoc.data().quantity || 0) + item.quantity });
                         } else {
