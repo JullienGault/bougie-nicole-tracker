@@ -24,13 +24,19 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [posData, setPosData] = useState(null);
     const [payouts, setPayouts] = useState([]);
     const [deliveryHistory, setDeliveryHistory] = useState([]);
-    const [activeModal, setActiveModal] = useState(null);
-    const [showSaleModal, setShowSaleModal] = useState(false);
-    const [showDeliveryModal, setShowDeliveryModal] = useState(false);
     const [payoutToView, setPayoutToView] = useState(null);
     const [showContactVerificationModal, setShowContactVerificationModal] = useState(false);
     const [isConfirmingContact, setIsConfirmingContact] = useState(false);
     const [deliveryToArchive, setDeliveryToArchive] = useState(null);
+    
+    // États pour les modales
+    const [showSaleModal, setShowSaleModal] = useState(false);
+    const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+    const [showStockModal, setShowStockModal] = useState(false);
+    const [showSalesHistoryModal, setShowSalesHistoryModal] = useState(false);
+    const [showPayoutsHistoryModal, setShowPayoutsHistoryModal] = useState(false);
+    const [showArchivedDeliveriesModal, setShowArchivedDeliveriesModal] = useState(false);
+
 
     useEffect(() => {
         if (!posId) return;
@@ -62,7 +68,6 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
             });
             showToast("Demande archivée.", "success");
         } catch (error) {
-            console.error("Erreur d'archivage:", error);
             showToast("Erreur lors de l'archivage.", "error");
         } finally {
             setDeliveryToArchive(null);
@@ -99,6 +104,57 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
         setShowProfileModal(true);
     };
 
+    // --- Composants pour le contenu des modales ---
+    const StockModalContent = () => (
+        <table className="w-full text-left">
+            <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Produit</th><th className="p-3">Stock</th><th className="p-3">Prix Unitaire</th></tr></thead>
+            <tbody>{stock.map(item => (<tr key={item.id} className="border-b border-gray-700/50"><td className="p-3 font-medium">{item.productName}</td><td className={`p-3 font-bold ${item.quantity <= LOW_STOCK_THRESHOLD ? 'text-yellow-400' : ''}`}>{item.quantity}</td><td className="p-3">{formatPrice(item.price)}</td></tr>))}</tbody>
+        </table>
+    );
+
+    const SalesHistoryModalContent = () => (
+        <div>
+            <div className="grid grid-cols-12 gap-4 px-4 pb-2 border-b border-gray-700 text-xs text-gray-400 font-semibold uppercase">
+                <div className="col-span-4 sm:col-span-3">Date</div>
+                <div className="col-span-8 sm:col-span-4">Produit</div>
+                <div className="hidden sm:block sm:col-span-1 text-center">Qté</div>
+                <div className="hidden sm:block sm:col-span-2 text-right">Total</div>
+                <div className="hidden sm:block sm:col-span-2 text-center">Statut</div>
+            </div>
+            <div className="space-y-2 mt-2">
+                {salesHistory.map(sale => (
+                    <div key={sale.id} className="grid grid-cols-12 items-center gap-4 bg-gray-900/50 hover:bg-gray-900 p-4 rounded-lg">
+                        <div className="col-span-12 sm:col-span-3 text-sm text-gray-300">{formatDate(sale.createdAt)}</div>
+                        <div className="col-span-12 sm:col-span-4 font-semibold text-white">{sale.productName}</div>
+                        <div className="col-span-4 sm:col-span-1 text-center text-lg font-bold">{sale.quantity}</div>
+                        <div className="col-span-4 sm:col-span-2 text-right text-lg font-bold text-green-400">{formatPrice(sale.totalAmount)}</div>
+                        <div className="col-span-4 sm:col-span-2 flex justify-center">
+                            <span className={`px-3 py-1 text-xs font-bold rounded-full ${sale.payoutId ? 'bg-green-500/10 text-green-400' : 'bg-yellow-500/10 text-yellow-400'}`}>
+                                {sale.payoutId ? 'Réglée' : 'En cours'}
+                            </span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+
+    const PayoutsHistoryModalContent = () => (
+        <table className="w-full text-left">
+           <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Date Clôture</th><th className="p-3">Montant Net</th><th className="p-3">Statut</th><th className="p-3">Action</th></tr></thead>
+           <tbody>
+               {payouts.map(p => (
+                   <tr key={p.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                       <td className="p-3">{formatDate(p.createdAt)}</td>
+                       <td className="p-3 font-semibold">{formatPrice(p.netAmount)}</td>
+                       <td className="p-3"><span className={`px-2 py-1 text-xs font-bold rounded-full whitespace-nowrap ${PAYOUT_STATUSES[p.status]?.bg} ${PAYOUT_STATUSES[p.status]?.color}`}>{PAYOUT_STATUSES[p.status]?.text || p.status}</span></td>
+                       <td className="p-3"><button onClick={() => setPayoutToView(p)} className="text-indigo-400 text-xs font-bold hover:underline">Voir le détail</button></td>
+                   </tr>
+               ))}
+           </tbody>
+       </table>
+    );
+    
     const DeliveriesSection = () => {
         const [expandedCardId, setExpandedCardId] = useState(null);
         const [deliveryFilter, setDeliveryFilter] = useState('active');
@@ -176,20 +232,18 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
+            {/* --- Modales --- */}
             {!isAdminView && showSaleModal && <SaleModal posId={posId} stock={stock} onClose={() => setShowSaleModal(false)} />}
             {!isAdminView && showDeliveryModal && <DeliveryRequestModal posId={posId} posName={posData?.name} onClose={() => setShowDeliveryModal(false)} />}
             {payoutToView && posData && <PayoutReconciliationModal pos={posData} stock={stock} unsettledSales={[]} payoutData={payoutToView} onClose={() => setPayoutToView(null)} isReadOnly={true} />}
             {showContactVerificationModal && loggedInUserData && (<ContactVerificationModal userData={loggedInUserData} onConfirm={handleConfirmContact} onModify={handleModifyContact} isConfirming={isConfirmingContact} />)}
             {deliveryToArchive && <ConfirmationModal title="Confirmer l'archivage" message="Voulez-vous vraiment archiver cette demande ?" onConfirm={handleArchiveDelivery} onCancel={() => setDeliveryToArchive(null)} confirmText="Oui, archiver" confirmColor="bg-yellow-600 hover:bg-yellow-700" />}
             
-            <FullScreenDataModal isOpen={!!activeModal} onClose={() => setActiveModal(null)} title={
-                    activeModal === 'stock' ? 'Votre Stock Actuel' :
-                    activeModal === 'sales' ? 'Historique des Ventes' :
-                    activeModal === 'payouts' ? 'Historique des Paiements' : ''
-                }>
-                 {/* Le contenu de la modale est maintenant géré directement dans le JSX principal si besoin */}
-            </FullScreenDataModal>
+            {showStockModal && <FullScreenDataModal isOpen={showStockModal} onClose={() => setShowStockModal(false)} title="Votre Stock Actuel"><StockModalContent /></FullScreenDataModal>}
+            {showSalesHistoryModal && <FullScreenDataModal isOpen={showSalesHistoryModal} onClose={() => setShowSalesHistoryModal(false)} title="Historique des Ventes"><SalesHistoryModalContent /></FullScreenDataModal>}
+            {showPayoutsHistoryModal && <FullScreenDataModal isOpen={showPayoutsHistoryModal} onClose={() => setShowPayoutsHistoryModal(false)} title="Historique des Paiements"><PayoutsHistoryModalContent /></FullScreenDataModal>}
             
+            {/* --- Contenu de la page --- */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord</h2><p className="text-gray-400">Bienvenue, {posData?.name || currentUserData.displayName}</p></div>
                 <div className="flex gap-4 mt-4 md:mt-0">
@@ -225,9 +279,9 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
             <div className="bg-gray-800 rounded-2xl p-6">
                 <h3 className="text-xl font-bold text-white mb-4">Rapports et Historiques</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                     <button onClick={() => setActiveModal('stock')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><Archive size={24} className="text-blue-400" /><span className="font-semibold">Voir le Stock</span></button>
-                    <button onClick={() => setActiveModal('sales')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><History size={24} className="text-purple-400" /><span className="font-semibold">Historique des Ventes</span></button>
-                    <button onClick={() => setActiveModal('payouts')} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><CheckCircle size={24} className="text-green-400" /><span className="font-semibold">Historique des Paiements</span></button>
+                     <button onClick={() => setShowStockModal(true)} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><Archive size={24} className="text-blue-400" /><span className="font-semibold">Voir le Stock</span></button>
+                    <button onClick={() => setShowSalesHistoryModal(true)} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><History size={24} className="text-purple-400" /><span className="font-semibold">Historique des Ventes</span></button>
+                    <button onClick={() => setShowPayoutsHistoryModal(true)} className="bg-gray-700 p-4 rounded-lg flex items-center gap-3 hover:bg-gray-600 transition-colors"><CheckCircle size={24} className="text-green-400" /><span className="font-semibold">Historique des Paiements</span></button>
                 </div>
             </div>
         </div>
