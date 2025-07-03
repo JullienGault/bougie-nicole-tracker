@@ -1,11 +1,8 @@
-// src/App.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Package, User, LogOut } from 'lucide-react';
-
 import { auth, db, onAuthStateChanged, signInWithEmailAndPassword, signOut, onSnapshot, doc, collection, query, orderBy } from './services/firebase';
 import { AppProvider } from './contexts/AppContext';
 import { APP_NAME, APP_TITLE } from './constants';
-
 import LoginPage from './components/auth/LoginPage';
 import InactiveAccountModal from './components/auth/InactiveAccountModal';
 import ProfileModal from './components/user/ProfileModal';
@@ -21,7 +18,6 @@ export default function App() {
     const [loginError, setLoginError] = useState(null);
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [showProfileModal, setShowProfileModal] = useState(false);
-    
     const [products, setProducts] = useState([]);
 
     useEffect(() => { document.title = APP_TITLE; }, []);
@@ -71,7 +67,6 @@ export default function App() {
         signOut(auth);
     }, []);
 
-    // CORRECTION : On fournit un tableau vide pour `scents` pour éviter les crashs.
     const providerValue = { db, auth, loggedInUserData, products, scents: [], setShowProfileModal };
 
     if (isLoading) {
