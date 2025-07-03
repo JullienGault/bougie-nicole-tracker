@@ -75,7 +75,7 @@ export default function App() {
         signOut(auth);
     }, []);
 
-    // AJOUT : Ajout de setShowProfileModal au contexte pour le rendre accessible partout
+    // CORRECTION : Ajout de setShowProfileModal au contexte pour le rendre accessible partout
     const providerValue = { db, auth, loggedInUserData, products, scents, setShowProfileModal };
 
     if (isLoading) {
