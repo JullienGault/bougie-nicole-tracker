@@ -1,5 +1,5 @@
 // src/views/PosDashboard.jsx
-import React, { useState, useEffect, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { db, onSnapshot, doc, collection, query, orderBy, where, updateDoc, serverTimestamp, arrayUnion } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Truck, PlusCircle, Archive, DollarSign, Percent, Package, History, CheckCircle, User, Store, Phone, Mail, ChevronDown } from 'lucide-react';
@@ -174,7 +174,7 @@ const DeliveriesSection = React.memo(({ deliveryHistory, posId, onArchiveRequest
 // --- COMPOSANT PRINCIPAL ---
 
 const PosDashboard = ({ isAdminView = false, pos }) => {
-    const { showToast, loggedInUserData, setShowProfileModal } = useContext(AppContext);
+    const { showToast, loggedInUserData, setShowProfileModal, setViewChangeHandler } = useContext(AppContext);
     const currentUserData = isAdminView ? pos : loggedInUserData;
     const posId = currentUserData.uid;
 
@@ -193,6 +193,36 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
     const [showStockModal, setShowStockModal] = useState(false);
     const [showSalesHistoryModal, setShowSalesHistoryModal] = useState(false);
     const [showPayoutsHistoryModal, setShowPayoutsHistoryModal] = useState(false);
+
+    const handlePosViewChange = useCallback((action) => {
+        switch(action) {
+            case 'VIEW_STOCK':
+                setShowStockModal(true);
+                break;
+            case 'VIEW_PROFILE':
+                setShowProfileModal(true);
+                break;
+            case 'VIEW_DELIVERIES':
+                const deliveriesElement = document.getElementById('deliveries-section');
+                if (deliveriesElement) {
+                    deliveriesElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+                break;
+            default:
+                break;
+        }
+    }, [setShowProfileModal]);
+
+    useEffect(() => {
+        if (!isAdminView && setViewChangeHandler) {
+            setViewChangeHandler(() => handlePosViewChange);
+        }
+        return () => {
+            if (!isAdminView && setViewChangeHandler) {
+                setViewChangeHandler(null);
+            }
+        };
+    }, [isAdminView, setViewChangeHandler, handlePosViewChange]);
 
     useEffect(() => {
         if (!posId) return;
@@ -301,7 +331,7 @@ const PosDashboard = ({ isAdminView = false, pos }) => {
 
                 {/* --- Rangée du Bas : Livraisons & Rapports --- */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-2">
+                    <div className="lg:col-span-2" id="deliveries-section">
                         <DeliveriesSection deliveryHistory={deliveryHistory} posId={posId} onArchiveRequest={setDeliveryToArchive} isAdminView={isAdminView} />
                     </div>
                     
