@@ -101,8 +101,17 @@ const ProcessDeliveryModal = ({ request, onClose, onCancelRequest }) => {
     return (
         <>
             {showReasonModal && <ReasonPromptModal title="Justifier les modifications" message="Veuillez expliquer pourquoi la commande est modifiée." onConfirm={handleSaveChanges} onCancel={() => setShowReasonModal(false)}/>}
-            <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80]" onClick={onClose}>
-                <div className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl" onClick={e=>e.stopPropagation()}>
+            
+            {/* Conteneur principal avec z-index et positionnement pour le centrage */}
+            <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+                {/* Fond noir séparé avec animation et événement de fermeture */}
+                <div className="absolute inset-0 bg-black/75 animate-fade-in" onClick={onClose}></div>
+
+                {/* Panneau du modal avec positionnement relatif pour passer au-dessus du fond */}
+                <div 
+                    className="bg-gray-800 p-8 rounded-2xl w-full max-w-3xl relative animate-fade-in-up"
+                    onClick={e=>e.stopPropagation()}
+                >
                     <div className="flex justify-between items-start mb-6">
                         <div><h2 className="text-2xl font-bold text-white mb-2">Gérer la livraison pour :</h2><p className="text-indigo-400 text-xl font-semibold">{request.posName}</p></div>
                         {canAdvance && <button onClick={() => onCancelRequest(request)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><XCircle size={18}/>Annuler la Commande</button>}
