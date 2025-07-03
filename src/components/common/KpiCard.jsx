@@ -1,8 +1,8 @@
 // src/components/common/KpiCard.jsx
 import React from 'react';
 
-const KpiCard = ({ title, value, icon: Icon, color }) => (
-    <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4">
+const KpiCard = ({ title, value, icon: Icon, color, tooltip }) => (
+    <div className="bg-gray-800 p-5 rounded-xl flex items-center gap-4" title={tooltip}>
         <div className={`p-3 rounded-lg ${color}`}>
             <Icon size={28} className="text-white" />
         </div>
