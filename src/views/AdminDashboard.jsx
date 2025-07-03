@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle, Archive } from 'lucide-react';
+import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle, Archive, ChevronDown } from 'lucide-react';
 import { formatPrice, formatPercent, formatDate } from '../utils/formatters';
 import { DELIVERY_STATUSES } from '../constants';
 import KpiCard from '../components/common/KpiCard';
@@ -42,6 +42,7 @@ const AdminDashboard = () => {
     const [deliveryToCancel, setDeliveryToCancel] = useState(null);
     const [deliveryFilter, setDeliveryFilter] = useState('active');
     const [deliveryToArchive, setDeliveryToArchive] = useState(null);
+    const [expandedCardId, setExpandedCardId] = useState(null);
 
     useEffect(() => {
         const unsubPointsOfSale = onSnapshot(query(collection(db, "pointsOfSale"), orderBy('name')), (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
@@ -77,9 +78,7 @@ const AdminDashboard = () => {
         fetchAllCurrentData();
     }, [pointsOfSale, refreshTrigger, currentView]);
 
-    // CORRECTION APPLIQUÉE ICI
     const { active: activePosCount, inactive: inactivePosCount, archived: archivedPosCount } = useMemo(() => {
-        // Ajout d'une protection pour s'assurer que `pointsOfSale` est bien un tableau.
         if (!Array.isArray(pointsOfSale)) {
             return { active: 0, inactive: 0, archived: 0 };
         }
@@ -89,13 +88,11 @@ const AdminDashboard = () => {
             } else if (pos && pos.status === 'active') {
                 counts.active++;
             } else {
-                // Inclut les dépôts inactifs ou ceux sans statut défini
                 counts.inactive++;
             }
             return counts;
         }, { active: 0, inactive: 0, archived: 0 });
     }, [pointsOfSale]);
-
 
     const combinedPointsOfSale = useMemo(() => {
         let combined = pointsOfSale.map(pos => {
@@ -192,6 +189,10 @@ const AdminDashboard = () => {
             return true;
         });
 
+        const toggleCard = (id) => {
+            setExpandedCardId(expandedCardId === id ? null : id);
+        };
+
         return (
             <div className="bg-gray-800 rounded-2xl p-6 mt-8 animate-fade-in">
                 <div className="flex justify-between items-center mb-6">
@@ -203,45 +204,50 @@ const AdminDashboard = () => {
                 </div>
 
                 {filteredDeliveries.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="space-y-4">
                         {filteredDeliveries.map(req => {
                             const statusConfig = DELIVERY_STATUSES[req.status] || DELIVERY_STATUSES.default;
                             const Icon = statusConfig.icon;
                             const isArchivable = req.status === 'delivered' || req.status === 'cancelled';
+                            const isExpanded = expandedCardId === req.id;
 
                             return (
-                                <div key={req.id} className="bg-gray-900/70 rounded-2xl flex flex-col shadow-lg border border-gray-700/50">
-                                    <div className="p-5 border-b border-gray-700/50">
-                                        <div className="flex justify-between items-start">
+                                <div key={req.id} className="bg-gray-900/70 rounded-2xl shadow-lg border border-gray-700/50">
+                                    <div className="p-5 flex justify-between items-center cursor-pointer" onClick={() => toggleCard(req.id)}>
+                                        <div>
                                             <h4 className="font-bold text-lg text-white">{req.posName}</h4>
+                                            <p className="text-sm text-gray-400 mt-1">{formatDate(req.createdAt)}</p>
+                                        </div>
+                                        <div className="flex items-center gap-4">
                                             <span className={`flex items-center gap-2 px-2.5 py-1 text-xs font-bold rounded-full ${statusConfig.bg} ${statusConfig.color}`}>
                                                 <Icon size={14} />
                                                 <span>{statusConfig.text}</span>
                                             </span>
+                                            <ChevronDown className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                                         </div>
-                                        <p className="text-sm text-gray-400 mt-1">{formatDate(req.createdAt)}</p>
                                     </div>
-                                    <div className="p-5 flex-grow">
-                                        <p className="text-sm text-gray-300">Articles demandés :</p>
-                                        <ul className="mt-2 space-y-1 text-sm list-disc list-inside">
-                                            {req.items.map((item, index) => (
-                                                <li key={index} className="text-gray-200">
-                                                    <span className="font-semibold">{item.quantity}x</span> {item.productName}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                    <div className="p-4 bg-gray-900/50 rounded-b-2xl flex justify-end">
-                                        {isArchivable && deliveryFilter === 'active' ? (
-                                            <button onClick={() => setDeliveryToArchive(req)} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
-                                                <Archive size={16} /> Archiver
-                                            </button>
-                                        ) : deliveryFilter === 'active' ? (
-                                            <button onClick={() => setDeliveryToProcess(req)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">
-                                                Gérer la demande
-                                            </button>
-                                        ) : null}
-                                    </div>
+                                    
+                                    {isExpanded && (
+                                        <div className="animate-fade-in">
+                                            <div className="p-5 border-t border-gray-700/50">
+                                                <p className="text-sm text-gray-300">Articles demandés :</p>
+                                                <ul className="mt-2 space-y-1 text-sm list-disc list-inside">
+                                                    {req.items.map((item, index) => (
+                                                        <li key={index} className="text-gray-200"><span className="font-semibold">{item.quantity}x</span> {item.productName}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                            <div className="p-4 bg-gray-800/50 rounded-b-2xl flex justify-end">
+                                                {isArchivable && deliveryFilter === 'active' ? (
+                                                    <button onClick={() => setDeliveryToArchive(req)} className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2">
+                                                        <Archive size={16} /> Archiver
+                                                    </button>
+                                                ) : deliveryFilter === 'active' ? (
+                                                    <button onClick={() => setDeliveryToProcess(req)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg">Gérer la demande</button>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             );
                         })}
