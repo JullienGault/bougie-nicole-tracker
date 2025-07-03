@@ -102,8 +102,6 @@ const AdminDashboard = () => {
         return filteredList.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
     
-    // --- FONCTIONS DE GESTION (COMPLÉTÉES) ---
-
     const handleBackToDashboard = () => {
         setCurrentView('dashboard');
         setSelectedPos(null);
@@ -111,7 +109,6 @@ const AdminDashboard = () => {
 
     const handleOpenReconciliation = async (pos) => {
         setIsReconLoading(true);
-        setPosToReconcile(pos);
         try {
             const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
             const salesSnapshot = await getDocs(salesQuery);
@@ -122,9 +119,10 @@ const AdminDashboard = () => {
             const stock = stockSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             setReconciliationData({ sales, stock });
+            setPosToReconcile(pos); // On met à jour l'état seulement si tout réussit
         } catch (error) {
-            showToast("Erreur lors de la récupération des données.", "error");
-            setPosToReconcile(null);
+            showToast("Erreur lors de la récupération des données de réconciliation.", "error");
+            console.error(error);
         }
         setIsReconLoading(false);
     };
@@ -132,7 +130,6 @@ const AdminDashboard = () => {
     const handleCreatePayout = async (reconciledData) => {
         if (!posToReconcile) return;
         const { items, netAmount, grossRevenue } = reconciledData;
-        const payoutTimestamp = serverTimestamp();
         
         try {
             const batch = writeBatch(db);
@@ -141,22 +138,18 @@ const AdminDashboard = () => {
             
             let periodStart = new Date();
             if (allSaleIds.length > 0) {
-                const salesForPeriodQuery = query(
-                    collection(db, `pointsOfSale/${posToReconcile.id}/sales`), 
-                    where(documentId(), 'in', allSaleIds)
-                );
-                const salesForPeriodSnap = await getDocs(salesForPeriodQuery);
-                const saleDates = salesForPeriodSnap.docs
-                    .map(d => d.data().createdAt?.toDate())
+                const salesDates = reconciliationData.sales
+                    .filter(sale => allSaleIds.includes(sale.id))
+                    .map(sale => sale.createdAt?.toDate())
                     .filter(Boolean);
-                
-                if (saleDates.length > 0) {
-                    periodStart = new Date(Math.min(...saleDates));
+
+                if (salesDates.length > 0) {
+                    periodStart = new Date(Math.min(...salesDates));
                 }
             }
 
             batch.set(payoutDocRef, {
-                createdAt: payoutTimestamp, grossRevenue, commissionRate: posToReconcile.commissionRate, netAmount,
+                createdAt: serverTimestamp(), grossRevenue, commissionRate: posToReconcile.commissionRate, netAmount,
                 items: items.map(({ originalSales, ...item }) => item),
                 posId: posToReconcile.id, posName: posToReconcile.name, status: 'pending',
                 period: { start: periodStart, end: new Date() }
@@ -174,6 +167,7 @@ const AdminDashboard = () => {
             showToast("Erreur lors de la création du paiement.", "error");
         } finally {
             setPosToReconcile(null);
+            setReconciliationData({ sales: [], stock: [] });
             setRefreshTrigger(p => p + 1);
         }
     };
@@ -184,6 +178,10 @@ const AdminDashboard = () => {
         try {
             const posDocRef = doc(db, "pointsOfSale", posToToggleStatus.id);
             await updateDoc(posDocRef, { status: newStatus });
+            
+            const userDocRef = doc(db, "users", posToToggleStatus.id);
+            await updateDoc(userDocRef, { status: newStatus });
+
             showToast(`Dépôt ${newStatus === 'active' ? 'réactivé' : 'désactivé'} avec succès.`, "success");
         } catch (error) {
             showToast("Erreur lors de la mise à jour du statut.", "error");
@@ -300,18 +298,13 @@ const AdminDashboard = () => {
         );
     };
     
-    // --- ROUTAGE DES VUES ---
-    
-    if (currentView === 'products') return <ProductManager onBack={handleBackToDashboard} />;
+    if (currentView === 'products') return <><BackButton onBack={handleBackToDashboard} /><ProductManager onBack={handleBackToDashboard} /></>;
     if (currentView === 'analytics') return <><BackButton onBack={handleBackToDashboard} /><SalesAnalytics /></>;
     if (currentView === 'deliveries') return <DeliveriesView />;
     if (selectedPos) return <><BackButton onBack={handleBackToDashboard} /><PosDashboard pos={selectedPos} isAdminView={true} /></>;
 
-    // --- VUE PRINCIPALE ---
-
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            {/* --- Modales --- */}
             {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
             {posToEdit && <EditPosModal pos={posToEdit} onClose={() => setPosToEdit(null)} onSave={() => setRefreshTrigger(p => p+1)} hasOpenBalance={allPosBalances[posToEdit.id] > 0} />}
             {posToEditUser && <EditPosUserModal posUser={posToEditUser} onClose={() => setPosToEditUser(null)} onSave={() => setRefreshTrigger(p => p+1)} />}
@@ -321,7 +314,6 @@ const AdminDashboard = () => {
             {deliveryToCancel && <ReasonPromptModal title="Annuler la commande" message={`Expliquez pourquoi vous annulez la livraison pour ${deliveryToCancel.posName}.`} onConfirm={handleCancelDeliveryRequest} onCancel={() => setDeliveryToCancel(null)} />}
             {deliveryToArchive && <ConfirmationModal title="Archiver la demande" message="Voulez-vous archiver cette demande de votre vue ?" onConfirm={handleArchiveDelivery} onCancel={() => setDeliveryToArchive(null)} confirmText="Oui, archiver" confirmColor="bg-yellow-600 hover:bg-yellow-700" />}
 
-            {/* --- En-tête --- */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
                 <div>
                     <h2 className="text-3xl font-bold text-white">Tableau de Bord Administrateur</h2>
@@ -335,14 +327,12 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
-            {/* --- KPIs --- */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                 <KpiCard title="Chiffre d'Affaires (non clôturé)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
                 <KpiCard title="Commissions (non clôturées)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
                 <KpiCard title="Montant total à reverser" value={formatPrice(globalStats.toPay)} icon={Store} color="bg-pink-600" />
             </div>
             
-            {/* --- Tableau des Dépôts --- */}
             <div className="bg-gray-800 rounded-2xl p-6">
                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
                     <h3 className="text-xl font-bold text-white mb-4 sm:mb-0">Liste des Dépôts-Vente</h3>
