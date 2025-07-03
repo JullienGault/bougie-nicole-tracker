@@ -1,3 +1,4 @@
+// src/components/common/NotificationBell.jsx
 import React, { useState, useEffect, useContext } from 'react';
 import { Bell } from 'lucide-react';
 import { AppContext } from '../../contexts/AppContext';
@@ -6,7 +7,8 @@ import { formatRelativeTime } from '../../utils/time';
 import { NOTIFICATION_CONFIG } from '../../constants';
 
 const NotificationBell = () => {
-    const { loggedInUserData } = useContext(AppContext);
+    // AJOUT DE globalModal
+    const { loggedInUserData, globalModal } = useContext(AppContext);
     const [notifications, setNotifications] = useState([]);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
@@ -16,7 +18,7 @@ const NotificationBell = () => {
         const recipientQuery = loggedInUserData.role === 'admin'
             ? where('recipientUid', '==', 'all_admins')
             : where('recipientUid', '==', loggedInUserData.uid);
-            
+
         const q = query(
             collection(db, 'notifications'),
             recipientQuery,
@@ -37,12 +39,14 @@ const NotificationBell = () => {
             const notifDocRef = doc(db, 'notifications', notification.id);
             await updateDoc(notifDocRef, { isRead: true });
         }
-        
+
         const config = NOTIFICATION_CONFIG[notification.type] || NOTIFICATION_CONFIG.DEFAULT;
-        if (config.action) {
-            console.log(`Action: ${config.action}, ID: ${notification.relatedId}`);
-            setIsPanelOpen(false);
+        // GESTION DE L'ACTION
+        if (config.action === 'OPEN_DELIVERY_VIEW' && globalModal) {
+            globalModal(); // Appelle la fonction pour changer de vue
         }
+
+        setIsPanelOpen(false);
     };
 
     const handleMarkAllAsRead = async () => {
