@@ -4,13 +4,10 @@ import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, update
 import { AppContext } from '../contexts/AppContext';
 
 // Icons
-import { Package, Store, UserPlus, History, DollarSign, HandCoins, ChevronUp, ChevronDown, Wrench, Check, ArrowRightCircle, Search } from 'lucide-react';
+import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Wrench } from 'lucide-react';
 
 // Utils
 import { formatPrice, formatPercent, formatDate } from '../utils/formatters';
-
-// Constants
-import { DELIVERY_STATUS_STEPS, deliveryStatusOrder } from '../constants';
 
 // Components
 import KpiCard from '../components/common/KpiCard';
@@ -26,12 +23,12 @@ import SalesAnalytics from './SalesAnalytics';
 const AdminDashboard = () => {
     const { loggedInUserData, showToast, products } = useContext(AppContext);
     
+    // States
     const [pointsOfSale, setPointsOfSale] = useState([]);
     const [posUsers, setPosUsers] = useState([]);
     const [deliveryRequests, setDeliveryRequests] = useState([]);
     const [allPosBalances, setAllPosBalances] = useState({});
     const [globalStats, setGlobalStats] = useState({ revenue: 0, commission: 0, toPay: 0 });
-
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [selectedPos, setSelectedPos] = useState(null);
     const [posToEdit, setPosToEdit] = useState(null);
@@ -41,59 +38,42 @@ const AdminDashboard = () => {
     const [requestToProcess, setRequestToProcess] = useState(null);
     const [requestToCancel, setRequestToCancel] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [expandedRequestId, setExpandedRequestId] = useState(null);
-    const [deliveryTab, setDeliveryTab] = useState('actives');
-    const [listFilter, setListFilter] = useState('active');
     const [currentView, setCurrentView] = useState('dashboard');
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
+    const [listFilter, setListFilter] = useState('active');
 
-    // Data Fetching
+    // Fetching Data
     useEffect(() => {
-        const q = query(collection(db, "pointsOfSale"), orderBy('name'));
-        const unsub = onSnapshot(q, (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-        return unsub;
+        onSnapshot(query(collection(db, "pointsOfSale"), orderBy('name')), 
+            (snapshot) => setPointsOfSale(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+        );
+        onSnapshot(query(collection(db, "users"), where("role", "==", "pos")), 
+            (snapshot) => setPosUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+        );
+        onSnapshot(query(collection(db, "deliveryRequests"), orderBy('createdAt', 'desc')), 
+            (snapshot) => setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })))
+        );
     }, []);
 
-    useEffect(() => {
-        const q = query(collection(db, "users"), where("role", "==", "pos"));
-        const unsub = onSnapshot(q, (snapshot) => setPosUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-        return unsub;
-    }, []);
-
-    useEffect(() => {
-        const q = query(collection(db, "deliveryRequests"), orderBy('createdAt', 'desc'));
-        const unsub = onSnapshot(q, (snapshot) => setDeliveryRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-        return unsub;
-    }, []);
-
-    useEffect(() => {
-        if (pointsOfSale.length === 0) return;
-        const fetchAllCurrentData = async () => {
-            const balances = {};
-            let currentSales = [];
-            for (const pos of pointsOfSale) {
-                const salesQuery = query(collection(db, `pointsOfSale/${pos.id}/sales`), where("payoutId", "==", null));
-                const salesSnapshot = await getDocs(salesQuery);
-                const salesData = salesSnapshot.docs.map(doc => ({ ...doc.data(), posName: pos.name, commissionRate: pos.commissionRate }));
-                currentSales = [...currentSales, ...salesData];
-                const gross = salesData.reduce((acc, sale) => acc + sale.totalAmount, 0);
-                balances[pos.id] = gross - (gross * (pos.commissionRate || 0));
-            }
-            setAllPosBalances(balances);
-            const revenue = currentSales.reduce((acc, sale) => acc + sale.totalAmount, 0);
-            const commission = currentSales.reduce((acc, sale) => acc + (sale.totalAmount * (sale.commissionRate || 0)), 0);
-            setGlobalStats({ revenue, commission, toPay: revenue - commission });
-        };
-        fetchAllCurrentData();
-    }, [pointsOfSale, refreshTrigger]);
+    // Memoized Calculations
+    const { activePosCount, inactivePosCount, archivedPosCount } = useMemo(() => {
+        return pointsOfSale.reduce((counts, pos) => {
+            if (pos.isArchived) counts.archived++;
+            else if (pos.status === 'active') counts.active++;
+            else if (pos.status === 'inactive') counts.inactive++;
+            return counts;
+        }, { active: 0, inactive: 0, archived: 0 });
+    }, [pointsOfSale]);
 
     const combinedPointsOfSale = useMemo(() => {
-        let combined = pointsOfSale.map(pos => {
-            const posUser = posUsers.find(u => u.id === pos.id);
-            const balance = allPosBalances[pos.id] || 0;
-            return { ...posUser, ...pos, uid: pos.id, balance, isArchived: pos.isArchived || false };
-        });
+        let combined = pointsOfSale.map(pos => ({
+            ...posUsers.find(u => u.id === pos.id),
+            ...pos,
+            uid: pos.id,
+            balance: allPosBalances[pos.id] || 0,
+            isArchived: pos.isArchived || false
+        }));
 
         let filteredList;
         if (listFilter === 'active') filteredList = combined.filter(p => p.status === 'active' && !p.isArchived);
@@ -102,32 +82,17 @@ const AdminDashboard = () => {
         else filteredList = combined;
 
         if (searchTerm) {
-            filteredList = filteredList.filter(pos => 
-                pos.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                pos.firstName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                pos.lastName?.toLowerCase().includes(searchTerm.toLowerCase())
+            const lowerCaseSearch = searchTerm.toLowerCase();
+            filteredList = filteredList.filter(pos =>
+                pos.name?.toLowerCase().includes(lowerCaseSearch) ||
+                pos.firstName?.toLowerCase().includes(lowerCaseSearch) ||
+                pos.lastName?.toLowerCase().includes(lowerCaseSearch)
             );
         }
-
         return filteredList.sort((a, b) => a.name.localeCompare(b.name));
     }, [pointsOfSale, posUsers, allPosBalances, searchTerm, listFilter]);
 
-    const handleCancelDelivery = async (reason) => {
-        if (!requestToCancel) return;
-        setIsLoading(true);
-        try {
-            await updateDoc(doc(db, 'deliveryRequests', requestToCancel.id), { status: 'cancelled', cancellationReason: reason });
-            await addDoc(collection(db, 'notifications'), {
-                recipientUid: requestToCancel.posId,
-                message: `Votre commande du ${formatDate(requestToCancel.createdAt)} a été annulée.`,
-                createdAt: serverTimestamp(), isRead: false, type: 'DELIVERY_CANCELLED'
-            });
-            showToast("Commande annulée avec succès.", "success");
-            setRequestToCancel(null); setRequestToProcess(null);
-        } catch (error) { showToast("Erreur lors de l'annulation.", "error"); } 
-        finally { setIsLoading(false); }
-    };
-
+    // Handlers
     const handleTogglePosStatus = async () => {
         if (!posToToggleStatus) return;
         const { id, name, status } = posToToggleStatus;
@@ -137,60 +102,29 @@ const AdminDashboard = () => {
             const posUpdate = { status: newStatus };
             if (newStatus === 'inactive' && shouldArchive) posUpdate.isArchived = true;
             if (newStatus === 'active') posUpdate.isArchived = false;
-    
             batch.update(doc(db, "pointsOfSale", id), posUpdate);
             batch.update(doc(db, "users", id), { status: newStatus });
-    
             await batch.commit();
             showToast(`Le compte "${name}" est maintenant ${newStatus}.`, "success");
         } catch (error) { showToast("Erreur lors du changement de statut.", "error"); }
         finally { setPosToToggleStatus(null); setShouldArchive(false); }
     };
 
-    if (currentView === 'analytics') return <><div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700"><button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button></div><SalesAnalytics /></>;
+    // Render Logic
     if (currentView === 'products') return <ProductManager onBack={() => setCurrentView('dashboard')} />;
+    if (currentView === 'analytics') return <><div className="p-4 sm:px-8 sm:py-4 border-b border-gray-700"><button onClick={() => setCurrentView('dashboard')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button></div><SalesAnalytics /></>;
     if (selectedPos) return <><button onClick={() => setSelectedPos(null)} className="m-4 bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><ArrowRightCircle className="transform rotate-180" size={20} />Retour</button><PosDashboard pos={selectedPos} isAdminView={true} onActionSuccess={() => setRefreshTrigger(p => p + 1)} /></>;
-    
+
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
+            {/* Modals */}
             {showCreateModal && <CreatePosModal onClose={() => setShowCreateModal(false)} />}
             {posToEdit && <EditPosModal pos={posToEdit} hasOpenBalance={posToEdit.balance > 0} onClose={() => setPosToEdit(null)} onSave={() => {}} />}
             {posToEditUser && <EditPosUserModal posUser={posToEditUser} onClose={() => setPosToEditUser(null)} onSave={() => {}} />}
-            
-            {/* THIS IS THE CORRECTED PART */}
-            {posToToggleStatus && <ConfirmationModal
-                title="Confirmer le changement de statut"
-                message={(
-                    <div>
-                        <p className="mb-4">
-                            {`Êtes-vous sûr de vouloir rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`}
-                        </p>
-                        {posToToggleStatus.status === 'active' && (
-                            <div className="flex items-center justify-center gap-3 bg-gray-700/50 p-3 rounded-lg">
-                                <input
-                                    id="archive-checkbox"
-                                    type="checkbox"
-                                    className="h-4 w-4 rounded bg-gray-600 border-gray-500 text-indigo-600 focus:ring-indigo-500"
-                                    checked={shouldArchive}
-                                    onChange={(e) => setShouldArchive(e.target.checked)}
-                                />
-                                <label htmlFor="archive-checkbox" className="text-sm text-gray-300">
-                                    Archiver également ce compte
-                                </label>
-                            </div>
-                        )}
-                    </div>
-                )}
-                onConfirm={handleTogglePosStatus}
-                onCancel={() => { setPosToToggleStatus(null); setShouldArchive(false); }}
-                confirmText="Oui, confirmer"
-                confirmColor={posToToggleStatus.status === 'active' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}
-            />}
-            {/* END OF CORRECTION */}
-
+            {posToToggleStatus && <ConfirmationModal title="Confirmer le changement de statut" message={(<div><p>{`Rendre le compte "${posToToggleStatus.name}" ${posToToggleStatus.status === 'active' ? 'INACTIF' : 'ACTIF'} ?`}</p>{posToToggleStatus.status === 'active' && <div className="flex items-center gap-3 mt-4"><input id="archive-cb" type="checkbox" checked={shouldArchive} onChange={(e) => setShouldArchive(e.target.checked)} /><label htmlFor="archive-cb">Archiver aussi</label></div>}</div>)} onConfirm={handleTogglePosStatus} onCancel={() => {setPosToToggleStatus(null); setShouldArchive(false);}} confirmText="Oui, confirmer" />}
             {requestToProcess && <ProcessDeliveryModal request={requestToProcess} onClose={() => setRequestToProcess(null)} onCancelRequest={() => setRequestToCancel(requestToProcess)} />}
-            {requestToCancel && <ConfirmationModal title="Confirmer l'annulation" message={`Vous êtes sur le point d'annuler cette commande. Veuillez fournir un motif (obligatoire).`} confirmText="Confirmer l'Annulation" confirmColor="bg-red-600 hover:bg-red-700" requiresReason={true} onConfirm={handleCancelDelivery} onCancel={() => setRequestToCancel(null)} />}
 
+            {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-center mb-8">
                 <div><h2 className="text-3xl font-bold text-white">Tableau de Bord Admin</h2><p className="text-gray-400">Gestion des dépôts et du catalogue.</p></div>
                 <div className="flex flex-wrap gap-4 mt-4 md:mt-0">
@@ -200,32 +134,68 @@ const AdminDashboard = () => {
                 </div>
             </div>
 
+            {/* KPIs */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <KpiCard title="CA (Période en cours)" value={formatPrice(globalStats.revenue)} icon={DollarSign} color="bg-green-600" />
                 <KpiCard title="Commissions (Période en cours)" value={formatPrice(globalStats.commission)} icon={HandCoins} color="bg-blue-600" />
                 <KpiCard title="Net à Reverser (Total)" value={formatPrice(globalStats.toPay)} icon={Package} color="bg-pink-600" />
-                <KpiCard title="Dépôts Actifs" value={combinedPointsOfSale.filter(p=>p.status==='active').length} icon={Store} color="bg-purple-600" />
+                <KpiCard title="Dépôts Actifs" value={activePosCount} icon={Store} color="bg-purple-600" />
             </div>
 
+            {/* PoS List Section */}
             <div className="bg-gray-800 rounded-2xl p-6 mt-8">
-                <table className="w-full text-left">
-                    <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead>
-                    <tbody>
-                        {combinedPointsOfSale.map(pos => (
-                            <tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50">
-                                <td className="p-3 font-medium flex items-center gap-2"><span className={`h-2.5 w-2.5 rounded-full ${pos.isArchived ? 'bg-gray-500' : (pos.status === 'active' ? 'bg-green-500' : 'bg-red-500')}`}></span>{pos.name}</td>
-                                <td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td>
-                                <td className="p-3">{formatPercent(pos.commissionRate)}</td>
-                                <td className="p-3 space-x-2 text-sm whitespace-nowrap">
-                                    <button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1">Détails</button>
-                                    <button onClick={() => setPosToEditUser(pos)} className="text-cyan-400 p-1">Infos</button>
-                                    <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1">Paramètres</button>
-                                    <button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500' : 'text-green-500'}`}>{pos.status === 'active' ? 'Désactiver' : 'Activer'}</button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                {/* ======================================================= */}
+                {/* SECTION MANQUANTE QUI A ÉTÉ RAJOUTÉE */}
+                {/* ======================================================= */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
+                     <div className="border-b border-gray-700">
+                        <nav className="-mb-px flex gap-6" aria-label="Tabs">
+                            <button onClick={() => setListFilter('active')} className={`${listFilter === 'active' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Actifs ({activePosCount})</button>
+                            <button onClick={() => setListFilter('inactive')} className={`${listFilter === 'inactive' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Inactifs ({inactivePosCount})</button>
+                            <button onClick={() => setListFilter('archived')} className={`${listFilter === 'archived' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-400'} whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm`}>Archivés ({archivedPosCount})</button>
+                        </nav>
+                    </div>
+                    <div className="relative w-full sm:w-auto sm:max-w-xs mt-4 sm:mt-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <input
+                            type="text"
+                            placeholder="Rechercher un dépôt..."
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full bg-gray-700 p-2 pl-10 rounded-lg"
+                        />
+                    </div>
+                </div>
+                {/* ======================================================= */}
+                {/* FIN DE LA SECTION RAJOUTÉE                             */}
+                {/* ======================================================= */}
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead><tr className="border-b border-gray-700 text-gray-400 text-sm"><th className="p-3">Nom</th><th className="p-3">Solde à Payer</th><th className="p-3">Commission</th><th className="p-3">Actions</th></tr></thead>
+                        <tbody>
+                            {combinedPointsOfSale.map(pos => (
+                                <tr key={pos.id} className="border-b border-gray-700 hover:bg-gray-700/50">
+                                    <td className="p-3 font-medium flex items-center gap-2">
+                                        <span className={`h-2.5 w-2.5 rounded-full ${pos.isArchived ? 'bg-gray-500' : (pos.status === 'active' ? 'bg-green-500' : 'bg-red-500')}`} title={pos.isArchived ? 'Archivé' : (pos.status === 'active' ? 'Actif' : 'Inactif')}></span>
+                                        {pos.name}
+                                    </td>
+                                    <td className={`p-3 font-bold ${pos.balance > 0 ? 'text-yellow-400' : ''}`}>{formatPrice(pos.balance)}</td>
+                                    <td className="p-3">{formatPercent(pos.commissionRate)}</td>
+                                    <td className="p-3 space-x-2 text-sm whitespace-nowrap">
+                                        <button onClick={() => setSelectedPos(pos)} className="text-indigo-400 p-1 hover:text-indigo-300">Détails</button>
+                                        <button onClick={() => setPosToEditUser(pos)} className="text-cyan-400 p-1 hover:text-cyan-300">Infos Contact</button>
+                                        <button onClick={() => setPosToEdit(pos)} className="text-yellow-400 p-1 hover:text-yellow-300">Paramètres</button>
+                                        <button onClick={() => setPosToToggleStatus(pos)} className={`p-1 ${pos.status === 'active' ? 'text-red-500 hover:text-red-400' : 'text-green-500 hover:text-green-400'}`}>
+                                            {pos.status === 'active' ? 'Désactiver' : 'Activer'}
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    {combinedPointsOfSale.length === 0 && <p className="text-center text-gray-400 py-8">Aucun dépôt-vente ne correspond aux filtres actuels.</p>}
+                </div>
             </div>
         </div>
     );
