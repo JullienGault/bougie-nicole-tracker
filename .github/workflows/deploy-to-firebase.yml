@@ -20,8 +20,17 @@ jobs:
 
       # Étape 2: Installe Node.js, puis les dépendances du projet
       - name: Install dependencies
-        # MODIFICATION ICI: on utilise "npm install" qui fonctionne sans package-lock.json
         run: npm install
+
+      # NOUVELLE ÉTAPE: Créer le fichier .env à partir des secrets GitHub
+      - name: Create .env file
+        run: |
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
 
       # Étape 3: Construit l'application React pour la production
       # Le résultat sera dans un dossier /dist
