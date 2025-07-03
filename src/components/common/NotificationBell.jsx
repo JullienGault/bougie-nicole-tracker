@@ -1,9 +1,9 @@
-// src/components/common/NotificationBell.jsx
 import React, { useState, useEffect, useContext } from 'react';
 import { Bell } from 'lucide-react';
 import { AppContext } from '../../contexts/AppContext';
 import { db, query, collection, where, orderBy, onSnapshot, updateDoc, doc, writeBatch } from '../../services/firebase';
 import { formatRelativeTime } from '../../utils/time';
+import { NOTIFICATION_CONFIG } from '../../constants';
 
 const NotificationBell = () => {
     const { loggedInUserData } = useContext(AppContext);
@@ -11,23 +11,20 @@ const NotificationBell = () => {
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
     useEffect(() => {
-        if (!loggedInUserData || !db) return;
+        if (!loggedInUserData?.uid) return;
 
-        // L'admin écoute les notifs pour 'all_admins', le POS écoute les siennes
-        const recipientIds = loggedInUserData.role === 'admin'
-            ? ['all_admins']
-            : [loggedInUserData.uid];
-
+        const recipientQuery = loggedInUserData.role === 'admin'
+            ? where('recipientUid', '==', 'all_admins')
+            : where('recipientUid', '==', loggedInUserData.uid);
+            
         const q = query(
             collection(db, 'notifications'),
-            where('recipientUid', 'in', recipientIds),
+            recipientQuery,
             orderBy('createdAt', 'desc')
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setNotifications(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        }, (error) => {
-            console.error("Erreur de lecture des notifications (vérifiez les index Firestore): ", error);
         });
 
         return () => unsubscribe();
@@ -35,12 +32,16 @@ const NotificationBell = () => {
 
     const unreadCount = notifications.filter(n => !n.isRead).length;
 
-    const handleMarkOneAsRead = async (notificationId) => {
-        const notifDocRef = doc(db, 'notifications', notificationId);
-        try {
+    const handleNotificationClick = async (notification) => {
+        if (!notification.isRead) {
+            const notifDocRef = doc(db, 'notifications', notification.id);
             await updateDoc(notifDocRef, { isRead: true });
-        } catch (error) {
-            console.error("Erreur lors de la mise à jour de la notification: ", error);
+        }
+        
+        const config = NOTIFICATION_CONFIG[notification.type] || NOTIFICATION_CONFIG.DEFAULT;
+        if (config.action) {
+            console.log(`Action: ${config.action}, ID: ${notification.relatedId}`);
+            setIsPanelOpen(false);
         }
     };
 
@@ -53,11 +54,7 @@ const NotificationBell = () => {
                 batch.update(notifDocRef, { isRead: true });
             }
         });
-        try {
-            await batch.commit();
-        } catch (error) {
-            console.error("Erreur lors de la mise à jour des notifications: ", error);
-        }
+        await batch.commit();
     };
 
     return (
@@ -83,14 +80,23 @@ const NotificationBell = () => {
                         }
                     </div>
                     <div className="max-h-96 overflow-y-auto custom-scrollbar">
-                        {notifications.length > 0 ? notifications.map(notif => (
-                            <div key={notif.id}
-                                onClick={() => handleMarkOneAsRead(notif.id)}
-                                className={`p-4 border-b border-gray-700/50 cursor-pointer hover:bg-gray-900/50 ${!notif.isRead ? 'bg-indigo-900/20' : ''}`}>
-                                <p className="text-sm text-gray-200">{notif.message}</p>
-                                <p className="text-xs text-gray-400 mt-1.5">{formatRelativeTime(notif.createdAt)}</p>
-                            </div>
-                        )) : <p className="p-4 text-sm text-center text-gray-400">Aucune nouvelle notification.</p>}
+                        {notifications.length > 0 ? notifications.map(notif => {
+                            const config = NOTIFICATION_CONFIG[notif.type] || NOTIFICATION_CONFIG.DEFAULT;
+                            const Icon = config.icon;
+                            return (
+                                <div key={notif.id}
+                                    onClick={() => handleNotificationClick(notif)}
+                                    className={`p-4 border-b border-gray-700/50 cursor-pointer flex gap-3 hover:bg-gray-900/50 ${!notif.isRead ? 'bg-indigo-900/20' : ''}`}>
+                                    <div className="flex-shrink-0 mt-1">
+                                        <Icon className={config.color} size={20} />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-gray-200">{notif.message}</p>
+                                        <p className="text-xs text-gray-400 mt-1.5">{formatRelativeTime(notif.createdAt)}</p>
+                                    </div>
+                                </div>
+                            );
+                        }) : <p className="p-4 text-sm text-center text-gray-400">Aucune nouvelle notification.</p>}
                     </div>
                 </div>
             )}
