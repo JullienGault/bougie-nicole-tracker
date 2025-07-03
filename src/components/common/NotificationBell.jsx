@@ -7,8 +7,7 @@ import { formatRelativeTime } from '../../utils/time';
 import { NOTIFICATION_CONFIG } from '../../constants';
 
 const NotificationBell = () => {
-    // AJOUT DE globalModal
-    const { loggedInUserData, globalModal } = useContext(AppContext);
+    const { loggedInUserData, requestViewChange } = useContext(AppContext);
     const [notifications, setNotifications] = useState([]);
     const [isPanelOpen, setIsPanelOpen] = useState(false);
 
@@ -16,7 +15,7 @@ const NotificationBell = () => {
         if (!loggedInUserData?.uid) return;
 
         const recipientQuery = loggedInUserData.role === 'admin'
-            ? where('recipientUid', '==', 'all_admins')
+            ? where('recipientUid', 'in', ['all_admins', loggedInUserData.uid])
             : where('recipientUid', '==', loggedInUserData.uid);
 
         const q = query(
@@ -41,9 +40,11 @@ const NotificationBell = () => {
         }
 
         const config = NOTIFICATION_CONFIG[notification.type] || NOTIFICATION_CONFIG.DEFAULT;
-        // GESTION DE L'ACTION
-        if (config.action === 'OPEN_DELIVERY_VIEW' && globalModal) {
-            globalModal(); // Appelle la fonction pour changer de vue
+        
+        // Si une action est définie pour ce type de notif et qu'un gestionnaire de vue est dispo...
+        if (config.action && requestViewChange) {
+            // ...on l'appelle en lui passant l'action et l'ID associé (ex: ID du dépôt).
+            requestViewChange(config.action, notification.relatedId);
         }
 
         setIsPanelOpen(false);
