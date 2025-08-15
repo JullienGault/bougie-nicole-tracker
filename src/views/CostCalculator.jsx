@@ -184,11 +184,12 @@ const CostCalculator = () => {
     const [recipeItems, setRecipeItems] = useState([]);
     const [productName, setProductName] = useState('');
     const [isShippingVisible, setIsShippingVisible] = useState(false);
+    const [isFinancialsVisible, setIsFinancialsVisible] = useState(false);
     
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
     const [tvaRate, setTvaRate] = useState(20);
     const [chargesRate, setChargesRate] = useState(22.2);
-    const [feesRate, setFeesRate] = useState(2);
+    const [feesRate, setFeesRate] = useState(1.75); // Taux SumUp standard
 
     useEffect(() => {
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
@@ -271,7 +272,7 @@ const CostCalculator = () => {
                         <h3 className="text-xl font-bold mb-4">Composition du Produit Fini</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                             <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit" className="w-full bg-gray-700 p-2 rounded-lg sm:col-span-2"/>
-                            <div className="bg-gray-900 p-2 rounded-lg text-center"><span className="text-sm text-gray-400">Poids colis : </span><span className="font-bold">{calculations.finalPackageWeight.toFixed(2)} g</span></div>
+                            <div className="bg-gray-900 p-2 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids colis : </span><span className="font-bold ml-2">{calculations.finalPackageWeight.toFixed(2)} g</span></div>
                         </div>
                         <div className="space-y-2">
                             {recipeItems.map(item => (
@@ -297,32 +298,39 @@ const CostCalculator = () => {
                         </button>
                         {isShippingVisible && <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in"><ShippingRateManager rates={shippingRates} /></div>}
                     </div>
-                    <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
-                        <h3 className="text-xl font-bold mb-6">Paramètres & Résultats</h3>
-                        <div className="space-y-4">
-                            <div className="bg-gray-900/50 p-4 rounded-lg">
-                                <h4 className="font-semibold text-lg mb-3 text-indigo-300">Paramètres Financiers</h4>
+
+                    <div className="bg-gray-800 p-6 rounded-2xl">
+                        <button onClick={() => setIsFinancialsVisible(!isFinancialsVisible)} className="w-full flex justify-between items-center text-left">
+                            <h3 className="text-xl font-bold flex items-center gap-2"><Percent size={22}/> Paramètres Financiers</h3>
+                            <ChevronDown className={`transform transition-transform ${isFinancialsVisible ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isFinancialsVisible && 
+                            <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="text-sm text-gray-400">Marge / Multiplicateur</label><input type="number" step="0.1" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                     <div><label className="text-sm text-gray-400">TVA (%)</label><input type="number" step="1" value={tvaRate} onChange={e => setTvaRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                     <div><label className="text-sm text-gray-400">Cotisations %</label><input type="number" step="0.1" value={chargesRate} onChange={e => setChargesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                    <div><label className="text-sm text-gray-400">Frais bancaires %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                                    <div><label className="text-sm text-gray-400">Frais Sumup %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                 </div>
                             </div>
-                            <div className="space-y-2 pt-4">
-                                <div className="flex justify-between items-center p-2"><span className="text-gray-400">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
-                                <div className="flex justify-between items-center p-2"><span className="text-gray-400">Expédition (Facturée)</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCustomerPrice)}</span></div>
-                                <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
-                                <hr className="border-gray-700"/>
-                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Coût total des matières</span><span>{formatPrice(calculations.productCost)}</span></div>
-                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Coût réel de l'expédition</span><span>{formatPrice(calculations.shippingProviderCost)}</span></div>
-                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Frais bancaires</span><span>{formatPrice(calculations.transactionFees)}</span></div>
-                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Cotisations</span><span>{formatPrice(calculations.businessCharges)}</span></div>
-                                
-                                <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
-                                    <span className="text-green-300 font-semibold">Bénéfice Net Final</span>
-                                    <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
-                                </div>
+                        }
+                    </div>
+                    
+                    <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
+                        <h3 className="text-xl font-bold mb-4">Résultats du Calcul</h3>
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
+                            <hr className="border-gray-700"/>
+                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
+                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Expédition (Facturée)</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCustomerPrice)}</span></div>
+                            <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
+                            <hr className="border-gray-700"/>
+                            <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Dépenses Totales</span><span>{formatPrice(calculations.productCost + calculations.shippingProviderCost + calculations.transactionFees)}</span></div>
+                            <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Cotisations</span><span>{formatPrice(calculations.businessCharges)}</span></div>
+                            
+                            <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
+                                <span className="text-green-300 font-semibold">Bénéfice Net Final</span>
+                                <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
                             </div>
                         </div>
                         <div className="mt-8 flex justify-end">
