@@ -1,8 +1,8 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from '../services/firebase';
+import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Library } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Library, Box } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
@@ -212,6 +212,8 @@ const CostCalculator = () => {
     
     const [publicPrice, setPublicPrice] = useState('');
     const [commissionRate, setCommissionRate] = useState(30);
+    const [simuPublicPrice, setSimuPublicPrice] = useState(19.90);
+    const [simuCommissionRate, setSimuCommissionRate] = useState(30);
     
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
     const [tvaRate, setTvaRate] = useState(20);
@@ -227,7 +229,7 @@ const CostCalculator = () => {
     const productMaterials = useMemo(() => rawMaterials.filter(m => m.category !== 'expedition'), [rawMaterials]);
 
     useEffect(() => {
-        // ... listeners firebase
+        // Firebase listeners...
     }, []);
 
     const productCost = useMemo(() => recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0), [recipeItems]);
@@ -289,67 +291,67 @@ const CostCalculator = () => {
 
     const handleRemoveFromRecipe = (materialId) => setRecipeItems(items => items.filter(item => item.materialId !== materialId));
     
-    const calculations = useMemo(() => {
-        let productPriceTTC = parseFloat(manualPriceTTC) || 0;
-        let productPriceHT = productPriceTTC / (1 + tvaRate / 100);
-        let finalProfit, finalClientPrice, shippingCustomerPrice = 0, shippingProviderCost = 0, transactionFees = 0, businessCharges = 0, totalExpenses = 0, shippingSupplyCost = 0;
+    const calculateProfit = useMemo(() => (mode, recipe, params) => {
+        const { margin, tva, fees, commission, publicP, shippingSupplyIdParam } = params;
+        const pCost = recipe.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
+        let finalProfit;
 
-        const finalPackageWeight = recipeItems.reduce((acc, item) => {
-            let weight = 0;
-            if(item.standardizedUnit === 'g') weight = item.quantity;
-            else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
-            else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
-            return acc + weight;
-        }, 0);
-
-        if (saleMode === 'depot') {
-            productPriceTTC = parseFloat(publicPrice) || 0;
-            productPriceHT = productPriceTTC / (1 + tvaRate / 100);
-            const commission = productPriceTTC * (commissionRate / 100);
-            businessCharges = productPriceHT * (chargesRate / 100);
-            totalExpenses = productCost + commission;
-            finalProfit = productPriceHT - productCost - businessCharges - commission;
-            finalClientPrice = productPriceTTC;
-
-        } else { // internet & domicile
-            if (saleMode === 'internet' && finalPackageWeight > 0 && shippingRates.length > 0) {
-                const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
-                const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
-                if (applicableRate) {
-                    shippingProviderCost = applicableRate.cost;
-                    shippingCustomerPrice = applicableRate.price;
+        if (mode === 'depot') {
+            const pPriceTTC = publicP;
+            const pPriceHT = pPriceTTC / (1 + tva / 100);
+            const comm = pPriceTTC * (commission / 100);
+            const bCharges = pPriceHT * (chargesRate / 100);
+            finalProfit = pPriceHT - pCost - bCharges - comm;
+        } else {
+            const pPriceHT = pCost * margin;
+            const pPriceTTC = pPriceHT * (1 + tva / 100);
+            
+            let shippingProviderCost = 0, shippingCustomerPrice = 0, shippingSupplyCost = 0;
+            if (mode === 'internet') {
+                const finalPackageWeight = recipe.reduce((acc, item) => {
+                    let weight = 0;
+                    if(item.standardizedUnit === 'g') weight = item.quantity;
+                    else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
+                    else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
+                    return acc + weight;
+                }, 0);
+                if (finalPackageWeight > 0 && shippingRates.length > 0) {
+                    const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
+                    const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
+                    if (applicableRate) {
+                        shippingProviderCost = applicableRate.cost;
+                        shippingCustomerPrice = applicableRate.price;
+                    }
+                }
+                const selectedSupply = rawMaterials.find(m => m.id === shippingSupplyIdParam);
+                if (selectedSupply && selectedSupply.capacity > 0) {
+                    shippingSupplyCost = selectedSupply.standardizedPrice / selectedSupply.capacity;
                 }
             }
-
-            const selectedSupply = rawMaterials.find(m => m.id === shippingSupplyId);
-            if (saleMode === 'internet' && selectedSupply && selectedSupply.capacity > 0) {
-                shippingSupplyCost = selectedSupply.standardizedPrice / selectedSupply.capacity;
-            }
             
-            finalClientPrice = productPriceTTC + shippingCustomerPrice;
+            const finalClientPrice = pPriceTTC + shippingCustomerPrice;
             const transactionTotal = finalClientPrice;
-            transactionFees = transactionTotal * (feesRate / 100);
-            businessCharges = productPriceHT * (chargesRate / 100);
-            totalExpenses = productCost + shippingProviderCost + transactionFees + shippingSupplyCost;
-            const profitOnProduct = productPriceHT - productCost - businessCharges - shippingSupplyCost;
+            const transactionFees = transactionTotal * (fees / 100);
+            const bCharges = pPriceHT * (chargesRate / 100);
+            const profitOnProduct = pPriceHT - pCost - bCharges - shippingSupplyCost;
             const profitOnShipping = shippingCustomerPrice - shippingProviderCost;
             finalProfit = profitOnProduct + profitOnShipping - transactionFees;
         }
-        
-        return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses, shippingSupplyCost };
-    }, [recipeItems, manualPriceTTC, tvaRate, shippingRates, chargesRate, feesRate, saleMode, productCost, publicPrice, commissionRate, shippingSupplyId, rawMaterials]);
+        return finalProfit;
+    }, [rawMaterials, shippingRates, chargesRate]);
 
-    // ... handleSaveCost, handleLoadCalculation, handleDeleteCalculation
+    const calculations = useMemo(() => {
+        return calculateProfit(saleMode, recipeItems, {
+            margin: marginMultiplier,
+            tva: tvaRate,
+            fees: feesRate,
+            commission: commissionRate,
+            publicP: publicPrice,
+            shippingSupplyIdParam: shippingSupplyId
+        });
+    }, [saleMode, recipeItems, marginMultiplier, tvaRate, feesRate, commissionRate, publicPrice, shippingSupplyId, calculateProfit]);
     
-    const renderTabs = () => (
-        <div className="mb-8 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
-            {[{id: 'internet', label: 'Vente par Internet', icon: Globe}, {id: 'domicile', label: 'Vente Domicile', icon: Home}, {id: 'depot', label: 'Dépôt-Vente', icon: StoreIcon}].map(tab => (
-                 <button key={tab.id} onClick={() => setSaleMode(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-semibold transition-colors text-sm ${saleMode === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
-                    <tab.icon size={16}/> {tab.label}
-                </button>
-            ))}
-        </div>
-    );
+    // ... handleSaveCost, handleLoadCalculation, handleDeleteCalculation
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in text-sm">
@@ -362,48 +364,10 @@ const CostCalculator = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
-                    {/* Composition du produit */}
-                    {saleMode === 'internet' && 
-                        <div className="bg-gray-800 p-4 rounded-2xl">
-                             <label className="text-xs text-gray-400 flex items-center gap-2 mb-2"><Box size={16}/> Emballage d'Expédition</label>
-                            <select value={shippingSupplyId} onChange={e => setShippingSupplyId(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg text-sm">
-                                <option value="">Aucun</option>
-                                {shippingSupplies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                        </div>
-                    }
-                    <RawMaterialManager materials={productMaterials} onSelect={handleAddMaterialToRecipe} />
+                    {/* ... Composition du produit et gestionnaire de matières ... */}
                 </div>
                 <div className="space-y-8">
-                    {/* Colonne de Droite */}
-                    {saleMode === 'internet' && (
-                        <div className="bg-gray-800 p-6 rounded-2xl">
-                            {/* Grille tarifaire */}
-                        </div>
-                    )}
-                    {saleMode === 'depot' ? (
-                        <div className="bg-gray-800 p-6 rounded-2xl">
-                            <h3 className="text-lg font-bold flex items-center gap-2 mb-4"><Percent size={20}/> Paramètres Dépôt-Vente</h3>
-                            <div><label className="text-xs text-gray-400">Prix de Vente Public (TTC)</label><input type="number" step="0.5" value={publicPrice} onChange={e => setPublicPrice(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 text-sm" /></div>
-                            <div>
-                                <label className="text-xs text-gray-400 block mb-2 mt-4">Commission du Dépôt (%)</label>
-                                <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
-                                    {availableCommissionRates.map(rate => (
-                                        <button key={rate} onClick={() => setCommissionRate(rate)} className={`flex-1 py-1 rounded-md text-xs font-semibold ${commissionRate === rate ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>{rate}%</button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-gray-800 p-6 rounded-2xl">
-                            {/* Paramètres financiers */}
-                        </div>
-                    )}
-                    
-                    <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
-                        <h3 className="text-lg font-bold mb-4">Résultats du Calcul</h3>
-                        {/* Affichage des résultats */}
-                    </div>
+                    {/* ... Panneaux de paramètres et résultats ... */}
                 </div>
             </div>
         </div>
