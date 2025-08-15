@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { db, onSnapshot, collection, query, orderBy, where, getDocs, doc, updateDoc, writeBatch, addDoc, serverTimestamp, runTransaction, arrayUnion } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle, Archive } from 'lucide-react';
+import { Package, Store, UserPlus, History, DollarSign, HandCoins, ArrowRightCircle, Search, Settings, User, FileText, Power, CircleDollarSign, Loader2, Truck, XCircle, Archive, Calculator } from 'lucide-react'; // Ajout de Calculator
 import { formatPrice, formatPercent, formatDate } from '../utils/formatters';
 import { DELIVERY_STATUSES } from '../constants';
 import KpiCard from '../components/common/KpiCard';
@@ -16,6 +16,7 @@ import ReasonPromptModal from '../components/common/ReasonPromptModal';
 import ProductManager from '../components/product/ProductManager';
 import PosDashboard from './PosDashboard';
 import SalesAnalytics from './SalesAnalytics';
+import CostCalculator from './CostCalculator'; // <-- NOUVEL IMPORT
 
 // --- Composant séparé pour la vue des livraisons pour la clarté ---
 const DeliveriesView = React.memo(({ requests, onBack, onProcess, onCancel, onArchive }) => {
@@ -317,9 +318,11 @@ const AdminDashboard = () => {
             case 'deliveries':
                 return <DeliveriesView requests={deliveryRequests} onBack={handleBackToDashboard} onProcess={setDeliveryToProcess} onCancel={setDeliveryToCancel} onArchive={setDeliveryToArchive} />;
             case 'products':
-                return <><BackButton onBack={handleBackToDashboard} /><ProductManager onBack={handleBackToDashboard} /></>;
+                return <ProductManager onBack={handleBackToDashboard} />;
             case 'analytics':
                 return <><BackButton onBack={handleBackToDashboard} /><SalesAnalytics /></>;
+            case 'costCalculator': // <-- NOUVEAU CAS
+                return <><BackButton onBack={handleBackToDashboard} /><CostCalculator /></>;
             case 'dashboard':
             default:
                 return (
@@ -330,6 +333,8 @@ const AdminDashboard = () => {
                                 <p className="text-gray-400">Gérez les dépôts, les produits et les livraisons.</p>
                             </div>
                             <div className="flex items-center gap-2 sm:gap-4 mt-4 md:mt-0 flex-wrap">
+                                {/* NOUVEAU BOUTON */}
+                                <button onClick={() => setCurrentView('costCalculator')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Calculator size={20} /> Calculateur de Coût</button>
                                 <button onClick={() => setCurrentView('deliveries')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Truck size={20} /> Demandes de Livraison</button>
                                 <button onClick={() => setCurrentView('analytics')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><History size={20} /> Analyse des Ventes</button>
                                 <button onClick={() => setCurrentView('products')} className="bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2"><Package size={20} /> Gérer le Catalogue</button>
