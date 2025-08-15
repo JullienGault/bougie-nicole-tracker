@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown, RefreshCw } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
@@ -68,7 +68,6 @@ const ShippingRateManager = ({ rates }) => {
     );
 };
 
-// --- Sous-composant pour les Matières Premières ---
 const RawMaterialManager = ({ materials, onSelect }) => {
     const { showToast } = useContext(AppContext);
     const [name, setName] = useState('');
@@ -182,13 +181,13 @@ const RawMaterialManager = ({ materials, onSelect }) => {
 // --- Composant Principal ---
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
+    const [saleMode, setSaleMode] = useState('internet');
     const [rawMaterials, setRawMaterials] = useState([]);
     const [shippingRates, setShippingRates] = useState([]);
     const [savedCalculations, setSavedCalculations] = useState([]);
     const [recipeItems, setRecipeItems] = useState([]);
     const [productName, setProductName] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
-    
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     const [isFinancialsVisible, setIsFinancialsVisible] = useState(false);
     const [isExpensesVisible, setIsExpensesVisible] = useState(false);
@@ -201,13 +200,10 @@ const CostCalculator = () => {
     useEffect(() => {
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
         const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-        
         const qRates = query(collection(db, 'shippingRates'));
         const unsubRates = onSnapshot(qRates, (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-
         const qCalcs = query(collection(db, 'productsCosts'), orderBy('productName'));
         const unsubCalcs = onSnapshot(qCalcs, (snap) => setSavedCalculations(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-
         return () => { unsubMats(); unsubRates(); unsubCalcs(); };
     }, []);
 
@@ -224,18 +220,13 @@ const CostCalculator = () => {
         const productCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
         const finalPackageWeight = recipeItems.reduce((acc, item) => {
             let weight = 0;
-            switch(item.standardizedUnit) {
-                case 'g': weight = item.quantity; break;
-                case 'ml': weight = item.quantity * (item.density || 1); break;
-                case 'piece': weight = item.quantity * (item.weightPerPiece || 0); break;
-                default: break;
-            }
+            if(item.standardizedUnit === 'g') weight = item.quantity;
+            else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
+            else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
             return acc + weight;
         }, 0);
-
         const productPriceHT = productCost * marginMultiplier;
         const productPriceTTC = productPriceHT * (1 + tvaRate / 100);
-        
         let shippingProviderCost = 0, shippingCustomerPrice = 0;
         if (finalPackageWeight > 0 && shippingRates.length > 0) {
             const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
@@ -245,7 +236,6 @@ const CostCalculator = () => {
                 shippingCustomerPrice = applicableRate.price;
             }
         }
-
         const finalClientPrice = productPriceTTC + shippingCustomerPrice;
         const transactionTotal = finalClientPrice;
         const transactionFees = transactionTotal * (feesRate / 100);
@@ -254,7 +244,6 @@ const CostCalculator = () => {
         const profitOnProduct = productPriceHT - productCost - businessCharges;
         const profitOnShipping = shippingCustomerPrice - shippingProviderCost;
         const finalProfit = profitOnProduct + profitOnShipping - transactionFees;
-        
         return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses };
     }, [recipeItems, marginMultiplier, tvaRate, shippingRates, chargesRate, feesRate]);
 
@@ -263,7 +252,13 @@ const CostCalculator = () => {
             showToast("Veuillez nommer le produit et ajouter au moins une matière première.", "error"); return;
         }
         const dataToSave = {
-            productName, ...calculations,
+            productName,
+            ...calculations,
+            marginMultiplier,
+            tvaRate,
+            chargesRate,
+            feesRate,
+            saleMode,
             items: recipeItems.map(({ id, createdAt, ...item }) => item),
             updatedAt: serverTimestamp()
         };
@@ -281,11 +276,12 @@ const CostCalculator = () => {
 
     const handleLoadCalculation = (calc) => {
         setProductName(calc.productName);
-        setRecipeItems(calc.items);
-        setMarginMultiplier(calc.marginMultiplier);
-        setTvaRate(calc.tvaRate);
+        setRecipeItems(calc.items || []);
+        setMarginMultiplier(calc.marginMultiplier || 2.5);
+        setTvaRate(calc.tvaRate || 20);
         setFeesRate(calc.feesRate || 1.75);
         setEditingCalcId(calc.id);
+        setSaleMode(calc.saleMode || 'internet');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -295,12 +291,25 @@ const CostCalculator = () => {
             showToast("Calcul supprimé.", "success");
         }
     };
+    
+    const renderTabs = () => (
+        <div className="mb-8 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
+            {[{id: 'internet', label: 'Vente par Internet', icon: Globe}, {id: 'domicile', label: 'Vente Domicile', icon: Home}, {id: 'depot', label: 'Dépôt-Vente', icon: StoreIcon}].map(tab => (
+                 <button key={tab.id} onClick={() => setSaleMode(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-semibold transition-colors ${saleMode === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                    <tab.icon size={18}/> {tab.label}
+                </button>
+            ))}
+        </div>
+    );
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            <h2 className="text-3xl font-bold text-white mb-8">Calculateur de Coût de Production</h2>
+            <h2 className="text-3xl font-bold text-white mb-6">Calculateur de Coût de Production</h2>
+            {renderTabs()}
+            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
+                    {/* Colonne de Gauche */}
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4">Composition du Produit Fini</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
@@ -321,13 +330,16 @@ const CostCalculator = () => {
                     <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToRecipe} />
                 </div>
                 <div className="space-y-8">
-                    <div className="bg-gray-800 p-6 rounded-2xl">
-                        <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
-                            <h3 className="text-xl font-bold flex items-center gap-2"><Ship size={22}/> Grille Tarifaire d'Expédition</h3>
-                            <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
-                        </button>
-                        {isShippingVisible && <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in"><ShippingRateManager rates={shippingRates} /></div>}
-                    </div>
+                    {/* Colonne de Droite */}
+                    {saleMode === 'internet' && (
+                        <div className="bg-gray-800 p-6 rounded-2xl">
+                            <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
+                                <h3 className="text-xl font-bold flex items-center gap-2"><Ship size={22}/> Grille Tarifaire d'Expédition</h3>
+                                <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isShippingVisible && <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in"><ShippingRateManager rates={shippingRates} /></div>}
+                        </div>
+                    )}
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <button onClick={() => setIsFinancialsVisible(!isFinancialsVisible)} className="w-full flex justify-between items-center text-left">
                             <h3 className="text-xl font-bold flex items-center gap-2"><Percent size={22}/> Paramètres Financiers</h3>
@@ -385,7 +397,7 @@ const CostCalculator = () => {
                     {savedCalculations.map(calc => (
                         <div key={calc.id} className="bg-gray-900/50 p-3 rounded-lg flex justify-between items-center">
                             <div>
-                                <p className="font-bold">{calc.productName}</p>
+                                <p className="font-bold">{calc.productName} <span className="text-xs font-normal text-gray-400 ml-2">({calc.saleMode || 'internet'})</span></p>
                                 <p className="text-xs text-gray-400">Bénéfice Net: <span className="text-green-400 font-semibold">{formatPrice(calc.finalProfit)}</span></p>
                             </div>
                             <div className="flex gap-2">
