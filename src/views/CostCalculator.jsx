@@ -197,6 +197,8 @@ const CostCalculator = () => {
     const chargesRate = 13.30;
     const [feesRate, setFeesRate] = useState(1.75);
 
+    const availableTvaRates = [20, 10, 5.5, 0];
+
     useEffect(() => {
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
         const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -252,13 +254,7 @@ const CostCalculator = () => {
             showToast("Veuillez nommer le produit et ajouter au moins une matière première.", "error"); return;
         }
         const dataToSave = {
-            productName,
-            ...calculations,
-            marginMultiplier,
-            tvaRate,
-            chargesRate,
-            feesRate,
-            saleMode,
+            productName, ...calculations, marginMultiplier, tvaRate, chargesRate, feesRate, saleMode,
             items: recipeItems.map(({ id, createdAt, ...item }) => item),
             updatedAt: serverTimestamp()
         };
@@ -278,7 +274,7 @@ const CostCalculator = () => {
         setProductName(calc.productName);
         setRecipeItems(calc.items || []);
         setMarginMultiplier(calc.marginMultiplier || 2.5);
-        setTvaRate(calc.tvaRate || 20);
+        setTvaRate(calc.tvaRate !== undefined ? calc.tvaRate : 20);
         setFeesRate(calc.feesRate || 1.75);
         setEditingCalcId(calc.id);
         setSaleMode(calc.saleMode || 'internet');
@@ -306,10 +302,8 @@ const CostCalculator = () => {
         <div className="p-4 sm:p-8 animate-fade-in">
             <h2 className="text-3xl font-bold text-white mb-6">Calculateur de Coût de Production</h2>
             {renderTabs()}
-            
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
-                    {/* Colonne de Gauche */}
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4">Composition du Produit Fini</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
@@ -330,7 +324,6 @@ const CostCalculator = () => {
                     <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToRecipe} />
                 </div>
                 <div className="space-y-8">
-                    {/* Colonne de Droite */}
                     {saleMode === 'internet' && (
                         <div className="bg-gray-800 p-6 rounded-2xl">
                             <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
@@ -346,13 +339,20 @@ const CostCalculator = () => {
                             <ChevronDown className={`transform transition-transform ${isFinancialsVisible ? 'rotate-180' : ''}`} />
                         </button>
                         {isFinancialsVisible && 
-                            <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in">
-                                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                            <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
                                     <div><label className="text-sm text-gray-400">Marge / Multiplicateur</label><input type="number" step="0.1" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                    <div><label className="text-sm text-gray-400">TVA (%)</label><input type="number" step="1" value={tvaRate} onChange={e => setTvaRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                    <div><label className="text-sm text-gray-400">Cotisations URSSAF %</label><input type="number" value={chargesRate} disabled className="w-full bg-gray-900/50 p-2 rounded-lg mt-1 cursor-not-allowed"/></div>
                                     <div><label className="text-sm text-gray-400">Frais Sumup %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                 </div>
+                                <div>
+                                    <label className="text-sm text-gray-400 block mb-2">TVA (%)</label>
+                                    <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
+                                        {availableTvaRates.map(rate => (
+                                            <button key={rate} onClick={() => setTvaRate(rate)} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>{rate}%</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div><label className="text-sm text-gray-400">Cotisations URSSAF %</label><input type="number" value={chargesRate} disabled className="w-full bg-gray-900/50 p-2 rounded-lg mt-1 cursor-not-allowed"/></div>
                             </div>
                         }
                     </div>
