@@ -71,7 +71,7 @@ const ShippingRateManager = ({ rates }) => {
 const RawMaterialManager = ({ materials, onSelect }) => {
     const { showToast } = useContext(AppContext);
     const [name, setName] = useState('');
-    const [category, setCategory] = useState('standard'); // NOUVEAU
+    const [category, setCategory] = useState('standard');
     const [purchasePrice, setPurchasePrice] = useState('');
     const [purchaseQty, setPurchaseQty] = useState('');
     const [purchaseUnit, setPurchaseUnit] = useState('kg');
@@ -250,15 +250,13 @@ const CostCalculator = () => {
         if (recipeItems.find(item => item.materialId === material.id)) {
             showToast("Cette matière est déjà dans la recette.", "info"); return;
         }
-        
         let quantity = 1;
         if (material.category === 'parfum') {
             const cire = recipeItems.find(item => item.category === 'cire');
             if (cire) {
-                quantity = cire.quantity * 0.10; // 10% de la cire
+                quantity = cire.quantity * 0.10;
             } else {
-                showToast("Veuillez d'abord ajouter une cire à la recette.", "info");
-                return;
+                showToast("Veuillez d'abord ajouter une cire à la recette.", "info"); return;
             }
         }
         setRecipeItems(prev => [...prev, { ...material, materialId: material.id, quantity }]);
@@ -269,7 +267,6 @@ const CostCalculator = () => {
         let newRecipe = recipeItems.map(item => 
             item.materialId === materialId ? { ...item, quantity: newQuantity } : item
         );
-
         const changedItem = newRecipe.find(item => item.materialId === materialId);
         if (changedItem && changedItem.category === 'cire') {
             newRecipe = newRecipe.map(item => {
@@ -379,13 +376,13 @@ const CostCalculator = () => {
                         </div>
                         <div className="space-y-2">
                             {recipeItems.map(item => (
-                                <div key={item.materialId} className="grid grid-cols-12 gap-2 items-center bg-gray-900/50 p-2 rounded">
-                                    <div className="col-span-6 font-semibold">{item.name}</div>
-                                    <div className="col-span-5 flex items-center gap-2">
-                                        <input type="number" step="0.1" value={item.quantity} onChange={e => handleRecipeQuantityChange(item.materialId, e.target.value)} disabled={item.category === 'parfum'} className={`w-full bg-gray-700 p-1 rounded text-center ${item.category === 'parfum' ? 'bg-gray-900/50 cursor-not-allowed' : ''}`}/>
-                                        <span className="text-xs text-gray-400">{item.standardizedUnit}</span>
+                                <div key={item.materialId} className="grid grid-cols-12 gap-4 items-center bg-gray-900/50 p-2 rounded">
+                                    <div className="col-span-7 font-semibold truncate" title={item.name}>{item.name}</div>
+                                    <div className="col-span-4 flex items-center">
+                                        <input type="number" step="0.1" value={item.quantity} onChange={e => handleRecipeQuantityChange(item.materialId, e.target.value)} disabled={item.category === 'parfum'} className={`w-20 bg-gray-700 p-1 rounded text-center ${item.category === 'parfum' ? 'bg-gray-900/50 cursor-not-allowed' : ''}`}/>
+                                        <span className="text-xs text-gray-400 ml-2">{item.standardizedUnit}</span>
                                     </div>
-                                    <div className="col-span-1 text-right"><button onClick={() => handleRemoveFromRecipe(item.materialId)} className="text-red-500 p-1"><X size={16}/></button></div>
+                                    <div className="col-span-1 flex justify-end"><button onClick={() => handleRemoveFromRecipe(item.materialId)} className="text-red-500 p-1"><X size={16}/></button></div>
                                 </div>
                             ))}
                              {recipeItems.length === 0 && <p className="text-center text-gray-500 py-4">Utilisez le bouton <PlusCircle size={16} className="inline-block text-green-400"/> pour ajouter une matière.</p>}
