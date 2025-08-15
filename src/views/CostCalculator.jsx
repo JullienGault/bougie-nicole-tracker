@@ -71,6 +71,7 @@ const ShippingRateManager = ({ rates }) => {
 const RawMaterialManager = ({ materials, onSelect }) => {
     const { showToast } = useContext(AppContext);
     const [name, setName] = useState('');
+    const [category, setCategory] = useState('standard'); // NOUVEAU
     const [purchasePrice, setPurchasePrice] = useState('');
     const [purchaseQty, setPurchaseQty] = useState('');
     const [purchaseUnit, setPurchaseUnit] = useState('kg');
@@ -79,7 +80,7 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     const [weightPerPiece, setWeightPerPiece] = useState(''); 
 
     const resetForm = () => {
-        setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg'); 
+        setName(''); setCategory('standard'); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg'); 
         setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null);
     };
 
@@ -99,7 +100,7 @@ const RawMaterialManager = ({ materials, onSelect }) => {
             case 'piece': default: standardizedPrice = price / qty; standardizedUnit = 'piece'; break;
         }
         const data = { 
-            name, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit,
+            name, category, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit,
             density: (purchaseUnit === 'L' || purchaseUnit === 'ml') ? parseFloat(density) : null,
             weightPerPiece: purchaseUnit === 'piece' ? parseFloat(weightPerPiece) : null,
         };
@@ -123,8 +124,8 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     };
 
     const startEditing = (material) => {
-        setEditingMaterial(material); setName(material.name); setPurchasePrice(material.purchasePrice);
-        setPurchaseQty(material.purchaseQty); setPurchaseUnit(material.purchaseUnit);
+        setEditingMaterial(material); setName(material.name); setCategory(material.category || 'standard'); 
+        setPurchasePrice(material.purchasePrice); setPurchaseQty(material.purchaseQty); setPurchaseUnit(material.purchaseUnit);
         setDensity(material.density || '1');
         setWeightPerPiece(material.weightPerPiece || '');
     };
@@ -133,9 +134,19 @@ const RawMaterialManager = ({ materials, onSelect }) => {
         <div className="bg-gray-800 p-6 rounded-2xl">
             <h3 className="text-xl font-bold mb-4">Matières Premières</h3>
             <form onSubmit={handleSubmit} className="space-y-3 mb-6">
-                <div>
-                    <label className="text-sm text-gray-400">Nom de la matière</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Cire de Soja" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="sm:col-span-2">
+                        <label className="text-sm text-gray-400">Nom de la matière</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Cire de Soja" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                    </div>
+                    <div>
+                        <label className="text-sm text-gray-400">Catégorie</label>
+                        <select value={category} onChange={e => setCategory(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 h-[42px]">
+                            <option value="standard">Standard</option>
+                            <option value="cire">Cire</option>
+                            <option value="parfum">Parfum</option>
+                        </select>
+                    </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-10 gap-4 items-end">
                     <div className="sm:col-span-3"><label className="text-sm text-gray-400">Prix total (€)</label><input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="169.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
@@ -155,7 +166,7 @@ const RawMaterialManager = ({ materials, onSelect }) => {
                     <tbody>
                         {materials.map(mat => (
                             <tr key={mat.id} className="border-b border-gray-700/50">
-                                <td className="p-2 font-semibold">{mat.name}</td>
+                                <td className="p-2 font-semibold">{mat.name} <span className="text-xs text-gray-500">({mat.category})</span></td>
                                 <td className="p-2">{formatPrice(mat.purchasePrice)} / {mat.purchaseQty} {mat.purchaseUnit}</td>
                                 <td className="p-2 font-mono text-xs text-indigo-300">
                                     {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
@@ -196,6 +207,8 @@ const CostCalculator = () => {
     const [tvaRate, setTvaRate] = useState(20);
     const chargesRate = 13.30;
     const [feesRate, setFeesRate] = useState(1.75);
+    const [manualPriceTTC, setManualPriceTTC] = useState('');
+    const [isPriceModified, setIsPriceModified] = useState(false);
 
     const availableTvaRates = [20, 10, 5.5, 0];
 
@@ -209,17 +222,69 @@ const CostCalculator = () => {
         return () => { unsubMats(); unsubRates(); unsubCalcs(); };
     }, []);
 
+    const productCost = useMemo(() => recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0), [recipeItems]);
+
+    useEffect(() => {
+        if (!isPriceModified) {
+            const productPriceHT = productCost * marginMultiplier;
+            const calculatedTTC = productPriceHT * (1 + tvaRate / 100);
+            const roundedTTC = (Math.round(calculatedTTC * 2) / 2).toFixed(2);
+            setManualPriceTTC(roundedTTC);
+        }
+    }, [productCost, marginMultiplier, tvaRate, isPriceModified]);
+
+    const handleManualPriceChange = (e) => {
+        const newPrice = e.target.value;
+        setManualPriceTTC(newPrice);
+        setIsPriceModified(true);
+        if (parseFloat(newPrice) > 0) {
+            const priceHT = parseFloat(newPrice) / (1 + tvaRate / 100);
+            if (productCost > 0) {
+                const newMultiplier = priceHT / productCost;
+                setMarginMultiplier(newMultiplier);
+            }
+        }
+    };
+
     const handleAddMaterialToRecipe = (material) => {
         if (recipeItems.find(item => item.materialId === material.id)) {
             showToast("Cette matière est déjà dans la recette.", "info"); return;
         }
-        setRecipeItems(prev => [...prev, { materialId: material.id, ...material, quantity: 1 }]);
+        
+        let quantity = 1;
+        if (material.category === 'parfum') {
+            const cire = recipeItems.find(item => item.category === 'cire');
+            if (cire) {
+                quantity = cire.quantity * 0.10; // 10% de la cire
+            } else {
+                showToast("Veuillez d'abord ajouter une cire à la recette.", "info");
+                return;
+            }
+        }
+        setRecipeItems(prev => [...prev, { ...material, materialId: material.id, quantity }]);
     };
-    const handleRecipeQuantityChange = (materialId, newQuantity) => setRecipeItems(items => items.map(item => item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item));
-    const handleRemoveFromRecipe = (materialId) => setRecipeItems(items => items.filter(item => item.materialId !== materialId));
 
+    const handleRecipeQuantityChange = (materialId, newQuantityStr) => {
+        const newQuantity = parseFloat(newQuantityStr) || 0;
+        let newRecipe = recipeItems.map(item => 
+            item.materialId === materialId ? { ...item, quantity: newQuantity } : item
+        );
+
+        const changedItem = newRecipe.find(item => item.materialId === materialId);
+        if (changedItem && changedItem.category === 'cire') {
+            newRecipe = newRecipe.map(item => {
+                if (item.category === 'parfum') {
+                    return { ...item, quantity: newQuantity * 0.10 };
+                }
+                return item;
+            });
+        }
+        setRecipeItems(newRecipe);
+    };
+
+    const handleRemoveFromRecipe = (materialId) => setRecipeItems(items => items.filter(item => item.materialId !== materialId));
+    
     const calculations = useMemo(() => {
-        const productCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
         const finalPackageWeight = recipeItems.reduce((acc, item) => {
             let weight = 0;
             if(item.standardizedUnit === 'g') weight = item.quantity;
@@ -227,10 +292,10 @@ const CostCalculator = () => {
             else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
             return acc + weight;
         }, 0);
-        const productPriceHT = productCost * marginMultiplier;
-        const productPriceTTC = productPriceHT * (1 + tvaRate / 100);
+        const productPriceTTC = parseFloat(manualPriceTTC) || 0;
+        const productPriceHT = productPriceTTC / (1 + tvaRate / 100);
         let shippingProviderCost = 0, shippingCustomerPrice = 0;
-        if (finalPackageWeight > 0 && shippingRates.length > 0) {
+        if (saleMode === 'internet' && finalPackageWeight > 0 && shippingRates.length > 0) {
             const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
             const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
             if (applicableRate) {
@@ -247,7 +312,7 @@ const CostCalculator = () => {
         const profitOnShipping = shippingCustomerPrice - shippingProviderCost;
         const finalProfit = profitOnProduct + profitOnShipping - transactionFees;
         return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses };
-    }, [recipeItems, marginMultiplier, tvaRate, shippingRates, chargesRate, feesRate]);
+    }, [recipeItems, manualPriceTTC, tvaRate, shippingRates, chargesRate, feesRate, saleMode, productCost]);
 
     const handleSaveCost = async () => {
         if (!productName || recipeItems.length === 0) {
@@ -266,7 +331,7 @@ const CostCalculator = () => {
                 await addDoc(collection(db, 'productsCosts'), { ...dataToSave, createdAt: serverTimestamp() });
                 showToast(`"${productName}" enregistré avec succès !`, "success");
             }
-            setProductName(''); setRecipeItems([]); setEditingCalcId(null);
+            setProductName(''); setRecipeItems([]); setEditingCalcId(null); setIsPriceModified(false);
         } catch (error) { console.error(error); showToast("Erreur lors de la sauvegarde.", "error"); }
     };
 
@@ -278,6 +343,8 @@ const CostCalculator = () => {
         setFeesRate(calc.feesRate || 1.75);
         setEditingCalcId(calc.id);
         setSaleMode(calc.saleMode || 'internet');
+        setManualPriceTTC(calc.productPriceTTC ? calc.productPriceTTC.toFixed(2) : '0.00');
+        setIsPriceModified(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -314,7 +381,10 @@ const CostCalculator = () => {
                             {recipeItems.map(item => (
                                 <div key={item.materialId} className="grid grid-cols-12 gap-2 items-center bg-gray-900/50 p-2 rounded">
                                     <div className="col-span-6 font-semibold">{item.name}</div>
-                                    <div className="col-span-5 flex items-center gap-2"><input type="number" step="0.1" value={item.quantity} onChange={e => handleRecipeQuantityChange(item.materialId, e.target.value)} className="w-full bg-gray-700 p-1 rounded text-center"/><span className="text-xs text-gray-400">{item.standardizedUnit}</span></div>
+                                    <div className="col-span-5 flex items-center gap-2">
+                                        <input type="number" step="0.1" value={item.quantity} onChange={e => handleRecipeQuantityChange(item.materialId, e.target.value)} disabled={item.category === 'parfum'} className={`w-full bg-gray-700 p-1 rounded text-center ${item.category === 'parfum' ? 'bg-gray-900/50 cursor-not-allowed' : ''}`}/>
+                                        <span className="text-xs text-gray-400">{item.standardizedUnit}</span>
+                                    </div>
                                     <div className="col-span-1 text-right"><button onClick={() => handleRemoveFromRecipe(item.materialId)} className="text-red-500 p-1"><X size={16}/></button></div>
                                 </div>
                             ))}
@@ -341,14 +411,14 @@ const CostCalculator = () => {
                         {isFinancialsVisible && 
                             <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="text-sm text-gray-400">Marge / Multiplicateur</label><input type="number" step="0.1" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                                    <div><label className="text-sm text-gray-400">Marge / Multiplicateur</label><input type="number" step="0.1" value={marginMultiplier.toFixed(2)} onChange={e => { setMarginMultiplier(parseFloat(e.target.value)); setIsPriceModified(false); }} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                     <div><label className="text-sm text-gray-400">Frais Sumup %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                 </div>
                                 <div>
                                     <label className="text-sm text-gray-400 block mb-2">TVA (%)</label>
                                     <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
                                         {availableTvaRates.map(rate => (
-                                            <button key={rate} onClick={() => setTvaRate(rate)} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>{rate}%</button>
+                                            <button key={rate} onClick={() => { setTvaRate(rate); setIsPriceModified(false); }} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>{rate}%</button>
                                         ))}
                                     </div>
                                 </div>
@@ -361,8 +431,14 @@ const CostCalculator = () => {
                         <div className="space-y-2">
                              <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
                             <hr className="border-gray-700"/>
-                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
-                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Expédition (Facturée)</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCustomerPrice)}</span></div>
+                            <div className="flex justify-between items-center p-2">
+                                <span className="text-gray-300">Prix Produit (TTC)</span>
+                                <div className="flex items-center gap-2">
+                                    {isPriceModified && <button onClick={() => setIsPriceModified(false)} className="text-gray-400 hover:text-white"><RefreshCw size={16}/></button>}
+                                    <input type="number" step="0.5" value={manualPriceTTC} onChange={handleManualPriceChange} className="bg-gray-700 p-1 rounded-lg text-white font-bold text-lg text-right w-24"/>
+                                </div>
+                            </div>
+                            {saleMode === 'internet' && <div className="flex justify-between items-center p-2"><span className="text-gray-300">Expédition (Facturée)</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCustomerPrice)}</span></div>}
                             <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
                             <hr className="border-gray-700"/>
                              <button onClick={() => setIsExpensesVisible(!isExpensesVisible)} className="w-full flex justify-between items-center text-left p-2 text-red-400">
@@ -375,7 +451,7 @@ const CostCalculator = () => {
                             {isExpensesVisible && (
                                 <div className="pl-6 border-l-2 border-gray-700 text-sm text-red-400/80 animate-fade-in">
                                     <div className="flex justify-between items-center p-1"><span>Coût matières</span><span>{formatPrice(calculations.productCost)}</span></div>
-                                    <div className="flex justify-between items-center p-1"><span>Coût expédition</span><span>{formatPrice(calculations.shippingProviderCost)}</span></div>
+                                    {saleMode === 'internet' && <div className="flex justify-between items-center p-1"><span>Coût expédition</span><span>{formatPrice(calculations.shippingProviderCost)}</span></div>}
                                     <div className="flex justify-between items-center p-1"><span>Frais Sumup</span><span>{formatPrice(calculations.transactionFees)}</span></div>
                                     <div className="flex justify-between items-center p-1"><span>Cotisations</span><span>{formatPrice(calculations.businessCharges)}</span></div>
                                 </div>
