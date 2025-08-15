@@ -195,8 +195,11 @@ const CostCalculator = () => {
     useEffect(() => {
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
         const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-        const qRates = query(collection(db, 'shippingRates'), orderBy('maxWeight'));
+        
+        // --- MODIFICATION ICI : On enlève le tri (orderBy) ---
+        const qRates = query(collection(db, 'shippingRates'));
         const unsubRates = onSnapshot(qRates, (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+
         return () => { unsubMats(); unsubRates(); };
     }, []);
 
@@ -210,29 +213,23 @@ const CostCalculator = () => {
     const handleRemoveFromRecipe = (materialId) => setRecipeItems(items => items.filter(item => item.materialId !== materialId));
 
     const calculations = useMemo(() => {
-        // 1. Calcul du coût de base du produit
         const productCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
-
-        // 2. Calcul du prix de vente du produit
         const productPriceHT = productCost * marginMultiplier;
         const productPriceTTC = productPriceHT * (1 + tvaRate / 100);
 
-        // 3. Calcul des frais de port
         let shippingCost = 0;
         const weight = parseFloat(finalPackageWeight);
         if (weight > 0 && shippingRates.length > 0) {
-            const applicableRate = shippingRates.find(rate => weight <= rate.maxWeight);
+            // On trie les tarifs ici, dans le code, avant de chercher le bon
+            const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
+            const applicableRate = sortedRates.find(rate => weight <= rate.maxWeight);
             shippingCost = applicableRate ? applicableRate.price : 0;
         }
 
-        // 4. Calcul du total pour le client
         const finalClientPrice = productPriceTTC + shippingCost;
-
-        // 5. Calcul du bénéfice réel pour l'entreprise
         const transactionTotal = finalClientPrice;
         const transactionFees = transactionTotal * (feesRate / 100);
-        const businessCharges = productPriceHT * (chargesRate / 100); // Charges sur le CA HT du produit
-
+        const businessCharges = productPriceHT * (chargesRate / 100);
         const totalExpenses = productCost + transactionFees + businessCharges;
         const finalProfit = productPriceHT - totalExpenses;
 
