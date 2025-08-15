@@ -2,36 +2,82 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Calculator, ChevronsRight } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Calculator } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 // Sous-composant pour gérer les matières premières
 const RawMaterialManager = ({ materials, onSelect }) => {
     const { showToast } = useContext(AppContext);
     const [name, setName] = useState('');
-    const [price, setPrice] = useState(0);
-    const [unit, setUnit] = useState('kg'); // kg, g, L, ml, piece
+    const [purchasePrice, setPurchasePrice] = useState('');
+    const [purchaseQty, setPurchaseQty] = useState('');
+    const [purchaseUnit, setPurchaseUnit] = useState('kg');
     const [editingMaterial, setEditingMaterial] = useState(null);
+
+    const resetForm = () => {
+        setName('');
+        setPurchasePrice('');
+        setPurchaseQty('');
+        setPurchaseUnit('kg');
+        setEditingMaterial(null);
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!name || price <= 0) {
-            showToast("Veuillez renseigner tous les champs.", "error");
+        const price = parseFloat(purchasePrice);
+        const qty = parseFloat(purchaseQty);
+
+        if (!name || isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
+            showToast("Veuillez renseigner tous les champs avec des valeurs valides.", "error");
             return;
         }
 
-        const data = { name, price: Number(price), unit };
+        let standardizedPrice = 0;
+        let standardizedUnit = '';
+
+        // Standardisation du prix pour le calcul (toujours par g, ml, ou pièce)
+        switch (purchaseUnit) {
+            case 'kg':
+                standardizedPrice = price / (qty * 1000);
+                standardizedUnit = 'g';
+                break;
+            case 'g':
+                standardizedPrice = price / qty;
+                standardizedUnit = 'g';
+                break;
+            case 'L':
+                standardizedPrice = price / (qty * 1000);
+                standardizedUnit = 'ml';
+                break;
+            case 'ml':
+                standardizedPrice = price / qty;
+                standardizedUnit = 'ml';
+                break;
+            case 'piece':
+            default:
+                standardizedPrice = price / qty;
+                standardizedUnit = 'piece';
+                break;
+        }
+
+        const data = {
+            name,
+            purchasePrice: price,
+            purchaseQty: qty,
+            purchaseUnit,
+            standardizedPrice,
+            standardizedUnit
+        };
 
         try {
             if (editingMaterial) {
                 await updateDoc(doc(db, 'rawMaterials', editingMaterial.id), data);
                 showToast("Matière première mise à jour.", "success");
-                setEditingMaterial(null);
             } else {
                 await addDoc(collection(db, 'rawMaterials'), { ...data, createdAt: serverTimestamp() });
                 showToast("Matière première ajoutée.", "success");
             }
-            setName(''); setPrice(0); setUnit('kg');
+            resetForm();
         } catch (error) {
             showToast("Une erreur est survenue.", "error");
         }
@@ -51,8 +97,9 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     const startEditing = (material) => {
         setEditingMaterial(material);
         setName(material.name);
-        setPrice(material.price);
-        setUnit(material.unit);
+        setPurchasePrice(material.purchasePrice);
+        setPurchaseQty(material.purchaseQty);
+        setPurchaseUnit(material.purchaseUnit);
     };
 
     return (
@@ -60,25 +107,27 @@ const RawMaterialManager = ({ materials, onSelect }) => {
             <h3 className="text-xl font-bold mb-4">Matières Premières</h3>
             <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 items-end">
                 <div className="md:col-span-2">
-                    <label className="text-sm text-gray-400">Nom</label>
+                    <label className="text-sm text-gray-400">Nom de la matière</label>
                     <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Cire de Soja" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
                 </div>
-                <div>
-                    <label className="text-sm text-gray-400">Prix</label>
-                    <input type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                <div className="flex-grow">
+                    <label className="text-sm text-gray-400">Prix total d'achat (€)</label>
+                    <input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="169.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
                 </div>
-                <div>
-                    <label className="text-sm text-gray-400">Unité</label>
-                    <select value={unit} onChange={e => setUnit(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1">
-                        <option value="kg">par kg</option>
-                        <option value="g">par g</option>
-                        <option value="L">par Litre</option>
-                        <option value="ml">par ml</option>
-                        <option value="piece">par pièce</option>
-                    </select>
+                <div className="flex gap-2">
+                    <div className="flex-grow">
+                        <label className="text-sm text-gray-400">Qté achetée</label>
+                        <input type="number" step="0.01" value={purchaseQty} onChange={e => setPurchaseQty(e.target.value)} placeholder="20" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                    </div>
+                     <div>
+                        <label className="text-sm text-gray-400">Unité</label>
+                        <select value={purchaseUnit} onChange={e => setPurchaseUnit(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 h-[42px]">
+                            <option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="ml">ml</option><option value="piece">pièce(s)</option>
+                        </select>
+                    </div>
                 </div>
                 <div className="md:col-span-4 flex justify-end gap-2">
-                    {editingMaterial && <button type="button" onClick={() => { setEditingMaterial(null); setName(''); setPrice(0); }} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button>}
+                    {editingMaterial && <button type="button" onClick={resetForm} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button>}
                     <button type="submit" className="bg-indigo-600 py-2 px-4 rounded-lg flex items-center gap-2">{editingMaterial ? <Save size={18}/> : <PlusCircle size={18}/>} {editingMaterial ? 'Enregistrer' : 'Ajouter'}</button>
                 </div>
             </form>
@@ -88,7 +137,8 @@ const RawMaterialManager = ({ materials, onSelect }) => {
                     <thead>
                         <tr className="border-b border-gray-700 text-xs uppercase text-gray-400">
                             <th className="p-2">Nom</th>
-                            <th className="p-2">Prix</th>
+                            <th className="p-2">Prix d'achat</th>
+                            <th className="p-2">Coût standardisé</th>
                             <th className="p-2 text-center">Actions</th>
                         </tr>
                     </thead>
@@ -96,7 +146,8 @@ const RawMaterialManager = ({ materials, onSelect }) => {
                         {materials.map(mat => (
                             <tr key={mat.id} className="border-b border-gray-700/50">
                                 <td className="p-2 font-semibold">{mat.name}</td>
-                                <td className="p-2">{formatPrice(mat.price)} / {mat.unit}</td>
+                                <td className="p-2">{formatPrice(mat.purchasePrice)} pour {mat.purchaseQty} {mat.purchaseUnit}</td>
+                                <td className="p-2 font-mono text-xs text-indigo-300">{formatPrice(mat.standardizedPrice)} / {mat.standardizedUnit}</td>
                                 <td className="p-2 flex justify-center gap-2">
                                     <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18}/></button>
                                     <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18}/></button>
@@ -149,17 +200,7 @@ const CostCalculator = () => {
 
     const { totalCost, suggestedPriceHT, suggestedPriceTTC, netMargin } = useMemo(() => {
         const totalCost = recipeItems.reduce((acc, item) => {
-            let itemPrice = item.price;
-            let itemUnit = item.unit;
-            let itemQuantity = item.quantity;
-            let cost = 0;
-
-            // Conversion des unités si nécessaire
-            if (itemUnit === 'kg' && itemQuantity > 0) cost = (itemPrice / 1000) * itemQuantity; // prix pour g
-            else if (itemUnit === 'L' && itemQuantity > 0) cost = (itemPrice / 1000) * itemQuantity; // prix pour ml
-            else cost = itemPrice * itemQuantity;
-
-            return acc + cost;
+            return acc + (item.standardizedPrice * item.quantity);
         }, 0);
 
         const suggestedPriceHT = totalCost * marginMultiplier;
@@ -183,7 +224,7 @@ const CostCalculator = () => {
                 netMargin,
                 marginMultiplier,
                 tvaRate,
-                items: recipeItems.map(({ id, createdAt, ...item }) => item), // Nettoyage des données
+                items: recipeItems.map(({ id, createdAt, ...item }) => item),
                 createdAt: serverTimestamp()
             });
             showToast("Coût du produit enregistré avec succès !", "success");
@@ -198,10 +239,8 @@ const CostCalculator = () => {
         <div className="p-4 sm:p-8 animate-fade-in">
             <h2 className="text-3xl font-bold text-white mb-8">Calculateur de Coût de Production</h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Colonne de gauche: gestion des matières et composition */}
+                {/* Colonne de gauche: composition et gestion des matières */}
                 <div className="space-y-8">
-                    <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToRecipe} />
-                    
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4">Composition du Produit Fini</h3>
                         <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit (ex: Bougie 200g Rose)" className="w-full bg-gray-700 p-2 rounded-lg mb-4"/>
@@ -211,7 +250,7 @@ const CostCalculator = () => {
                                     <div className="col-span-6 font-semibold">{item.name}</div>
                                     <div className="col-span-5 flex items-center gap-2">
                                         <input type="number" step="0.1" value={item.quantity} onChange={e => handleRecipeQuantityChange(item.materialId, e.target.value)} className="w-full bg-gray-700 p-1 rounded text-center"/>
-                                        <span className="text-xs text-gray-400">{item.unit === 'kg' ? 'g' : item.unit === 'L' ? 'ml' : item.unit}</span>
+                                        <span className="text-xs text-gray-400">{item.standardizedUnit}</span>
                                     </div>
                                     <div className="col-span-1 text-right">
                                         <button onClick={() => handleRemoveFromRecipe(item.materialId)} className="text-red-500 p-1"><X size={16}/></button>
@@ -221,6 +260,7 @@ const CostCalculator = () => {
                              {recipeItems.length === 0 && <p className="text-center text-gray-500 py-4">Utilisez le bouton <PlusCircle size={16} className="inline-block text-green-400"/> pour ajouter une matière.</p>}
                         </div>
                     </div>
+                    <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToRecipe} />
                 </div>
 
                 {/* Colonne de droite: paramètres et résultats */}
