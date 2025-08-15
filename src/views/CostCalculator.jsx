@@ -10,24 +10,30 @@ import { formatPrice } from '../utils/formatters';
 const ShippingRateManager = ({ rates }) => {
     const { showToast } = useContext(AppContext);
     const [maxWeight, setMaxWeight] = useState('');
-    const [price, setPrice] = useState('');
+    const [providerCost, setProviderCost] = useState(''); // Coût réel
+    const [customerPrice, setCustomerPrice] = useState(''); // Prix facturé
     const [editingId, setEditingId] = useState(null);
 
     const handleSaveRate = async () => {
         const weight = parseInt(maxWeight, 10);
-        const ratePrice = parseFloat(price);
-        if (isNaN(weight) || weight <= 0 || isNaN(ratePrice) || ratePrice < 0) {
-            showToast("Veuillez entrer un poids et un prix valides.", "error"); return;
+        const cost = parseFloat(providerCost);
+        const price = parseFloat(customerPrice);
+
+        if (isNaN(weight) || weight <= 0 || isNaN(cost) || cost < 0 || isNaN(price) || price < 0) {
+            showToast("Veuillez entrer des valeurs valides pour tous les champs.", "error"); return;
         }
+
+        const data = { maxWeight: weight, cost, price };
+
         try {
             if (editingId) {
-                await updateDoc(doc(db, 'shippingRates', editingId), { maxWeight: weight, price: ratePrice });
+                await updateDoc(doc(db, 'shippingRates', editingId), data);
                 showToast("Tarif mis à jour.", "success");
             } else {
-                await addDoc(collection(db, 'shippingRates'), { maxWeight: weight, price: ratePrice });
+                await addDoc(collection(db, 'shippingRates'), data);
                 showToast("Nouveau tarif ajouté.", "success");
             }
-            setMaxWeight(''); setPrice(''); setEditingId(null);
+            setMaxWeight(''); setProviderCost(''); setCustomerPrice(''); setEditingId(null);
         } catch (error) { showToast("Erreur lors de la sauvegarde du tarif.", "error"); }
     };
 
@@ -40,24 +46,22 @@ const ShippingRateManager = ({ rates }) => {
     
     return (
         <>
-            <div className="grid grid-cols-3 gap-4 items-end mb-4">
-                <div>
-                    <label className="text-sm text-gray-400">Poids max (g)</label>
-                    <input type="number" value={maxWeight} onChange={e => setMaxWeight(e.target.value)} placeholder="500" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                </div>
-                <div>
-                    <label className="text-sm text-gray-400">Prix (€)</label>
-                    <input type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="5.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                </div>
-                <button onClick={handleSaveRate} className="bg-indigo-600 py-2 px-4 rounded-lg h-[42px]">{editingId ? 'Modifier' : 'Ajouter Tarif'}</button>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-4">
+                <div><label className="text-sm text-gray-400">Poids max (g)</label><input type="number" value={maxWeight} onChange={e => setMaxWeight(e.target.value)} placeholder="500" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                <div><label className="text-sm text-gray-400">Coût Transporteur (€)</label><input type="number" step="0.01" value={providerCost} onChange={e => setProviderCost(e.target.value)} placeholder="4.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                <div><label className="text-sm text-gray-400">Prix Client (€)</label><input type="number" step="0.01" value={customerPrice} onChange={e => setCustomerPrice(e.target.value)} placeholder="5.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                <button onClick={handleSaveRate} className="bg-indigo-600 py-2 px-4 rounded-lg h-[42px]">{editingId ? 'Modifier' : 'Ajouter'}</button>
             </div>
             <div className="max-h-48 overflow-y-auto custom-scrollbar">
                 {rates.map(rate => (
                     <div key={rate.id} className="flex justify-between items-center p-2 bg-gray-900/50 rounded mb-2">
                         <span>Jusqu'à <span className="font-bold">{rate.maxWeight}g</span></span>
-                        <span className="font-semibold">{formatPrice(rate.price)}</span>
+                        <div className="text-right">
+                            <span className="font-semibold">{formatPrice(rate.price)} <span className="text-xs text-gray-400">(Client)</span></span><br/>
+                            <span className="text-xs text-yellow-400">{formatPrice(rate.cost)} <span className="text-gray-400">(Coût)</span></span>
+                        </div>
                         <div className="flex gap-2">
-                           <button onClick={() => { setEditingId(rate.id); setMaxWeight(rate.maxWeight); setPrice(rate.price); }} className="text-yellow-400 p-1"><Edit size={16}/></button>
+                           <button onClick={() => { setEditingId(rate.id); setMaxWeight(rate.maxWeight); setProviderCost(rate.cost); setCustomerPrice(rate.price); }} className="text-yellow-400 p-1"><Edit size={16}/></button>
                            <button onClick={() => handleDeleteRate(rate.id)} className="text-red-500 p-1"><Trash2 size={16}/></button>
                         </div>
                     </div>
@@ -75,8 +79,8 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     const [purchaseQty, setPurchaseQty] = useState('');
     const [purchaseUnit, setPurchaseUnit] = useState('kg');
     const [editingMaterial, setEditingMaterial] = useState(null);
-    const [density, setDensity] = useState('1'); // NOUVEAU
-    const [weightPerPiece, setWeightPerPiece] = useState(''); // NOUVEAU
+    const [density, setDensity] = useState('1'); 
+    const [weightPerPiece, setWeightPerPiece] = useState(''); 
 
     const resetForm = () => {
         setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg'); 
@@ -90,7 +94,6 @@ const RawMaterialManager = ({ materials, onSelect }) => {
         if (!name || isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
             showToast("Veuillez renseigner tous les champs avec des valeurs valides.", "error"); return;
         }
-
         let standardizedPrice = 0, standardizedUnit = '';
         switch (purchaseUnit) {
             case 'kg': standardizedPrice = price / (qty * 1000); standardizedUnit = 'g'; break;
@@ -99,13 +102,11 @@ const RawMaterialManager = ({ materials, onSelect }) => {
             case 'ml': standardizedPrice = price / qty; standardizedUnit = 'ml'; break;
             case 'piece': default: standardizedPrice = price / qty; standardizedUnit = 'piece'; break;
         }
-        
         const data = { 
             name, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit,
             density: (purchaseUnit === 'L' || purchaseUnit === 'ml') ? parseFloat(density) : null,
             weightPerPiece: purchaseUnit === 'piece' ? parseFloat(weightPerPiece) : null,
         };
-
         try {
             if (editingMaterial) {
                 await updateDoc(doc(db, 'rawMaterials', editingMaterial.id), data);
@@ -208,7 +209,6 @@ const CostCalculator = () => {
 
     const calculations = useMemo(() => {
         const productCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
-        
         const finalPackageWeight = recipeItems.reduce((acc, item) => {
             let weight = 0;
             switch(item.standardizedUnit) {
@@ -223,21 +223,28 @@ const CostCalculator = () => {
         const productPriceHT = productCost * marginMultiplier;
         const productPriceTTC = productPriceHT * (1 + tvaRate / 100);
         
-        let shippingCost = 0;
+        let shippingProviderCost = 0;
+        let shippingCustomerPrice = 0;
         if (finalPackageWeight > 0 && shippingRates.length > 0) {
             const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
             const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
-            shippingCost = applicableRate ? applicableRate.price : 0;
+            if (applicableRate) {
+                shippingProviderCost = applicableRate.cost;
+                shippingCustomerPrice = applicableRate.price;
+            }
         }
 
-        const finalClientPrice = productPriceTTC + shippingCost;
+        const finalClientPrice = productPriceTTC + shippingCustomerPrice;
         const transactionTotal = finalClientPrice;
         const transactionFees = transactionTotal * (feesRate / 100);
         const businessCharges = productPriceHT * (chargesRate / 100);
-        const totalExpenses = productCost + transactionFees + businessCharges;
-        const finalProfit = productPriceHT - totalExpenses;
         
-        return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingCost, finalClientPrice, transactionFees, businessCharges, finalProfit };
+        const profitOnProduct = productPriceHT - productCost - businessCharges;
+        const profitOnShipping = shippingCustomerPrice - shippingProviderCost;
+
+        const finalProfit = profitOnProduct + profitOnShipping - transactionFees;
+        
+        return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit };
     }, [recipeItems, marginMultiplier, tvaRate, shippingRates, chargesRate, feesRate]);
 
     const handleSaveCost = async () => {
@@ -288,11 +295,7 @@ const CostCalculator = () => {
                             <h3 className="text-xl font-bold flex items-center gap-2"><Ship size={22}/> Grille Tarifaire d'Expédition</h3>
                             <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
                         </button>
-                        {isShippingVisible && (
-                            <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in">
-                                <ShippingRateManager rates={shippingRates} />
-                            </div>
-                        )}
+                        {isShippingVisible && <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in"><ShippingRateManager rates={shippingRates} /></div>}
                     </div>
                     <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
                         <h3 className="text-xl font-bold mb-6">Paramètres & Résultats</h3>
@@ -302,21 +305,22 @@ const CostCalculator = () => {
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="text-sm text-gray-400">Marge / Multiplicateur</label><input type="number" step="0.1" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                     <div><label className="text-sm text-gray-400">TVA (%)</label><input type="number" step="1" value={tvaRate} onChange={e => setTvaRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                    <div><label className="text-sm text-gray-400">Cotisations (URSSAF...) %</label><input type="number" step="0.1" value={chargesRate} onChange={e => setChargesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                                    <div><label className="text-sm text-gray-400">Cotisations %</label><input type="number" step="0.1" value={chargesRate} onChange={e => setChargesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                     <div><label className="text-sm text-gray-400">Frais bancaires %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                 </div>
                             </div>
                             <div className="space-y-2 pt-4">
-                                <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-gray-300">{formatPrice(calculations.productCost)}</span></div>
-                                <hr className="border-gray-700"/>
-                                <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix de Vente Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
-                                <div className="flex justify-between items-center p-2"><span className="text-gray-300">Frais d'expédition</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCost)}</span></div>
+                                <div className="flex justify-between items-center p-2"><span className="text-gray-400">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
+                                <div className="flex justify-between items-center p-2"><span className="text-gray-400">Expédition (Facturée)</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCustomerPrice)}</span></div>
                                 <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
                                 <hr className="border-gray-700"/>
-                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Dépenses (Matières + Frais)</span><span>{formatPrice(calculations.productCost + calculations.transactionFees)}</span></div>
-                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Cotisations (-{chargesRate}%)</span><span>{formatPrice(calculations.businessCharges)}</span></div>
+                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Coût total des matières</span><span>{formatPrice(calculations.productCost)}</span></div>
+                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Coût réel de l'expédition</span><span>{formatPrice(calculations.shippingProviderCost)}</span></div>
+                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Frais bancaires</span><span>{formatPrice(calculations.transactionFees)}</span></div>
+                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Cotisations</span><span>{formatPrice(calculations.businessCharges)}</span></div>
+                                
                                 <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
-                                    <span className="text-green-300 font-semibold">Bénéfice Net (par produit)</span>
+                                    <span className="text-green-300 font-semibold">Bénéfice Net Final</span>
                                     <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
                                 </div>
                             </div>
