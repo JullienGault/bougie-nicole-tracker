@@ -2,12 +2,13 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
 // --- Sous-composant pour la Grille Tarifaire ---
-const ShippingRateManager = ({ rates, onRatesChange }) => {
+// Note: Le titre et le conteneur principal sont maintenant gérés par le composant parent
+const ShippingRateManager = ({ rates }) => {
     const { showToast } = useContext(AppContext);
     const [maxWeight, setMaxWeight] = useState('');
     const [price, setPrice] = useState('');
@@ -39,9 +40,8 @@ const ShippingRateManager = ({ rates, onRatesChange }) => {
     };
     
     return (
-        <div className="bg-gray-800 p-6 rounded-2xl">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Ship size={22}/> Grille Tarifaire d'Expédition</h3>
-             <div className="grid grid-cols-3 gap-4 items-end mb-4">
+        <>
+            <div className="grid grid-cols-3 gap-4 items-end mb-4">
                 <div>
                     <label className="text-sm text-gray-400">Poids max (g)</label>
                     <input type="number" value={maxWeight} onChange={e => setMaxWeight(e.target.value)} placeholder="500" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
@@ -64,7 +64,7 @@ const ShippingRateManager = ({ rates, onRatesChange }) => {
                     </div>
                 ))}
             </div>
-        </div>
+        </>
     );
 };
 
@@ -185,21 +185,19 @@ const CostCalculator = () => {
     const [recipeItems, setRecipeItems] = useState([]);
     const [productName, setProductName] = useState('');
     const [finalPackageWeight, setFinalPackageWeight] = useState('');
+    const [isShippingVisible, setIsShippingVisible] = useState(false); // État pour la section pliable
     
     // Paramètres financiers
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
     const [tvaRate, setTvaRate] = useState(20);
-    const [chargesRate, setChargesRate] = useState(22.2); // URSSAF, etc.
-    const [feesRate, setFeesRate] = useState(2); // Stripe, Paypal, etc.
+    const [chargesRate, setChargesRate] = useState(22.2);
+    const [feesRate, setFeesRate] = useState(2);
 
     useEffect(() => {
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
         const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-        
-        // --- MODIFICATION ICI : On enlève le tri (orderBy) ---
         const qRates = query(collection(db, 'shippingRates'));
         const unsubRates = onSnapshot(qRates, (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-
         return () => { unsubMats(); unsubRates(); };
     }, []);
 
@@ -216,23 +214,19 @@ const CostCalculator = () => {
         const productCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
         const productPriceHT = productCost * marginMultiplier;
         const productPriceTTC = productPriceHT * (1 + tvaRate / 100);
-
         let shippingCost = 0;
         const weight = parseFloat(finalPackageWeight);
         if (weight > 0 && shippingRates.length > 0) {
-            // On trie les tarifs ici, dans le code, avant de chercher le bon
             const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
             const applicableRate = sortedRates.find(rate => weight <= rate.maxWeight);
             shippingCost = applicableRate ? applicableRate.price : 0;
         }
-
         const finalClientPrice = productPriceTTC + shippingCost;
         const transactionTotal = finalClientPrice;
         const transactionFees = transactionTotal * (feesRate / 100);
         const businessCharges = productPriceHT * (chargesRate / 100);
         const totalExpenses = productCost + transactionFees + businessCharges;
         const finalProfit = productPriceHT - totalExpenses;
-
         return { productCost, productPriceHT, productPriceTTC, shippingCost, finalClientPrice, transactionFees, businessCharges, finalProfit };
     }, [recipeItems, marginMultiplier, tvaRate, finalPackageWeight, shippingRates, chargesRate, feesRate]);
 
@@ -276,41 +270,52 @@ const CostCalculator = () => {
                              {recipeItems.length === 0 && <p className="text-center text-gray-500 py-4">Utilisez le bouton <PlusCircle size={16} className="inline-block text-green-400"/> pour ajouter une matière.</p>}
                         </div>
                     </div>
-                    <ShippingRateManager rates={shippingRates} />
                     <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToRecipe} />
                 </div>
 
-                <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
-                    <h3 className="text-xl font-bold mb-6">Paramètres & Résultats</h3>
-                    <div className="space-y-4">
-                        <div className="bg-gray-900/50 p-4 rounded-lg">
-                            <h4 className="font-semibold text-lg mb-3 text-indigo-300">Paramètres Financiers</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-sm text-gray-400">Marge / Multiplicateur</label><input type="number" step="0.1" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                <div><label className="text-sm text-gray-400">TVA (%)</label><input type="number" step="1" value={tvaRate} onChange={e => setTvaRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                <div><label className="text-sm text-gray-400">Cotisations (URSSAF...) %</label><input type="number" step="0.1" value={chargesRate} onChange={e => setChargesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                <div><label className="text-sm text-gray-400">Frais bancaires %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                <div className="space-y-8">
+                    <div className="bg-gray-800 p-6 rounded-2xl">
+                        <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
+                            <h3 className="text-xl font-bold flex items-center gap-2"><Ship size={22}/> Grille Tarifaire d'Expédition</h3>
+                            <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isShippingVisible && (
+                            <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in">
+                                <ShippingRateManager rates={shippingRates} />
                             </div>
-                        </div>
-
-                        <div className="space-y-2 pt-4">
-                            <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-gray-300">{formatPrice(calculations.productCost)}</span></div>
-                            <hr className="border-gray-700"/>
-                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix de Vente Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
-                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Frais d'expédition</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCost)}</span></div>
-                            <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
-                            <hr className="border-gray-700"/>
-                            <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Dépenses (Matières + Frais)</span><span>{formatPrice(calculations.productCost + calculations.transactionFees)}</span></div>
-                            <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Cotisations (-{chargesRate}%)</span><span>{formatPrice(calculations.businessCharges)}</span></div>
-                            
-                            <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
-                                <span className="text-green-300 font-semibold">Bénéfice Net (par produit)</span>
-                                <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
-                            </div>
-                        </div>
+                        )}
                     </div>
-                     <div className="mt-8 flex justify-end">
-                        <button onClick={handleSaveCost} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2"><Save size={18}/> Enregistrer ce calcul</button>
+
+                    <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
+                        <h3 className="text-xl font-bold mb-6">Paramètres & Résultats</h3>
+                        <div className="space-y-4">
+                            <div className="bg-gray-900/50 p-4 rounded-lg">
+                                <h4 className="font-semibold text-lg mb-3 text-indigo-300">Paramètres Financiers</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div><label className="text-sm text-gray-400">Marge / Multiplicateur</label><input type="number" step="0.1" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                                    <div><label className="text-sm text-gray-400">TVA (%)</label><input type="number" step="1" value={tvaRate} onChange={e => setTvaRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                                    <div><label className="text-sm text-gray-400">Cotisations (URSSAF...) %</label><input type="number" step="0.1" value={chargesRate} onChange={e => setChargesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                                    <div><label className="text-sm text-gray-400">Frais bancaires %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                                </div>
+                            </div>
+                            <div className="space-y-2 pt-4">
+                                <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-gray-300">{formatPrice(calculations.productCost)}</span></div>
+                                <hr className="border-gray-700"/>
+                                <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix de Vente Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
+                                <div className="flex justify-between items-center p-2"><span className="text-gray-300">Frais d'expédition</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCost)}</span></div>
+                                <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
+                                <hr className="border-gray-700"/>
+                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Dépenses (Matières + Frais)</span><span>{formatPrice(calculations.productCost + calculations.transactionFees)}</span></div>
+                                <div className="flex justify-between items-center p-2 text-red-400 text-sm"><span >- Cotisations (-{chargesRate}%)</span><span>{formatPrice(calculations.businessCharges)}</span></div>
+                                <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
+                                    <span className="text-green-300 font-semibold">Bénéfice Net (par produit)</span>
+                                    <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-8 flex justify-end">
+                            <button onClick={handleSaveCost} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2"><Save size={18}/> Enregistrer ce calcul</button>
+                        </div>
                     </div>
                 </div>
             </div>
