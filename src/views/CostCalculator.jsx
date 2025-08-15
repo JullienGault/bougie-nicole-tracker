@@ -7,7 +7,6 @@ import { formatPrice } from '../utils/formatters';
 
 
 // --- Sous-composant pour la Grille Tarifaire ---
-// Note: Le titre et le conteneur principal sont maintenant gérés par le composant parent
 const ShippingRateManager = ({ rates }) => {
     const { showToast } = useContext(AppContext);
     const [maxWeight, setMaxWeight] = useState('');
@@ -29,7 +28,10 @@ const ShippingRateManager = ({ rates }) => {
                 showToast("Nouveau tarif ajouté.", "success");
             }
             setMaxWeight(''); setPrice(''); setEditingId(null);
-        } catch (error) { showToast("Erreur lors de la sauvegarde du tarif.", "error"); }
+        } catch (error) { 
+            console.error("Erreur sauvegarde tarif:", error);
+            showToast(`Erreur sauvegarde tarif: ${error.code}`, "error"); 
+        }
     };
 
     const handleDeleteRate = async (rateId) => {
@@ -106,7 +108,10 @@ const RawMaterialManager = ({ materials, onSelect }) => {
                 showToast("Matière première ajoutée.", "success");
             }
             resetForm();
-        } catch (error) { showToast("Une erreur est survenue.", "error"); }
+        } catch (error) { 
+            console.error("Erreur sauvegarde matière:", error);
+            showToast(`Erreur sauvegarde matière: ${error.code}`, "error");
+        }
     };
     
     const handleDelete = async (materialId) => {
@@ -185,21 +190,33 @@ const CostCalculator = () => {
     const [recipeItems, setRecipeItems] = useState([]);
     const [productName, setProductName] = useState('');
     const [finalPackageWeight, setFinalPackageWeight] = useState('');
-    const [isShippingVisible, setIsShippingVisible] = useState(false); // État pour la section pliable
+    const [isShippingVisible, setIsShippingVisible] = useState(false);
     
-    // Paramètres financiers
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
     const [tvaRate, setTvaRate] = useState(20);
     const [chargesRate, setChargesRate] = useState(22.2);
     const [feesRate, setFeesRate] = useState(2);
 
     useEffect(() => {
+        const handleSnapshotError = (error, collectionName) => {
+            console.error(`Erreur détaillée du listener '${collectionName}':`, error);
+            showToast(`Permission refusée pour lire '${collectionName}'. Vérifiez vos règles Firestore.`, "error");
+        };
+
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
-        const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubMats = onSnapshot(qMats, 
+            (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+            (error) => handleSnapshotError(error, 'rawMaterials')
+        );
+        
         const qRates = query(collection(db, 'shippingRates'));
-        const unsubRates = onSnapshot(qRates, (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const unsubRates = onSnapshot(qRates,
+            (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+            (error) => handleSnapshotError(error, 'shippingRates')
+        );
+        
         return () => { unsubMats(); unsubRates(); };
-    }, []);
+    }, [showToast]);
 
     const handleAddMaterialToRecipe = (material) => {
         if (recipeItems.find(item => item.materialId === material.id)) {
@@ -242,7 +259,10 @@ const CostCalculator = () => {
             });
             showToast("Coût du produit enregistré avec succès !", "success");
             setProductName(''); setRecipeItems([]); setFinalPackageWeight('');
-        } catch (error) { console.error(error); showToast("Erreur lors de la sauvegarde.", "error"); }
+        } catch (error) { 
+            console.error("Erreur sauvegarde calcul:", error);
+            showToast(`Erreur sauvegarde calcul: ${error.code}`, "error"); 
+        }
     };
 
     return (
@@ -272,7 +292,6 @@ const CostCalculator = () => {
                     </div>
                     <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToRecipe} />
                 </div>
-
                 <div className="space-y-8">
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
@@ -285,7 +304,6 @@ const CostCalculator = () => {
                             </div>
                         )}
                     </div>
-
                     <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
                         <h3 className="text-xl font-bold mb-6">Paramètres & Résultats</h3>
                         <div className="space-y-4">
