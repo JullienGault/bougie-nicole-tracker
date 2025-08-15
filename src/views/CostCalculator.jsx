@@ -28,10 +28,7 @@ const ShippingRateManager = ({ rates }) => {
                 showToast("Nouveau tarif ajouté.", "success");
             }
             setMaxWeight(''); setPrice(''); setEditingId(null);
-        } catch (error) { 
-            console.error("Erreur sauvegarde tarif:", error);
-            showToast(`Erreur sauvegarde tarif: ${error.code}`, "error"); 
-        }
+        } catch (error) { showToast("Erreur lors de la sauvegarde du tarif.", "error"); }
     };
 
     const handleDeleteRate = async (rateId) => {
@@ -78,9 +75,12 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     const [purchaseQty, setPurchaseQty] = useState('');
     const [purchaseUnit, setPurchaseUnit] = useState('kg');
     const [editingMaterial, setEditingMaterial] = useState(null);
+    const [density, setDensity] = useState('1'); // NOUVEAU
+    const [weightPerPiece, setWeightPerPiece] = useState(''); // NOUVEAU
 
     const resetForm = () => {
-        setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg'); setEditingMaterial(null);
+        setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg'); 
+        setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null);
     };
 
     const handleSubmit = async (e) => {
@@ -90,6 +90,7 @@ const RawMaterialManager = ({ materials, onSelect }) => {
         if (!name || isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
             showToast("Veuillez renseigner tous les champs avec des valeurs valides.", "error"); return;
         }
+
         let standardizedPrice = 0, standardizedUnit = '';
         switch (purchaseUnit) {
             case 'kg': standardizedPrice = price / (qty * 1000); standardizedUnit = 'g'; break;
@@ -98,7 +99,13 @@ const RawMaterialManager = ({ materials, onSelect }) => {
             case 'ml': standardizedPrice = price / qty; standardizedUnit = 'ml'; break;
             case 'piece': default: standardizedPrice = price / qty; standardizedUnit = 'piece'; break;
         }
-        const data = { name, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit };
+        
+        const data = { 
+            name, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit,
+            density: (purchaseUnit === 'L' || purchaseUnit === 'ml') ? parseFloat(density) : null,
+            weightPerPiece: purchaseUnit === 'piece' ? parseFloat(weightPerPiece) : null,
+        };
+
         try {
             if (editingMaterial) {
                 await updateDoc(doc(db, 'rawMaterials', editingMaterial.id), data);
@@ -108,10 +115,7 @@ const RawMaterialManager = ({ materials, onSelect }) => {
                 showToast("Matière première ajoutée.", "success");
             }
             resetForm();
-        } catch (error) { 
-            console.error("Erreur sauvegarde matière:", error);
-            showToast(`Erreur sauvegarde matière: ${error.code}`, "error");
-        }
+        } catch (error) { showToast("Une erreur est survenue.", "error"); }
     };
     
     const handleDelete = async (materialId) => {
@@ -124,6 +128,8 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     const startEditing = (material) => {
         setEditingMaterial(material); setName(material.name); setPurchasePrice(material.purchasePrice);
         setPurchaseQty(material.purchaseQty); setPurchaseUnit(material.purchaseUnit);
+        setDensity(material.density || '1');
+        setWeightPerPiece(material.weightPerPiece || '');
     };
 
     return (
@@ -134,40 +140,27 @@ const RawMaterialManager = ({ materials, onSelect }) => {
                     <label className="text-sm text-gray-400">Nom de la matière</label>
                     <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Cire de Soja" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
-                    <div>
-                        <label className="text-sm text-gray-400">Prix total (€)</label>
-                        <input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="169.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-400">Qté achetée</label>
-                        <input type="number" step="0.01" value={purchaseQty} onChange={e => setPurchaseQty(e.target.value)} placeholder="20" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                    </div>
-                    <div>
-                        <label className="text-sm text-gray-400">Unité</label>
-                        <select value={purchaseUnit} onChange={e => setPurchaseUnit(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 h-[42px]">
-                            <option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="ml">ml</option><option value="piece">pièce(s)</option>
-                        </select>
-                    </div>
-                    <button type="submit" className="bg-indigo-600 py-2 px-4 rounded-lg flex items-center justify-center gap-2 h-[42px]">
+                <div className="grid grid-cols-1 sm:grid-cols-10 gap-4 items-end">
+                    <div className="sm:col-span-3"><label className="text-sm text-gray-400">Prix total (€)</label><input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="169.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                    <div className="sm:col-span-2"><label className="text-sm text-gray-400">Qté achetée</label><input type="number" step="0.01" value={purchaseQty} onChange={e => setPurchaseQty(e.target.value)} placeholder="20" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                    <div className="sm:col-span-2"><label className="text-sm text-gray-400">Unité</label><select value={purchaseUnit} onChange={e => setPurchaseUnit(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 h-[42px]"><option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="ml">ml</option><option value="piece">pièce(s)</option></select></div>
+                    {(purchaseUnit === 'L' || purchaseUnit === 'ml') && <div className="sm:col-span-3"><label className="text-sm text-gray-400">Densité (g/ml)</label><input type="number" step="0.01" value={density} onChange={e => setDensity(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>}
+                    {purchaseUnit === 'piece' && <div className="sm:col-span-3"><label className="text-sm text-gray-400">Poids / pièce (g)</label><input type="number" step="0.1" value={weightPerPiece} onChange={e => setWeightPerPiece(e.target.value)} placeholder="ex: 250" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>}
+                    <button type="submit" className="bg-indigo-600 py-2 px-4 rounded-lg flex items-center justify-center gap-2 h-[42px] sm:col-span-3 sm:col-start-8">
                         {editingMaterial ? <Save size={18}/> : <PlusCircle size={18}/>} {editingMaterial ? 'Enregistrer' : 'Ajouter'}
                     </button>
                 </div>
-                {editingMaterial && (
-                    <div className="flex justify-end">
-                        <button type="button" onClick={resetForm} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button>
-                    </div>
-                )}
+                {editingMaterial && <div className="flex justify-end"><button type="button" onClick={resetForm} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button></div>}
             </form>
             <div className="max-h-64 overflow-y-auto custom-scrollbar">
                 <table className="w-full text-left">
-                     <thead><tr className="border-b border-gray-700 text-xs uppercase text-gray-400"><th className="p-2">Nom</th><th className="p-2">Prix d'achat</th><th className="p-2">Coût standardisé</th><th className="p-2 text-center">Actions</th></tr></thead>
+                     <thead><tr className="border-b border-gray-700 text-xs uppercase text-gray-400"><th className="p-2">Nom</th><th className="p-2">Prix d'achat</th><th className="p-2">Coût / Poids</th><th className="p-2 text-center">Actions</th></tr></thead>
                     <tbody>
                         {materials.map(mat => (
                             <tr key={mat.id} className="border-b border-gray-700/50">
                                 <td className="p-2 font-semibold">{mat.name}</td>
-                                <td className="p-2">{formatPrice(mat.purchasePrice)} pour {mat.purchaseQty} {mat.purchaseUnit}</td>
-                                <td className="p-2 font-mono text-xs text-indigo-300">{formatPrice(mat.standardizedPrice)} / {mat.standardizedUnit}</td>
+                                <td className="p-2">{formatPrice(mat.purchasePrice)} / {mat.purchaseQty} {mat.purchaseUnit}</td>
+                                <td className="p-2 font-mono text-xs text-indigo-300">{formatPrice(mat.standardizedPrice)} / {mat.standardizedUnit}{mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}</td>
                                 <td className="p-2 flex justify-center gap-2">
                                     <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18}/></button>
                                     <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18}/></button>
@@ -189,7 +182,6 @@ const CostCalculator = () => {
     const [shippingRates, setShippingRates] = useState([]);
     const [recipeItems, setRecipeItems] = useState([]);
     const [productName, setProductName] = useState('');
-    const [finalPackageWeight, setFinalPackageWeight] = useState('');
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
@@ -198,25 +190,12 @@ const CostCalculator = () => {
     const [feesRate, setFeesRate] = useState(2);
 
     useEffect(() => {
-        const handleSnapshotError = (error, collectionName) => {
-            console.error(`Erreur détaillée du listener '${collectionName}':`, error);
-            showToast(`Permission refusée pour lire '${collectionName}'. Vérifiez vos règles Firestore.`, "error");
-        };
-
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
-        const unsubMats = onSnapshot(qMats, 
-            (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-            (error) => handleSnapshotError(error, 'rawMaterials')
-        );
-        
+        const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         const qRates = query(collection(db, 'shippingRates'));
-        const unsubRates = onSnapshot(qRates,
-            (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-            (error) => handleSnapshotError(error, 'shippingRates')
-        );
-        
+        const unsubRates = onSnapshot(qRates, (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         return () => { unsubMats(); unsubRates(); };
-    }, [showToast]);
+    }, []);
 
     const handleAddMaterialToRecipe = (material) => {
         if (recipeItems.find(item => item.materialId === material.id)) {
@@ -229,23 +208,37 @@ const CostCalculator = () => {
 
     const calculations = useMemo(() => {
         const productCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
+        
+        const finalPackageWeight = recipeItems.reduce((acc, item) => {
+            let weight = 0;
+            switch(item.standardizedUnit) {
+                case 'g': weight = item.quantity; break;
+                case 'ml': weight = item.quantity * (item.density || 1); break;
+                case 'piece': weight = item.quantity * (item.weightPerPiece || 0); break;
+                default: break;
+            }
+            return acc + weight;
+        }, 0);
+
         const productPriceHT = productCost * marginMultiplier;
         const productPriceTTC = productPriceHT * (1 + tvaRate / 100);
+        
         let shippingCost = 0;
-        const weight = parseFloat(finalPackageWeight);
-        if (weight > 0 && shippingRates.length > 0) {
+        if (finalPackageWeight > 0 && shippingRates.length > 0) {
             const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
-            const applicableRate = sortedRates.find(rate => weight <= rate.maxWeight);
+            const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
             shippingCost = applicableRate ? applicableRate.price : 0;
         }
+
         const finalClientPrice = productPriceTTC + shippingCost;
         const transactionTotal = finalClientPrice;
         const transactionFees = transactionTotal * (feesRate / 100);
         const businessCharges = productPriceHT * (chargesRate / 100);
         const totalExpenses = productCost + transactionFees + businessCharges;
         const finalProfit = productPriceHT - totalExpenses;
-        return { productCost, productPriceHT, productPriceTTC, shippingCost, finalClientPrice, transactionFees, businessCharges, finalProfit };
-    }, [recipeItems, marginMultiplier, tvaRate, finalPackageWeight, shippingRates, chargesRate, feesRate]);
+        
+        return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingCost, finalClientPrice, transactionFees, businessCharges, finalProfit };
+    }, [recipeItems, marginMultiplier, tvaRate, shippingRates, chargesRate, feesRate]);
 
     const handleSaveCost = async () => {
         if (!productName || recipeItems.length === 0) {
@@ -258,11 +251,8 @@ const CostCalculator = () => {
                 createdAt: serverTimestamp()
             });
             showToast("Coût du produit enregistré avec succès !", "success");
-            setProductName(''); setRecipeItems([]); setFinalPackageWeight('');
-        } catch (error) { 
-            console.error("Erreur sauvegarde calcul:", error);
-            showToast(`Erreur sauvegarde calcul: ${error.code}`, "error"); 
-        }
+            setProductName(''); setRecipeItems([]);
+        } catch (error) { console.error(error); showToast("Erreur lors de la sauvegarde.", "error"); }
     };
 
     return (
@@ -274,7 +264,7 @@ const CostCalculator = () => {
                         <h3 className="text-xl font-bold mb-4">Composition du Produit Fini</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                             <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit" className="w-full bg-gray-700 p-2 rounded-lg sm:col-span-2"/>
-                            <input type="number" value={finalPackageWeight} onChange={e => setFinalPackageWeight(e.target.value)} placeholder="Poids colis (g)" className="w-full bg-gray-700 p-2 rounded-lg" />
+                            <div className="bg-gray-900 p-2 rounded-lg text-center"><span className="text-sm text-gray-400">Poids colis : </span><span className="font-bold">{calculations.finalPackageWeight.toFixed(2)} g</span></div>
                         </div>
                         <div className="space-y-2">
                             {recipeItems.map(item => (
