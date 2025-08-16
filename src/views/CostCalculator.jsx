@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box, Info } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
@@ -262,8 +262,9 @@ const CostCalculator = () => {
         let shippingProviderCost = 0;
         let totalExpenses = 0;
         let finalProfit = 0;
-        
+        let transactionFees = 0;
         let businessCharges = 0;
+        let commissionAmount = 0;
 
         if (mode === 'internet') {
             const productWeight = recipe.reduce((acc, item) => acc + (item.weightPerPiece || (item.density || 1)) * item.quantity, 0);
@@ -273,24 +274,24 @@ const CostCalculator = () => {
             shippingProviderCost = applicableRate ? applicableRate.cost : 0;
             const shippingCustomerPrice = applicableRate ? applicableRate.price : 0;
             finalClientPrice = productPriceTTC + shippingCustomerPrice;
-            const transactionFees = finalClientPrice * (fees / 100);
+            transactionFees = finalClientPrice * (fees / 100);
             businessCharges = productPriceHT * (charges / 100);
             totalExpenses = productCost + packagingCost + shippingProviderCost + transactionFees + businessCharges;
             finalProfit = finalClientPrice - totalExpenses;
         } else if (mode === 'domicile') {
-            const transactionFees = finalClientPrice * (fees / 100);
+            transactionFees = finalClientPrice * (fees / 100);
             businessCharges = productPriceHT * (charges / 100);
             totalExpenses = productCost + transactionFees + businessCharges;
             finalProfit = finalClientPrice - totalExpenses;
         } else if (mode === 'depot') {
-            const commissionAmount = productPriceTTC * (depotCommission / 100);
+            commissionAmount = productPriceTTC * (depotCommission / 100);
             const netRevenueHT = productPriceHT * (1 - (depotCommission / (1 + tva/100) ) / 100);
             businessCharges = netRevenueHT * (charges / 100);
             totalExpenses = productCost + commissionAmount + businessCharges;
             finalProfit = productPriceTTC - totalExpenses;
         }
         
-        return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit };
+        return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit, transactionFees, businessCharges, shippingProviderCost, commissionAmount };
     };
 
     const calculations = useMemo(() => {
@@ -411,6 +412,16 @@ const CostCalculator = () => {
         </div>
     );
 
+    const ExpenseDetailRow = ({ label, value, tooltip }) => (
+        <div className="flex justify-between items-center p-1">
+            <span className="flex items-center gap-1.5">
+                {label}
+                <Info size={14} className="text-gray-500" title={tooltip} />
+            </span>
+            <span>{formatPrice(value)}</span>
+        </div>
+    );
+
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
             <h2 className="text-3xl font-bold text-white mb-6">Calculateur de Coût de Production</h2>
@@ -476,7 +487,26 @@ const CostCalculator = () => {
                             <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
                             <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
                             <hr className="border-gray-700"/>
-                            <div className="flex justify-between items-center p-2 text-red-400"><span className="font-semibold">- Dépenses Totales</span><span className="font-bold">{formatPrice(calculations.totalExpenses)}</span></div>
+                            
+                            <button onClick={() => setIsExpensesVisible(!isExpensesVisible)} className="w-full flex justify-between items-center text-left p-2 text-red-400">
+                                <span className="font-semibold">- Dépenses Totales</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-bold">{formatPrice(calculations.totalExpenses)}</span>
+                                    <ChevronDown className={`transform transition-transform ${isExpensesVisible ? 'rotate-180' : ''}`} size={18} />
+                                </div>
+                            </button>
+                            
+                            {isExpensesVisible && (
+                                <div className="pl-6 border-l-2 border-gray-700 text-sm text-red-400/80 animate-fade-in">
+                                    <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
+                                    {saleMode === 'internet' && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
+                                    {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
+                                    {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={`Commission du processeur de paiement (${feesRate}%) sur le total facturé.`} />}
+                                    {saleMode === 'depot' && <ExpenseDetailRow label="Commission dépôt" value={calculations.commissionAmount} tooltip={`Commission du dépôt-vente (${depotCommissionRate}%) sur le prix de vente TTC.`} />}
+                                    <ExpenseDetailRow label="Cotisations URSSAF" value={calculations.businessCharges} tooltip={`Cotisations sociales (${chargesRate}%) calculées sur le chiffre d'affaires HT (après déduction de la commission pour les dépôts).`} />
+                                </div>
+                            )}
+
                             <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
                                 <span className="text-green-300 font-semibold">Bénéfice Net Final</span>
                                 <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
