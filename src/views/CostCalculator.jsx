@@ -486,7 +486,6 @@ const CostCalculator = () => {
                     <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
                         <h3 className="text-xl font-bold mb-4">Résultats & Paramètres ({saleMode})</h3>
                         <div className="space-y-2">
-                             {/* --- Section Paramètres --- */}
                             <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg">
                                 <div className="flex justify-between items-center">
                                     <label className="text-sm text-gray-300">Multiplicateur de Marge</label>
@@ -518,7 +517,6 @@ const CostCalculator = () => {
                                 }
                             </div>
                             
-                            {/* --- Section Résultats --- */}
                             <div className="space-y-2 pt-2">
                                 <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
                                 <hr className="border-gray-700/50"/>
