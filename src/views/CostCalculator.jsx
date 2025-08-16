@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box, Info } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
@@ -201,6 +201,7 @@ const RawMaterialManager = ({ materials, onSelect }) => {
 // --- Composant Principal ---
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
+    const [saleMode, setSaleMode] = useState('internet');
     const [rawMaterials, setRawMaterials] = useState([]);
     const [shippingRates, setShippingRates] = useState([]);
     const [savedCalculations, setSavedCalculations] = useState([]);
@@ -210,6 +211,7 @@ const CostCalculator = () => {
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     const [isFinancialsVisible, setIsFinancialsVisible] = useState(false);
+    const [isExpensesVisible, setIsExpensesVisible] = useState(false);
     
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
     const [tvaRate, setTvaRate] = useState(20);
@@ -248,56 +250,60 @@ const CostCalculator = () => {
         setList(items => items.filter(item => item.materialId !== materialId));
     };
 
-    const calculateAllModes = (
-        recipe, packaging, margin, tva, charges, fees, depotCommission, shipping
-    ) => {
+    const calculateForMode = (mode, commonData) => {
+        const { recipe, packaging, margin, tva, charges, fees, depotCommission, shipping } = commonData;
+
         const productCost = recipe.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
         const packagingCost = packaging.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
         const productPriceHT = productCost * margin;
         const productPriceTTC = productPriceHT * (1 + tva / 100);
 
-        // --- Internet Mode ---
-        const productWeight = recipe.reduce((acc, item) => (item.weightPerPiece || (item.density || 1)) * item.quantity, 0);
-        const packagingWeight = packaging.reduce((acc, item) => (item.weightPerPiece || 0) * item.quantity, 0);
-        const finalPackageWeight = productWeight + packagingWeight;
-        const applicableRate = shipping.find(rate => finalPackageWeight <= rate.maxWeight);
-        const shippingProviderCost = applicableRate ? applicableRate.cost : 0;
-        const shippingCustomerPrice = applicableRate ? applicableRate.price : 0;
-        const internetTotal = productPriceTTC + shippingCustomerPrice;
-        const internetFees = internetTotal * (fees / 100);
-        const internetCharges = productPriceHT * (charges / 100);
-        const internetExpenses = productCost + packagingCost + shippingProviderCost + internetFees + internetCharges;
-        const internetProfit = internetTotal - internetExpenses;
+        let finalClientPrice = productPriceTTC;
+        let shippingProviderCost = 0;
+        let totalExpenses = 0;
+        let finalProfit = 0;
 
-        // --- Domicile Mode ---
-        const domicileTotal = productPriceTTC;
-        const domicileFees = domicileTotal * (fees / 100);
-        const domicileCharges = productPriceHT * (charges / 100);
-        const domicileExpenses = productCost + domicileFees + domicileCharges; // No packaging/shipping cost assumed
-        const domicileProfit = domicileTotal - domicileExpenses;
+        if (mode === 'internet') {
+            const productWeight = recipe.reduce((acc, item) => acc + (item.weightPerPiece || (item.density || 1)) * item.quantity, 0);
+            const packagingWeight = packaging.reduce((acc, item) => acc + (item.weightPerPiece || 0) * item.quantity, 0);
+            const finalPackageWeight = productWeight + packagingWeight;
+            const applicableRate = shipping.find(rate => finalPackageWeight <= rate.maxWeight);
+            shippingProviderCost = applicableRate ? applicableRate.cost : 0;
+            const shippingCustomerPrice = applicableRate ? applicableRate.price : 0;
+            finalClientPrice = productPriceTTC + shippingCustomerPrice;
+            const transactionFees = finalClientPrice * (fees / 100);
+            const businessCharges = productPriceHT * (charges / 100);
+            totalExpenses = productCost + packagingCost + shippingProviderCost + transactionFees + businessCharges;
+            finalProfit = finalClientPrice - totalExpenses;
+        } else if (mode === 'domicile') {
+            const transactionFees = finalClientPrice * (fees / 100);
+            const businessCharges = productPriceHT * (charges / 100);
+            totalExpenses = productCost + transactionFees + businessCharges;
+            finalProfit = finalClientPrice - totalExpenses;
+        } else if (mode === 'depot') {
+            const commissionAmount = productPriceTTC * (depotCommission / 100);
+            // Les charges sont calculées sur le montant HT que vous touchez VRAIMENT.
+            const netRevenueHT = productPriceHT * (1 - depotCommission / 100);
+            const businessCharges = netRevenueHT * (charges / 100);
+            totalExpenses = productCost + commissionAmount + businessCharges;
+            finalProfit = productPriceTTC - totalExpenses;
+        }
         
-        // --- Dépôt Mode ---
-        const depotTotal = productPriceTTC;
-        const depotCommissionAmount = depotTotal * (depotCommission / 100);
-        const depotCharges = (productPriceHT * (1 - depotCommission / 100)) * (charges / 100);
-        const depotExpenses = productCost + depotCommissionAmount + depotCharges;
-        const depotProfit = depotTotal - depotExpenses;
-
-        return {
-            shared: { productCost, packagingCost, finalPackageWeight, productPriceHT, productPriceTTC },
-            internet: { total: internetTotal, expenses: internetExpenses, profit: internetProfit },
-            domicile: { total: domicileTotal, expenses: domicileExpenses, profit: domicileProfit },
-            depot: { total: depotTotal, expenses: depotExpenses, profit: depotProfit }
-        };
+        return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit };
     };
 
-    const calculationsByMode = useMemo(() => {
-        return calculateAllModes(recipeItems, packagingItems, marginMultiplier, tvaRate, chargesRate, feesRate, depotCommissionRate, shippingRates);
-    }, [recipeItems, packagingItems, marginMultiplier, tvaRate, feesRate, depotCommissionRate, shippingRates]);
+    const calculations = useMemo(() => {
+        const commonData = {
+            recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
+            tva: tvaRate, charges: chargesRate, fees: feesRate,
+            depotCommission: depotCommissionRate, shipping: shippingRates
+        };
+        return calculateForMode(saleMode, commonData);
+    }, [recipeItems, packagingItems, marginMultiplier, tvaRate, feesRate, depotCommissionRate, shippingRates, saleMode]);
 
     useEffect(() => {
-        setManualTtcPrice(calculationsByMode.shared.productPriceTTC.toFixed(2));
-    }, [calculationsByMode.shared.productPriceTTC]);
+        setManualTtcPrice(calculations.productPriceTTC.toFixed(2));
+    }, [calculations.productPriceTTC]);
     
     const handleManualTtcPriceChange = (e) => {
         const newTtcPriceString = e.target.value;
@@ -305,9 +311,9 @@ const CostCalculator = () => {
         
         const newTtcPrice = parseFloat(newTtcPriceString);
 
-        if (!isNaN(newTtcPrice) && newTtcPrice >= 0 && calculationsByMode.shared.productCost > 0) {
+        if (!isNaN(newTtcPrice) && newTtcPrice >= 0 && calculations.productCost > 0) {
             const newHtPrice = newTtcPrice / (1 + tvaRate / 100);
-            const newMultiplier = newHtPrice / calculationsByMode.shared.productCost;
+            const newMultiplier = newHtPrice / calculations.productCost;
             setMarginMultiplier(newMultiplier);
         }
     };
@@ -316,16 +322,28 @@ const CostCalculator = () => {
         if (!productName || recipeItems.length === 0) {
             showToast("Veuillez nommer le produit et ajouter au moins un composant.", "error"); return;
         }
+        
+        const commonData = {
+            recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
+            tva: tvaRate, charges: chargesRate, fees: feesRate,
+            depotCommission: depotCommissionRate, shipping: shippingRates
+        };
+
+        const resultsByMode = {
+            internet: calculateForMode('internet', commonData),
+            domicile: calculateForMode('domicile', commonData),
+            depot: calculateForMode('depot', commonData)
+        };
+
         const dataToSave = {
             productName, 
             items: recipeItems.map(({ id, createdAt, ...item }) => item),
             packagingItems: packagingItems.map(({ id, createdAt, ...item }) => item),
-            // Paramètres financiers partagés
             marginMultiplier, tvaRate, feesRate, depotCommissionRate,
-            // Résultats calculés pour chaque mode
-            resultsByMode: calculationsByMode,
+            resultsByMode, // Sauvegarde l'objet contenant les 3 calculs
             updatedAt: serverTimestamp()
         };
+
         try {
             if (editingCalcId) {
                 await updateDoc(doc(db, 'productsCosts', editingCalcId), dataToSave);
@@ -357,6 +375,16 @@ const CostCalculator = () => {
         }
     };
     
+    const renderTabs = () => (
+        <div className="mb-8 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
+            {[{id: 'internet', label: 'Vente par Internet', icon: Globe}, {id: 'domicile', label: 'Vente Domicile', icon: Home}, {id: 'depot', label: 'Dépôt-Vente', icon: StoreIcon}].map(tab => (
+                 <button key={tab.id} onClick={() => setSaleMode(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-semibold transition-colors ${saleMode === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                    <tab.icon size={18}/> {tab.label}
+                </button>
+            ))}
+        </div>
+    );
+
     const ItemList = ({ title, icon: Icon, items, setList, onQuantityChange }) => (
          <div className="bg-gray-800 p-6 rounded-2xl">
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon size={22} /> {title}</h3>
@@ -384,48 +412,35 @@ const CostCalculator = () => {
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-3xl font-bold text-white">Calculateur de Coût de Production</h2>
-                <button 
-                    onClick={handleSaveCost} 
-                    disabled={!productName || recipeItems.length === 0}
-                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-                    <Save size={18}/> {editingCalcId ? 'Mettre à jour le produit' : 'Enregistrer le produit'}
-                </button>
-            </div>
-            
+            <h2 className="text-3xl font-bold text-white mb-6">Calculateur de Coût de Production</h2>
+            {renderTabs()}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* --- COLONNE DE GAUCHE : SAISIE --- */}
                 <div className="space-y-8">
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4">Informations Générales</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit" className="w-full bg-gray-700 p-2 rounded-lg sm:col-span-2"/>
-                            <div className="bg-gray-900 p-2 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids colis : </span><span className="font-bold ml-2">{calculationsByMode.shared.finalPackageWeight.toFixed(2)} g</span></div>
-                        </div>
+                        <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit" className="w-full bg-gray-700 p-2 rounded-lg"/>
                     </div>
                     
                     <ItemList title="Composition du Produit Fini" icon={X} items={recipeItems} setList={setRecipeItems} onQuantityChange={handleQuantityChange} />
-                    <ItemList title="Emballage pour l'expédition" icon={Box} items={packagingItems} setList={setPackagingItems} onQuantityChange={handleQuantityChange} />
+                    {saleMode === 'internet' && <ItemList title="Emballage pour l'expédition" icon={Box} items={packagingItems} setList={setPackagingItems} onQuantityChange={handleQuantityChange} />}
                     <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToCalculation} />
                 </div>
-                {/* --- COLONNE DE DROITE : PARAMÈTRES ET RÉSULTATS --- */}
                 <div className="space-y-8">
-                    <div className="bg-gray-800 p-6 rounded-2xl sticky top-24">
+                    <div className="bg-gray-800 p-6 rounded-2xl">
                         <button onClick={() => setIsFinancialsVisible(!isFinancialsVisible)} className="w-full flex justify-between items-center text-left">
                             <h3 className="text-xl font-bold flex items-center gap-2"><Percent size={22}/> Paramètres Financiers</h3>
                             <ChevronDown className={`transform transition-transform ${isFinancialsVisible ? 'rotate-180' : ''}`} />
                         </button>
                         {isFinancialsVisible && 
-                            <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in space-y-4">
+                             <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in space-y-4">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-sm text-gray-400">Prix de Vente Produit (TTC)</label>
-                                        <input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                                    </div>
-                                    <div>
                                         <label className="text-sm text-gray-400">Multiplicateur de Marge</label>
-                                        <input type="number" step="0.01" value={marginMultiplier.toFixed(4)} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-900/50 p-2 rounded-lg mt-1 cursor-not-allowed" disabled />
+                                        <input type="number" step="0.01" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                                    </div>
+                                     <div>
+                                        <label className="text-sm text-gray-400">Prix de Vente (TTC)</label>
+                                        <input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
                                     </div>
                                 </div>
                                 <div>
@@ -440,41 +455,36 @@ const CostCalculator = () => {
                                     <div><label className="text-sm text-gray-400">Frais (Sumup, Stripe...) %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                     <div><label className="text-sm text-gray-400">Commission Dépôt-Vente %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                 </div>
-                                <div>
-                                    <label className="text-sm text-gray-400 flex items-center gap-1">Cotisations URSSAF % <Info size={14} title="Calculé sur le chiffre d'affaires HT après déduction de la commission de dépôt-vente."/></label>
-                                    <input type="number" value={chargesRate} disabled className="w-full bg-gray-900/50 p-2 rounded-lg mt-1 cursor-not-allowed"/>
-                                </div>
                             </div>
                         }
                     </div>
-
-                    <div className="bg-gray-800 p-6 rounded-2xl">
-                        <h3 className="text-xl font-bold mb-4">Résultats Comparatifs</h3>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="border-b-2 border-gray-700">
-                                        <th className="p-2 w-1/4">Indicateur</th>
-                                        <th className="p-2 text-center text-cyan-400">Vente Internet</th>
-                                        <th className="p-2 text-center text-purple-400">Vente Domicile</th>
-                                        <th className="p-2 text-center text-pink-400">Dépôt-Vente</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr className="border-b border-gray-700/50"><td className="p-2 text-gray-400">Prix affiché client</td><td className="p-2 text-center font-semibold">{formatPrice(calculationsByMode.internet.total)}</td><td className="p-2 text-center font-semibold">{formatPrice(calculationsByMode.domicile.total)}</td><td className="p-2 text-center font-semibold">{formatPrice(calculationsByMode.depot.total)}</td></tr>
-                                    <tr className="border-b border-gray-700/50"><td className="p-2 text-gray-400">Dépenses totales</td><td className="p-2 text-center text-red-400">{formatPrice(calculationsByMode.internet.expenses)}</td><td className="p-2 text-center text-red-400">{formatPrice(calculationsByMode.domicile.expenses)}</td><td className="p-2 text-center text-red-400">{formatPrice(calculationsByMode.depot.expenses)}</td></tr>
-                                    <tr className="bg-green-500/10"><td className="p-3 font-bold text-green-300">BÉNÉFICE NET FINAL</td><td className="p-3 text-center text-2xl font-bold text-green-300">{formatPrice(calculationsByMode.internet.profit)}</td><td className="p-3 text-center text-2xl font-bold text-green-300">{formatPrice(calculationsByMode.domicile.profit)}</td><td className="p-3 text-center text-2xl font-bold text-green-300">{formatPrice(calculationsByMode.depot.profit)}</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                     {isShippingVisible && (
+                    {saleMode === 'internet' && (
                         <div className="bg-gray-800 p-6 rounded-2xl">
-                             <h3 className="text-xl font-bold flex items-center gap-2 mb-4"><Ship size={22}/> Grille Tarifaire d'Expédition</h3>
-                            <ShippingRateManager rates={shippingRates} />
+                            <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
+                                <h3 className="text-xl font-bold flex items-center gap-2"><Ship size={22}/> Grille Tarifaire d'Expédition</h3>
+                                <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isShippingVisible && <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in"><ShippingRateManager rates={shippingRates} /></div>}
                         </div>
                     )}
+                    <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
+                        <h3 className="text-xl font-bold mb-4">Résultats du Calcul ({saleMode})</h3>
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
+                            <hr className="border-gray-700"/>
+                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
+                            <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
+                            <hr className="border-gray-700"/>
+                            <div className="flex justify-between items-center p-2 text-red-400"><span className="font-semibold">- Dépenses Totales</span><span className="font-bold">{formatPrice(calculations.totalExpenses)}</span></div>
+                            <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
+                                <span className="text-green-300 font-semibold">Bénéfice Net Final</span>
+                                <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
+                            </div>
+                        </div>
+                        <div className="mt-8 flex justify-end">
+                             <button onClick={handleSaveCost} disabled={!productName || recipeItems.length === 0} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50"><Save size={18}/> {editingCalcId ? 'Mettre à jour' : 'Enregistrer le calcul'}</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div className="mt-12 bg-gray-800 p-6 rounded-2xl">
@@ -483,10 +493,10 @@ const CostCalculator = () => {
                     {savedCalculations.map(calc => (
                         <div key={calc.id} className="bg-gray-900/50 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
                             <p className="font-bold text-lg w-full sm:w-1/4">{calc.productName}</p>
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-                                <div><span className="text-xs text-cyan-400">Bénéf. Internet</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.internet?.profit || 0)}</p></div>
-                                <div><span className="text-xs text-purple-400">Bénéf. Domicile</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.domicile?.profit || 0)}</p></div>
-                                <div><span className="text-xs text-pink-400">Bénéf. Dépôt</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.depot?.profit || 0)}</p></div>
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center w-full">
+                                <div><span className="text-xs text-cyan-400">Bénéf. Internet</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.internet?.finalProfit || 0)}</p></div>
+                                <div><span className="text-xs text-purple-400">Bénéf. Domicile</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
+                                <div><span className="text-xs text-pink-400">Bénéf. Dépôt</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={() => handleLoadCalculation(calc)} className="p-2 text-blue-400 hover:bg-gray-700 rounded-lg flex items-center gap-2 text-sm"><RefreshCw size={16}/> Recharger</button>
