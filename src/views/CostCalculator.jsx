@@ -407,7 +407,6 @@ const CostCalculator = () => {
         }
     };
     
-    // --- NOUVELLE LOGIQUE DE FILTRAGE ---
     const usedMaterialIds = useMemo(() => {
         const recipeIds = recipeItems.map(item => item.materialId);
         const packagingIds = packagingItems.map(item => item.materialId);
@@ -501,12 +500,12 @@ const CostCalculator = () => {
                         </div>
                     )}
 
-                    {/* --- ON PASSE LA LISTE FILTRÉE ICI --- */}
                     <RawMaterialManager materials={availableMaterials} onSelect={handleAddMaterialToCalculation} />
                 </div>
 
                 <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-gray-800 p-4 rounded-2xl h-fit sticky top-24">
+                    {/* --- CORRECTION : La classe "sticky" a été retirée --- */}
+                    <div className="bg-gray-800 p-4 rounded-2xl h-fit">
                         <h3 className="text-lg font-bold mb-4">Résultats & Paramètres</h3>
                         <div className="space-y-4">
                             <div className="space-y-3 p-3 bg-gray-900/50 rounded-lg text-sm">
