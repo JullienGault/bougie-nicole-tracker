@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box, Info } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box, Info, Building, Wrench } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
@@ -135,8 +135,8 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     const packagingComponents = useMemo(() => materials.filter(m => m.category === 'packaging'), [materials]);
 
     return (
-        <div className="bg-gray-800 p-6 rounded-2xl">
-            <h3 className="text-xl font-bold mb-4">Matières Premières & Emballages</h3>
+        <div className="bg-gray-800 p-6 rounded-2xl h-full flex flex-col">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Building size={22}/> Bibliothèque des Matières</h3>
             <form onSubmit={handleSubmit} className="space-y-4 mb-6">
                 <div>
                     <label className="text-sm text-gray-400">Catégorie</label>
@@ -162,38 +162,36 @@ const RawMaterialManager = ({ materials, onSelect }) => {
                 {editingMaterial && <div className="flex justify-end"><button type="button" onClick={resetForm} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button></div>}
             </form>
 
-            {[
-                { title: "Composants de Produit", items: productComponents },
-                { title: "Matériels d'Emballage", items: packagingComponents }
-            ].map(section => (
-                <div key={section.title} className="mt-6">
-                    <h4 className="text-lg font-semibold mb-2">{section.title}</h4>
-                    <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                        <table className="w-full text-left">
-                            <thead><tr className="border-b border-gray-700 text-xs uppercase text-gray-400"><th className="p-2">Nom</th><th className="p-2">Coût standardisé</th><th className="p-2 text-center">Actions</th></tr></thead>
-                            <tbody>
-                                {section.items.map(mat => (
-                                    <tr key={mat.id} className="border-b border-gray-700/50">
-                                        <td className="p-2 font-semibold">{mat.name}</td>
-                                        <td className="p-2 font-mono text-xs text-indigo-300">
-                                            {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
-                                                ? `${formatPrice(mat.standardizedPrice * 100)} / 100${mat.standardizedUnit}`
-                                                : `${formatPrice(mat.standardizedPrice)} / ${mat.standardizedUnit}`
-                                            }
-                                            {mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}
-                                        </td>
-                                        <td className="p-2 flex justify-center gap-2">
-                                            <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18}/></button>
-                                            <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18}/></button>
-                                            <button onClick={() => handleDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-700 rounded" title="Supprimer"><Trash2 size={18}/></button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+            <div className="flex-grow overflow-y-auto custom-scrollbar pr-2">
+                {[
+                    { title: "Composants de Produit", items: productComponents },
+                    { title: "Matériels d'Emballage", items: packagingComponents }
+                ].map(section => (
+                    <div key={section.title} className="mt-6">
+                        <h4 className="text-lg font-semibold mb-2">{section.title}</h4>
+                        <div className="space-y-2">
+                            <div className="grid grid-cols-[1fr_120px_auto] gap-3 px-2 text-xs uppercase text-gray-400"><span >Nom</span><span >Coût standardisé</span><span className="text-center">Actions</span></div>
+                            {section.items.map(mat => (
+                                <div key={mat.id} className="grid grid-cols-[1fr_120px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded-lg">
+                                    <span className="font-semibold truncate">{mat.name}</span>
+                                    <span className="font-mono text-xs text-indigo-300">
+                                        {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
+                                            ? `${formatPrice(mat.standardizedPrice * 100)}/100${mat.standardizedUnit}`
+                                            : `${formatPrice(mat.standardizedPrice)}/${mat.standardizedUnit}`
+                                        }
+                                        {mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}
+                                    </span>
+                                    <div className="flex justify-center gap-1">
+                                        <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18}/></button>
+                                        <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18}/></button>
+                                        <button onClick={() => handleDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-700 rounded" title="Supprimer"><Trash2 size={18}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-            ))}
+                ))}
+            </div>
         </div>
     );
 };
@@ -210,7 +208,6 @@ const CostCalculator = () => {
     const [productName, setProductName] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
-    const [isExpensesVisible, setIsExpensesVisible] = useState(false);
     
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
     const [tvaRate, setTvaRate] = useState(20);
@@ -399,41 +396,34 @@ const CostCalculator = () => {
     );
 
     const ItemList = ({ title, icon: Icon, items, setList, onQuantityChange }) => (
-         <div className="bg-gray-800 p-6 rounded-2xl">
+        <div className="bg-gray-800 p-6 rounded-2xl">
             <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon size={22} /> {title}</h3>
-             {items.length > 0 && (
-                <div className="grid grid-cols-[1fr_100px_40px_auto] gap-3 items-center px-2 text-xs text-gray-400 uppercase font-semibold mb-2">
-                    <span>Élément</span>
-                    <span className="text-center">Quantité</span>
-                    <span>Unité</span>
-                    <span></span>
+            {items.length > 0 && (
+                <div className="grid grid-cols-[1fr_80px_40px_auto] gap-3 items-center px-2 text-xs text-gray-400 uppercase font-semibold mb-2">
+                    <span>Élément</span><span className="text-center">Quantité</span><span>Unité</span>
                 </div>
             )}
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[30vh] overflow-y-auto custom-scrollbar pr-2">
                 {items.map(item => (
-                    <div key={item.materialId} className="grid grid-cols-[1fr_100px_40px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded">
+                    <div key={item.materialId} className="grid grid-cols-[1fr_80px_40px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded">
                         <div className="font-semibold truncate pr-2">{item.name}</div>
                         <input type="number" step="0.1" value={item.quantity} onChange={e => onQuantityChange(items, setList, item.materialId, e.target.value)} className="w-full bg-gray-700 p-1 rounded text-center"/>
                         <span className="text-xs text-gray-400">{item.standardizedUnit}</span>
                         <button onClick={() => handleRemoveItem(setList, item.materialId)} className="text-red-500 p-1"><X size={16}/></button>
                     </div>
                 ))}
-                {items.length === 0 && <p className="text-center text-gray-500 py-4">Ajoutez un élément depuis la bibliothèque de matières.</p>}
+                {items.length === 0 && <p className="text-center text-gray-500 py-4">Ajoutez un élément depuis la bibliothèque.</p>}
             </div>
         </div>
     );
 
     const ExpenseDetailRow = ({ label, value, tooltip }) => (
         <div className="flex justify-between items-center p-1">
-            <span className="flex items-center gap-1.5">
-                {label}
-                <Info size={14} className="text-gray-500" title={tooltip} />
-            </span>
+            <span className="flex items-center gap-1.5"> {label} <Info size={14} className="text-gray-500" title={tooltip} /> </span>
             <span>{formatPrice(value)}</span>
         </div>
     );
     
-    // Construction des tooltips dynamiques
     const depotNetRevenueHT = calculations.productPriceHT * (1 - (depotCommissionRate / (1 + tvaRate/100) ) / 100);
     const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
     const commissionTooltip = `${formatPrice(calculations.productPriceTTC)} (Prix Produit TTC) × ${depotCommissionRate}% = ${formatPrice(calculations.commissionAmount)}`;
@@ -445,103 +435,74 @@ const CostCalculator = () => {
         <div className="p-4 sm:p-8 animate-fade-in">
              <div className="flex justify-between items-center mb-6">
                  <h2 className="text-3xl font-bold text-white">Calculateur de Coût de Production</h2>
-                 <button 
-                    onClick={handleSaveCost} 
-                    disabled={!productName || recipeItems.length === 0}
-                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                 <button onClick={handleSaveCost} disabled={!productName || recipeItems.length === 0} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     <Save size={18}/> {editingCalcId ? 'Mettre à jour le produit' : 'Enregistrer le produit'}
                 </button>
             </div>
             
             {renderTabs()}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-8">
+            {/* --- NOUVELLE STRUCTURE EN 3 COLONNES --- */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
+                {/* --- COLONNE 1: MON PRODUIT ACTUEL --- */}
+                <div className="space-y-8 lg:col-span-1">
                     <div className="bg-gray-800 p-6 rounded-2xl">
-                        <h3 className="text-xl font-bold mb-4">Informations Générales</h3>
+                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Wrench size={22}/> Produit Actuel</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit" className="w-full bg-gray-700 p-2 rounded-lg sm:col-span-2"/>
-                             <div className="bg-gray-900 p-2 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids colis : </span><span className="font-bold ml-2">{(calculations.finalPackageWeight || 0).toFixed(2)} g</span></div>
+                            <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit..." className="w-full bg-gray-700 p-2 rounded-lg sm:col-span-2"/>
+                             <div className="bg-gray-900 p-2 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids: </span><span className="font-bold ml-2">{(calculations.finalPackageWeight || 0).toFixed(0)} g</span></div>
                         </div>
                     </div>
-                    
-                    <ItemList title="Composition du Produit Fini" icon={X} items={recipeItems} setList={setRecipeItems} onQuantityChange={handleQuantityChange} />
-                    
+                    <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} setList={setRecipeItems} onQuantityChange={handleQuantityChange} />
                     {saleMode === 'internet' && (
-                        <div className="bg-gray-800 p-6 rounded-2xl">
-                            <h3 className="text-xl font-bold flex items-center gap-2 mb-4"><Ship size={22}/> Expédition & Emballage</h3>
-                            <ItemList title="Éléments d'emballage" icon={Box} items={packagingItems} setList={setPackagingItems} onQuantityChange={handleQuantityChange} />
-                            <hr className="my-6 border-gray-700"/>
-                            <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
-                                <h4 className="text-lg font-semibold">Gérer la Grille Tarifaire</h4>
-                                <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
-                            </button>
-                            {isShippingVisible && <div className="mt-4 pt-4 animate-fade-in"><ShippingRateManager rates={shippingRates} /></div>}
+                        <div className="space-y-4">
+                           <ItemList title="Éléments d'emballage" icon={Box} items={packagingItems} setList={setPackagingItems} onQuantityChange={handleQuantityChange} />
+                            <div className="bg-gray-800 p-6 rounded-2xl">
+                               <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
+                                   <h4 className="text-lg font-semibold flex items-center gap-2"><Ship size={20}/> Grille Tarifaire d'Expédition</h4>
+                                   <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
+                               </button>
+                               {isShippingVisible && <div className="mt-4 pt-4 border-t border-gray-700 animate-fade-in"><ShippingRateManager rates={shippingRates} /></div>}
+                           </div>
                         </div>
                     )}
+                </div>
 
+                {/* --- COLONNE 2: BIBLIOTHÈQUE --- */}
+                <div className="lg:col-span-1">
                     <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToCalculation} />
                 </div>
-                <div className="space-y-8">
+
+                {/* --- COLONNE 3: CALCULATEUR & RÉSULTATS --- */}
+                <div className="lg:col-span-1">
                     <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
-                        <h3 className="text-xl font-bold mb-4">Résultats & Paramètres ({saleMode})</h3>
-                        <div className="space-y-2">
+                        <h3 className="text-xl font-bold mb-4">Résultats & Paramètres</h3>
+                        <div className="space-y-4">
                             <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-sm text-gray-300">Multiplicateur de Marge</label>
-                                    <input type="number" step="0.01" value={marginMultiplier.toFixed(2)} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-32 bg-gray-700 p-2 rounded-lg text-right" />
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <label className="text-sm text-gray-300">Prix de Vente (TTC)</label>
-                                    <input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-32 bg-gray-700 p-2 rounded-lg text-right" />
-                                </div>
-                                 <div className="flex justify-between items-center">
-                                    <label className="text-sm text-gray-300">TVA (%)</label>
-                                    <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">
-                                        {availableTvaRates.map(rate => (
-                                            <button key={rate} onClick={() => setTvaRate(rate)} className={`px-3 py-1 rounded-md text-sm font-semibold ${tvaRate === rate ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-600'}`}>{rate}%</button>
-                                        ))}
-                                    </div>
-                                </div>
-                                {(saleMode === 'internet' || saleMode === 'domicile') && 
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-sm text-gray-300">Frais Transaction %</label>
-                                        <input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-32 bg-gray-700 p-2 rounded-lg text-right" />
-                                    </div>
-                                }
-                                {saleMode === 'depot' && 
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-sm text-gray-300">Commission Dépôt %</label>
-                                        <input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(parseFloat(e.target.value))} className="w-32 bg-gray-700 p-2 rounded-lg text-right" />
-                                    </div>
-                                }
+                                <div className="flex justify-between items-center"><label className="text-sm text-gray-300">Multiplicateur de Marge</label><input type="number" step="0.01" value={marginMultiplier.toFixed(2)} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>
+                                <div className="flex justify-between items-center"><label className="text-sm text-gray-300">Prix de Vente (TTC)</label><input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>
+                                <div className="flex justify-between items-center"> <label className="text-sm text-gray-300">TVA (%)</label> <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">{availableTvaRates.map(rate => ( <button key={rate} onClick={() => setTvaRate(rate)} className={`px-2 py-1 rounded-md text-sm font-semibold ${tvaRate === rate ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{rate}%</button> ))}</div> </div>
+                                {(saleMode === 'internet' || saleMode === 'domicile') && <div className="flex justify-between items-center"><label className="text-sm text-gray-300">Frais Transaction %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
+                                {saleMode === 'depot' && <div className="flex justify-between items-center"><label className="text-sm text-gray-300">Commission Dépôt %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(parseFloat(e.target.value))} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
                             </div>
                             
                             <div className="space-y-2 pt-2">
-                                <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
+                                <div className="flex justify-between p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
                                 <hr className="border-gray-700/50"/>
-                                <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
-                                <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
+                                <div className="flex justify-between p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg">{formatPrice(calculations.productPriceTTC)}</span></div>
+                                <div className="flex justify-between p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé Client</span><span className="text-xl">{formatPrice(calculations.finalClientPrice)}</span></div>
                                 <hr className="border-gray-700/50"/>
                                 
-                                <button onClick={() => setIsExpensesVisible(!isExpensesVisible)} className="w-full flex justify-between items-center text-left p-2 text-red-400">
-                                    <span className="font-semibold">- Dépenses Totales</span>
-                                    <div className="flex items-center gap-2">
-                                        <span className="font-bold">{formatPrice(calculations.totalExpenses)}</span>
-                                        <ChevronDown className={`transform transition-transform ${isExpensesVisible ? 'rotate-180' : ''}`} size={18} />
-                                    </div>
-                                </button>
-                                
-                                {isExpensesVisible && (
-                                    <div className="pl-6 border-l-2 border-gray-700 text-sm text-red-400/80 animate-fade-in">
-                                        <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
-                                        {saleMode === 'internet' && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
-                                        {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
-                                        {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={transactionFeesTooltip} />}
-                                        {saleMode === 'depot' && <ExpenseDetailRow label="Commission dépôt" value={calculations.commissionAmount} tooltip={commissionTooltip} />}
-                                        <ExpenseDetailRow label="Cotisations URSSAF" value={calculations.businessCharges} tooltip={urssafTooltip} />
-                                    </div>
-                                )}
+                                <div className="text-red-400 p-2"><span className="font-semibold">- Dépenses Totales</span><span className="font-bold float-right">{formatPrice(calculations.totalExpenses)}</span></div>
+                                <div className="pl-6 border-l-2 border-gray-700 text-sm text-red-400/80">
+                                    <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
+                                    {saleMode === 'internet' && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
+                                    {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
+                                    {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={transactionFeesTooltip} />}
+                                    {saleMode === 'depot' && <ExpenseDetailRow label="Commission dépôt" value={calculations.commissionAmount} tooltip={commissionTooltip} />}
+                                    <ExpenseDetailRow label="Cotisations URSSAF" value={calculations.businessCharges} tooltip={urssafTooltip} />
+                                </div>
 
                                 <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-2">
                                     <span className="text-green-300 font-semibold">Bénéfice Net Final</span>
@@ -552,6 +513,8 @@ const CostCalculator = () => {
                     </div>
                 </div>
             </div>
+
+            {/* --- BIBLIOTHÈQUE DE PRODUITS SAUVEGARDÉS (EN BAS) --- */}
             <div className="mt-12 bg-gray-800 p-6 rounded-2xl">
                  <h3 className="text-xl font-bold mb-4">Bibliothèque de Produits Calculés</h3>
                  <div className="space-y-3">
