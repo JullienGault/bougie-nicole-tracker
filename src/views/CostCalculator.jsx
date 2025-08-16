@@ -1,8 +1,8 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from '../services/firebase';
+import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
@@ -196,13 +196,14 @@ const CostCalculator = () => {
     const [tvaRate, setTvaRate] = useState(20);
     const chargesRate = 13.30;
     const [feesRate, setFeesRate] = useState(1.75);
+    const [manualTtcPrice, setManualTtcPrice] = useState('0.00');
 
     const availableTvaRates = [20, 10, 5.5, 0];
 
     useEffect(() => {
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
         const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
-        const qRates = query(collection(db, 'shippingRates'));
+        const qRates = query(collection(db, 'shippingRates'), orderBy('maxWeight'));
         const unsubRates = onSnapshot(qRates, (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
         const qCalcs = query(collection(db, 'productsCosts'), orderBy('productName'));
         const unsubCalcs = onSnapshot(qCalcs, (snap) => setSavedCalculations(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -248,6 +249,25 @@ const CostCalculator = () => {
         const finalProfit = profitOnProduct + profitOnShipping - transactionFees;
         return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses };
     }, [recipeItems, marginMultiplier, tvaRate, shippingRates, chargesRate, feesRate]);
+
+    // Synchronise le champ TTC manuel lorsque les calculs changent (ex: ajout/modif d'un item)
+    useEffect(() => {
+        setManualTtcPrice(calculations.productPriceTTC.toFixed(2));
+    }, [calculations.productPriceTTC]);
+    
+    // Gère le recalcul de la marge lorsque le prix TTC est modifié manuellement
+    const handleManualTtcPriceChange = (e) => {
+        const newTtcPriceString = e.target.value;
+        setManualTtcPrice(newTtcPriceString);
+        
+        const newTtcPrice = parseFloat(newTtcPriceString);
+
+        if (!isNaN(newTtcPrice) && newTtcPrice >= 0 && calculations.productCost > 0) {
+            const newHtPrice = newTtcPrice / (1 + tvaRate / 100);
+            const newMultiplier = newHtPrice / calculations.productCost;
+            setMarginMultiplier(newMultiplier);
+        }
+    };
 
     const handleSaveCost = async () => {
         if (!productName || recipeItems.length === 0) {
@@ -311,11 +331,20 @@ const CostCalculator = () => {
                             <div className="bg-gray-900 p-2 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids colis : </span><span className="font-bold ml-2">{calculations.finalPackageWeight.toFixed(2)} g</span></div>
                         </div>
                         <div className="space-y-2">
+                            {recipeItems.length > 0 && (
+                                <div className="grid grid-cols-[1fr_100px_40px_auto] gap-3 items-center px-2 text-xs text-gray-400 uppercase font-semibold">
+                                    <span>Matière</span>
+                                    <span className="text-center">Quantité</span>
+                                    <span>Unité</span>
+                                    <span></span>
+                                </div>
+                            )}
                             {recipeItems.map(item => (
-                                <div key={item.materialId} className="grid grid-cols-12 gap-2 items-center bg-gray-900/50 p-2 rounded">
-                                    <div className="col-span-6 font-semibold">{item.name}</div>
-                                    <div className="col-span-5 flex items-center gap-2"><input type="number" step="0.1" value={item.quantity} onChange={e => handleRecipeQuantityChange(item.materialId, e.target.value)} className="w-full bg-gray-700 p-1 rounded text-center"/><span className="text-xs text-gray-400">{item.standardizedUnit}</span></div>
-                                    <div className="col-span-1 text-right"><button onClick={() => handleRemoveFromRecipe(item.materialId)} className="text-red-500 p-1"><X size={16}/></button></div>
+                                <div key={item.materialId} className="grid grid-cols-[1fr_100px_40px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded">
+                                    <div className="font-semibold truncate pr-2">{item.name}</div>
+                                    <input type="number" step="0.1" value={item.quantity} onChange={e => handleRecipeQuantityChange(item.materialId, e.target.value)} className="w-full bg-gray-700 p-1 rounded text-center"/>
+                                    <span className="text-xs text-gray-400">{item.standardizedUnit}</span>
+                                    <button onClick={() => handleRemoveFromRecipe(item.materialId)} className="text-red-500 p-1"><X size={16}/></button>
                                 </div>
                             ))}
                              {recipeItems.length === 0 && <p className="text-center text-gray-500 py-4">Utilisez le bouton <PlusCircle size={16} className="inline-block text-green-400"/> pour ajouter une matière.</p>}
@@ -341,7 +370,10 @@ const CostCalculator = () => {
                         {isFinancialsVisible && 
                             <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="text-sm text-gray-400">Marge / Multiplicateur</label><input type="number" step="0.1" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
+                                    <div>
+                                        <label className="text-sm text-gray-400">Marge / Multiplicateur</label>
+                                        <input type="number" step="0.01" value={marginMultiplier.toFixed(4)} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                                    </div>
                                     <div><label className="text-sm text-gray-400">Frais Sumup %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                                 </div>
                                 <div>
@@ -361,7 +393,19 @@ const CostCalculator = () => {
                         <div className="space-y-2">
                              <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
                             <hr className="border-gray-700"/>
-                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
+                            <div className="flex justify-between items-center p-2">
+                                <span className="text-gray-300">Prix Produit (TTC)</span>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        value={manualTtcPrice}
+                                        onChange={handleManualTtcPriceChange}
+                                        className="w-28 bg-gray-700 p-1 rounded-md text-center font-bold text-lg text-white"
+                                    />
+                                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400">€</span>
+                                </div>
+                            </div>
                             <div className="flex justify-between items-center p-2"><span className="text-gray-300">Expédition (Facturée)</span><span className="font-bold text-lg text-cyan-400">{formatPrice(calculations.shippingCustomerPrice)}</span></div>
                             <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
                             <hr className="border-gray-700"/>
