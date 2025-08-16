@@ -262,6 +262,8 @@ const CostCalculator = () => {
         let shippingProviderCost = 0;
         let totalExpenses = 0;
         let finalProfit = 0;
+        
+        let businessCharges = 0;
 
         if (mode === 'internet') {
             const productWeight = recipe.reduce((acc, item) => acc + (item.weightPerPiece || (item.density || 1)) * item.quantity, 0);
@@ -272,19 +274,18 @@ const CostCalculator = () => {
             const shippingCustomerPrice = applicableRate ? applicableRate.price : 0;
             finalClientPrice = productPriceTTC + shippingCustomerPrice;
             const transactionFees = finalClientPrice * (fees / 100);
-            const businessCharges = productPriceHT * (charges / 100);
+            businessCharges = productPriceHT * (charges / 100);
             totalExpenses = productCost + packagingCost + shippingProviderCost + transactionFees + businessCharges;
             finalProfit = finalClientPrice - totalExpenses;
         } else if (mode === 'domicile') {
             const transactionFees = finalClientPrice * (fees / 100);
-            const businessCharges = productPriceHT * (charges / 100);
+            businessCharges = productPriceHT * (charges / 100);
             totalExpenses = productCost + transactionFees + businessCharges;
             finalProfit = finalClientPrice - totalExpenses;
         } else if (mode === 'depot') {
             const commissionAmount = productPriceTTC * (depotCommission / 100);
-            // Les charges sont calculées sur le montant HT que vous touchez VRAIMENT.
-            const netRevenueHT = productPriceHT * (1 - depotCommission / 100);
-            const businessCharges = netRevenueHT * (charges / 100);
+            const netRevenueHT = productPriceHT * (1 - (depotCommission / (1 + tva/100) ) / 100);
+            businessCharges = netRevenueHT * (charges / 100);
             totalExpenses = productCost + commissionAmount + businessCharges;
             finalProfit = productPriceTTC - totalExpenses;
         }
@@ -340,7 +341,7 @@ const CostCalculator = () => {
             items: recipeItems.map(({ id, createdAt, ...item }) => item),
             packagingItems: packagingItems.map(({ id, createdAt, ...item }) => item),
             marginMultiplier, tvaRate, feesRate, depotCommissionRate,
-            resultsByMode, // Sauvegarde l'objet contenant les 3 calculs
+            resultsByMode, 
             updatedAt: serverTimestamp()
         };
 
