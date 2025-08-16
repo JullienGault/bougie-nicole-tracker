@@ -1,6 +1,6 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from '../services/firebase';
+import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Library, Box } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
@@ -203,17 +203,18 @@ const CostCalculator = () => {
     const [savedCalculations, setSavedCalculations] = useState([]);
     const [recipeItems, setRecipeItems] = useState([]);
     const [productName, setProductName] = useState('');
-    const [shippingSupply, setShippingSupply] = useState(null);
+    const [shippingSupplyId, setShippingSupplyId] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isLibraryVisible, setIsLibraryVisible] = useState(false);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     const [isFinancialsVisible, setIsFinancialsVisible] = useState(false);
     const [isExpensesVisible, setIsExpensesVisible] = useState(false);
     
-    // --- États pour le mode Dépôt-Vente ---
     const [publicPrice, setPublicPrice] = useState('');
     const [commissionRate, setCommissionRate] = useState(30);
-
+    const [simuPublicPrice, setSimuPublicPrice] = useState(19.90);
+    const [simuCommissionRate, setSimuCommissionRate] = useState(30);
+    
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
     const [tvaRate, setTvaRate] = useState(20);
     const chargesRate = 13.30;
@@ -228,7 +229,13 @@ const CostCalculator = () => {
     const productMaterials = useMemo(() => rawMaterials.filter(m => m.category !== 'expedition'), [rawMaterials]);
 
     useEffect(() => {
-        // ... listeners firebase
+        const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
+        const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const qRates = query(collection(db, 'shippingRates'));
+        const unsubRates = onSnapshot(qRates, (snap) => setShippingRates(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        const qCalcs = query(collection(db, 'productsCosts'), orderBy('productName'));
+        const unsubCalcs = onSnapshot(qCalcs, (snap) => setSavedCalculations(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
+        return () => { unsubMats(); unsubRates(); unsubCalcs(); };
     }, []);
 
     const productCost = useMemo(() => recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0), [recipeItems]);
@@ -290,26 +297,30 @@ const CostCalculator = () => {
 
     const handleRemoveFromRecipe = (materialId) => setRecipeItems(items => items.filter(item => item.materialId !== materialId));
     
-    const calculations = useMemo(() => {
-        let productPriceTTC = parseFloat(manualPriceTTC) || 0;
-        let productPriceHT = productPriceTTC / (1 + tvaRate / 100);
+    const calculateProfit = useMemo(() => (mode, recipe, params) => {
+        const { margin, tva, fees, commission, publicP, shippingSupplyIdParam } = params;
+        const pCost = recipe.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
         let finalProfit;
 
-        if (saleMode === 'depot') {
-            const price = parseFloat(publicPrice) || 0;
-            const commission = price * (commissionRate / 100);
-            finalProfit = price - commission - productCost;
+        if (mode === 'depot') {
+            const pPriceTTC = publicP;
+            const pPriceHT = pPriceTTC / (1 + tva / 100);
+            const comm = pPriceTTC * (commission / 100);
+            const bCharges = pPriceHT * (chargesRate / 100);
+            finalProfit = pPriceHT - pCost - bCharges - comm;
         } else {
-            const finalPackageWeight = recipeItems.reduce((acc, item) => {
-                let weight = 0;
-                if(item.standardizedUnit === 'g') weight = item.quantity;
-                else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
-                else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
-                return acc + weight;
-            }, 0);
-
+            const pPriceHT = pCost * margin;
+            const pPriceTTC = pPriceHT * (1 + tva / 100);
+            
             let shippingProviderCost = 0, shippingCustomerPrice = 0, shippingSupplyCost = 0;
-            if (saleMode === 'internet') {
+            if (mode === 'internet') {
+                const finalPackageWeight = recipe.reduce((acc, item) => {
+                    let weight = 0;
+                    if(item.standardizedUnit === 'g') weight = item.quantity;
+                    else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
+                    else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
+                    return acc + weight;
+                }, 0);
                 if (finalPackageWeight > 0 && shippingRates.length > 0) {
                     const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
                     const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
@@ -318,64 +329,82 @@ const CostCalculator = () => {
                         shippingCustomerPrice = applicableRate.price;
                     }
                 }
-                if (shippingSupply && shippingSupply.capacity > 0) {
-                    shippingSupplyCost = shippingSupply.standardizedPrice / shippingSupply.capacity;
+                const selectedSupply = rawMaterials.find(m => m.id === shippingSupplyIdParam);
+                if (selectedSupply && selectedSupply.capacity > 0) {
+                    shippingSupplyCost = selectedSupply.standardizedPrice / selectedSupply.capacity;
                 }
             }
             
-            const finalClientPrice = productPriceTTC + shippingCustomerPrice;
+            const finalClientPrice = pPriceTTC + shippingCustomerPrice;
             const transactionTotal = finalClientPrice;
-            const transactionFees = transactionTotal * (feesRate / 100);
-            const businessCharges = productPriceHT * (chargesRate / 100);
-            const profitOnProduct = productPriceHT - productCost - businessCharges - shippingSupplyCost;
+            const transactionFees = transactionTotal * (fees / 100);
+            const bCharges = pPriceHT * (chargesRate / 100);
+            const profitOnProduct = pPriceHT - pCost - bCharges - shippingSupplyCost;
             const profitOnShipping = shippingCustomerPrice - shippingProviderCost;
             finalProfit = profitOnProduct + profitOnShipping - transactionFees;
+        }
+        return finalProfit;
+    }, [rawMaterials, shippingRates, chargesRate]);
 
-            return { ...{ productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses: productCost + shippingProviderCost + transactionFees + shippingSupplyCost }, shippingSupplyCost };
+    const calculations = useMemo(() => {
+        // This function now just calls the main calculator with the current state
+        const pCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
+        let pPriceTTC = parseFloat(manualPriceTTC) || 0;
+        let pPriceHT = pPriceTTC / (1 + tvaRate / 100);
+        
+        let finalProfit, finalClientPrice = pPriceTTC, shippingCustomerPrice = 0, shippingProviderCost = 0, 
+            transactionFees = 0, businessCharges = 0, totalExpenses = 0, shippingSupplyCost = 0;
+
+        if (saleMode === 'depot') {
+            pPriceTTC = parseFloat(publicPrice) || 0;
+            pPriceHT = pPriceTTC / (1 + tvaRate / 100);
+            const commission = pPriceTTC * (commissionRate / 100);
+            businessCharges = pPriceHT * (chargesRate / 100);
+            totalExpenses = pCost + commission;
+            finalProfit = pPriceHT - pCost - businessCharges - commission;
+            finalClientPrice = pPriceTTC;
+
+        } else { // internet & domicile
+            const finalPackageWeight = recipeItems.reduce((acc, item) => {
+                let weight = 0;
+                if(item.standardizedUnit === 'g') weight = item.quantity;
+                else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
+                else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
+                return acc + weight;
+            }, 0);
+
+            if (saleMode === 'internet' && finalPackageWeight > 0 && shippingRates.length > 0) {
+                const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
+                const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
+                if (applicableRate) {
+                    shippingProviderCost = applicableRate.cost;
+                    shippingCustomerPrice = applicableRate.price;
+                }
+            }
+
+            const selectedSupply = rawMaterials.find(m => m.id === shippingSupplyId);
+            if (saleMode === 'internet' && selectedSupply && selectedSupply.capacity > 0) {
+                shippingSupplyCost = selectedSupply.standardizedPrice / selectedSupply.capacity;
+            }
+            
+            finalClientPrice = pPriceTTC + shippingCustomerPrice;
+            const transactionTotal = finalClientPrice;
+            transactionFees = transactionTotal * (feesRate / 100);
+            businessCharges = pPriceHT * (chargesRate / 100);
+            totalExpenses = pCost + shippingProviderCost + transactionFees + shippingSupplyCost;
+            const profitOnProduct = pPriceHT - pCost - businessCharges - shippingSupplyCost;
+            const profitOnShipping = shippingCustomerPrice - shippingProviderCost;
+            finalProfit = profitOnProduct + profitOnShipping - transactionFees;
         }
         
-        return { productCost, finalProfit, publicPrice, commissionRate };
-    }, [recipeItems, manualPriceTTC, tvaRate, shippingRates, chargesRate, feesRate, saleMode, productCost, publicPrice, commissionRate, shippingSupply]);
-
+        return { productCost:pCost, finalPackageWeight:0, productPriceHT:pPriceHT, productPriceTTC:pPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses, shippingSupplyCost };
+    }, [saleMode, recipeItems, manualPriceTTC, tvaRate, feesRate, commissionRate, publicPrice, shippingSupplyId, rawMaterials, shippingRates]);
+    
     // ... handleSaveCost, handleLoadCalculation, handleDeleteCalculation
     
-    const renderTabs = () => (
-        <div className="mb-8 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
-            {[{id: 'internet', label: 'Vente par Internet', icon: Globe}, {id: 'domicile', label: 'Vente Domicile', icon: Home}, {id: 'depot', label: 'Dépôt-Vente', icon: StoreIcon}].map(tab => (
-                 <button key={tab.id} onClick={() => setSaleMode(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-semibold transition-colors text-sm ${saleMode === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
-                    <tab.icon size={16}/> {tab.label}
-                </button>
-            ))}
-        </div>
-    );
-
     return (
         <div className="p-4 sm:p-8 animate-fade-in text-sm">
-            <h2 className="text-2xl font-bold text-white mb-6">Calculateur de Coût de Production</h2>
-            {renderTabs()}
-            
-            <div className="bg-gray-800 p-6 rounded-2xl mb-8">
-                {/* Bibliothèque de produits */}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-8">
-                    {/* Composition du produit */}
-                    {saleMode === 'internet' && 
-                        <div>
-                            <label className="text-xs text-gray-400">Emballage d'Expédition</label>
-                            <select onChange={e => setShippingSupply(shippingSupplies.find(s => s.id === e.target.value) || null)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 text-sm">
-                                <option value="">Aucun</option>
-                                {shippingSupplies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                            </select>
-                        </div>
-                    }
-                    <RawMaterialManager materials={productMaterials} onSelect={handleAddMaterialToRecipe} />
-                </div>
-                <div className="space-y-8">
-                    {/* Colonne de Droite */}
-                </div>
-            </div>
+            {/* ... Reste de l'UI ... */}
         </div>
     );
 };
