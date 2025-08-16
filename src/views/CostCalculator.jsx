@@ -266,11 +266,11 @@ const CostCalculator = () => {
         let commissionAmount = 0;
         let finalPackageWeight = 0;
 
+        const productWeight = recipe.reduce((acc, item) => acc + ((item.purchaseUnit === 'piece' ? item.weightPerPiece : (item.density || 1)) * item.quantity), 0);
+        const packagingWeight = packaging.reduce((acc, item) => acc + ((item.purchaseUnit === 'piece' ? item.weightPerPiece : 0) * item.quantity), 0);
+        finalPackageWeight = productWeight + packagingWeight;
+        
         if (mode === 'internet') {
-            const productWeight = recipe.reduce((acc, item) => acc + (item.weightPerPiece || (item.density || 1)) * item.quantity, 0);
-            const packagingWeight = packaging.reduce((acc, item) => acc + (item.weightPerPiece || 0) * item.quantity, 0);
-            finalPackageWeight = productWeight + packagingWeight;
-
             let shippingCustomerPrice = 0;
             if (finalPackageWeight > 0) {
                 const applicableRate = shipping.find(rate => finalPackageWeight <= rate.maxWeight);
@@ -361,7 +361,11 @@ const CostCalculator = () => {
                 await addDoc(collection(db, 'productsCosts'), { ...dataToSave, createdAt: serverTimestamp() });
                 showToast(`"${productName}" enregistré avec succès !`, "success");
             }
-            setProductName(''); setRecipeItems([]); setPackagingItems([]); setEditingCalcId(null);
+            setProductName('');
+            setRecipeItems([]);
+            setPackagingItems([]);
+            setEditingCalcId(null);
+            setMarginMultiplier(2.5);
         } catch (error) { console.error(error); showToast("Erreur lors de la sauvegarde.", "error"); }
     };
 
@@ -470,7 +474,6 @@ const CostCalculator = () => {
                     <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
                         <h3 className="text-xl font-bold mb-4">Résultats & Paramètres ({saleMode})</h3>
                         <div className="space-y-4">
-                            {/* --- Section Paramètres --- */}
                             <div className="space-y-4 p-4 bg-gray-900/50 rounded-lg">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
@@ -496,7 +499,6 @@ const CostCalculator = () => {
                                 </div>
                             </div>
                             
-                            {/* --- Section Résultats --- */}
                             <div className="space-y-2 pt-4">
                                 <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
                                 <hr className="border-gray-700/50"/>
