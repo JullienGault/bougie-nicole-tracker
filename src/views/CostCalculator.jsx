@@ -209,11 +209,11 @@ const CostCalculator = () => {
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     
-    const [marginMultiplier, setMarginMultiplier] = useState(2.5);
-    const [tvaRate, setTvaRate] = useState(20);
+    const [marginMultiplier, setMarginMultiplier] = useState('2.5');
+    const [tvaRate, setTvaRate] = useState('20');
     const chargesRate = 13.30;
-    const [feesRate, setFeesRate] = useState(1.75);
-    const [depotCommissionRate, setDepotCommissionRate] = useState(30);
+    const [feesRate, setFeesRate] = useState('1.75');
+    const [depotCommissionRate, setDepotCommissionRate] = useState('30');
     const [manualTtcPrice, setManualTtcPrice] = useState('0.00');
 
     const availableTvaRates = [20, 10, 5.5, 0];
@@ -247,7 +247,12 @@ const CostCalculator = () => {
     };
 
     const calculateForMode = (mode, commonData) => {
-        const { recipe, packaging, margin, tva, charges, fees, depotCommission, shipping } = commonData;
+        const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping } = commonData;
+        
+        const margin = parseFloat(marginStr) || 0;
+        const tva = parseFloat(tvaStr) || 0;
+        const fees = parseFloat(feesStr) || 0;
+        const depotCommission = parseFloat(depotCommissionStr) || 0;
 
         const productCost = recipe.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
         const packagingCost = packaging.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
@@ -261,11 +266,27 @@ const CostCalculator = () => {
         let transactionFees = 0;
         let businessCharges = 0;
         let commissionAmount = 0;
-        let finalPackageWeight = 0;
+        
+        // --- LOGIQUE DE CALCUL DU POIDS CORRIGÉE ---
+        const productWeight = recipe.reduce((acc, item) => {
+            const quantity = item.quantity || 0;
+            if (item.purchaseUnit === 'piece') {
+                return acc + (quantity * (item.weightPerPiece || 0));
+            }
+            const density = item.density || 1;
+            return acc + (quantity * density);
+        }, 0);
 
-        const productWeight = recipe.reduce((acc, item) => acc + ((item.purchaseUnit === 'piece' ? item.weightPerPiece : (item.density || 1)) * item.quantity), 0);
-        const packagingWeight = packaging.reduce((acc, item) => acc + ((item.purchaseUnit === 'piece' ? item.weightPerPiece : 0) * item.quantity), 0);
-        finalPackageWeight = productWeight + packagingWeight;
+        const packagingWeight = packaging.reduce((acc, item) => {
+            const quantity = item.quantity || 0;
+            if (item.purchaseUnit === 'piece') {
+                return acc + (quantity * (item.weightPerPiece || 0));
+            }
+            const density = item.density || 1;
+            return acc + (quantity * density);
+        }, 0);
+        
+        const finalPackageWeight = productWeight + packagingWeight;
         
         if (mode === 'internet') {
             let shippingCustomerPrice = 0;
@@ -307,20 +328,18 @@ const CostCalculator = () => {
         return calculateForMode(saleMode, commonData);
     }, [recipeItems, packagingItems, marginMultiplier, tvaRate, feesRate, depotCommissionRate, shippingRates, saleMode]);
 
-    useEffect(() => {
-        setManualTtcPrice(calculations.productPriceTTC.toFixed(2));
-    }, [calculations.productPriceTTC]);
-    
     const handleManualTtcPriceChange = (e) => {
         const newTtcPriceString = e.target.value;
         setManualTtcPrice(newTtcPriceString);
         
         const newTtcPrice = parseFloat(newTtcPriceString);
+        const productCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
 
-        if (!isNaN(newTtcPrice) && newTtcPrice >= 0 && calculations.productCost > 0) {
-            const newHtPrice = newTtcPrice / (1 + tvaRate / 100);
-            const newMultiplier = newHtPrice / calculations.productCost;
-            setMarginMultiplier(newMultiplier);
+        if (!isNaN(newTtcPrice) && newTtcPrice >= 0 && productCost > 0) {
+            const tva = parseFloat(tvaRate) || 0;
+            const newHtPrice = newTtcPrice / (1 + tva / 100);
+            const newMultiplier = newHtPrice / productCost;
+            setMarginMultiplier(newMultiplier.toFixed(4));
         }
     };
 
@@ -345,7 +364,10 @@ const CostCalculator = () => {
             productName, 
             items: recipeItems.map(({ id, createdAt, ...item }) => item),
             packagingItems: packagingItems.map(({ id, createdAt, ...item }) => item),
-            marginMultiplier, tvaRate, feesRate, depotCommissionRate,
+            marginMultiplier: parseFloat(marginMultiplier) || 0,
+            tvaRate: parseFloat(tvaRate) || 0,
+            feesRate: parseFloat(feesRate) || 0,
+            depotCommissionRate: parseFloat(depotCommissionRate) || 0,
             resultsByMode, 
             updatedAt: serverTimestamp()
         };
@@ -362,7 +384,7 @@ const CostCalculator = () => {
             setRecipeItems([]);
             setPackagingItems([]);
             setEditingCalcId(null);
-            setMarginMultiplier(2.5);
+            setMarginMultiplier('2.5');
         } catch (error) { console.error(error); showToast("Erreur lors de la sauvegarde.", "error"); }
     };
 
@@ -370,10 +392,11 @@ const CostCalculator = () => {
         setProductName(calc.productName);
         setRecipeItems(calc.items || []);
         setPackagingItems(calc.packagingItems || []);
-        setMarginMultiplier(calc.marginMultiplier || 2.5);
-        setTvaRate(calc.tvaRate !== undefined ? calc.tvaRate : 20);
-        setFeesRate(calc.feesRate || 1.75);
-        setDepotCommissionRate(calc.depotCommissionRate || 30);
+        setMarginMultiplier((calc.marginMultiplier || 2.5).toString());
+        setTvaRate((calc.tvaRate !== undefined ? calc.tvaRate : 20).toString());
+        setFeesRate((calc.feesRate || 1.75).toString());
+        setDepotCommissionRate((calc.depotCommissionRate || 30).toString());
+        setManualTtcPrice((calc.resultsByMode?.depot?.productPriceTTC || 0).toFixed(2));
         setEditingCalcId(calc.id);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -424,7 +447,7 @@ const CostCalculator = () => {
         </div>
     );
     
-    const depotNetRevenueHT = calculations.productPriceHT * (1 - (depotCommissionRate / (1 + tvaRate/100) ) / 100);
+    const depotNetRevenueHT = calculations.productPriceHT * (1 - ((parseFloat(depotCommissionRate) || 0) / (1 + (parseFloat(tvaRate) || 0)/100) ) / 100);
     const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
     const commissionTooltip = `${formatPrice(calculations.productPriceTTC)} (Prix Produit TTC) × ${depotCommissionRate}% = ${formatPrice(calculations.commissionAmount)}`;
     const urssafTooltip = saleMode === 'depot' 
@@ -442,10 +465,8 @@ const CostCalculator = () => {
             
             {renderTabs()}
 
-            {/* --- NOUVELLE STRUCTURE EN 3 COLONNES --- */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 
-                {/* --- COLONNE 1: MON PRODUIT ACTUEL --- */}
                 <div className="space-y-6 lg:col-span-1">
                     <div className="bg-gray-800 p-4 rounded-2xl">
                         <h3 className="text-base font-bold mb-3 flex items-center gap-2"><Wrench size={18}/> Produit Actuel</h3>
@@ -469,22 +490,20 @@ const CostCalculator = () => {
                     )}
                 </div>
 
-                {/* --- COLONNE 2: BIBLIOTHÈQUE --- */}
                 <div className="lg:col-span-1">
                     <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToCalculation} />
                 </div>
 
-                {/* --- COLONNE 3: CALCULATEUR & RÉSULTATS --- */}
                 <div className="lg:col-span-1">
                     <div className="bg-gray-800 p-4 rounded-2xl h-fit sticky top-24">
                         <h3 className="text-lg font-bold mb-4">Résultats & Paramètres</h3>
                         <div className="space-y-4">
                             <div className="space-y-3 p-3 bg-gray-900/50 rounded-lg text-sm">
-                                <div className="flex justify-between items-center"><label className="text-gray-300">Multiplicateur Marge</label><input type="number" step="0.01" value={marginMultiplier.toFixed(2)} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-20 bg-gray-700 p-1.5 rounded-lg text-right text-sm" /></div>
+                                <div className="flex justify-between items-center"><label className="text-gray-300">Multiplicateur Marge</label><input type="number" step="0.01" value={marginMultiplier} onChange={e => setMarginMultiplier(e.target.value)} className="w-20 bg-gray-700 p-1.5 rounded-lg text-right text-sm" /></div>
                                 <div className="flex justify-between items-center"><label className="text-gray-300">Prix Vente (TTC)</label><input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-20 bg-gray-700 p-1.5 rounded-lg text-right text-sm" /></div>
-                                <div className="flex justify-between items-center"> <label className="text-gray-300">TVA (%)</label> <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">{availableTvaRates.map(rate => ( <button key={rate} onClick={() => setTvaRate(rate)} className={`px-2 py-1 rounded-md text-xs font-semibold ${tvaRate === rate ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{rate}%</button> ))}</div> </div>
-                                {(saleMode === 'internet' || saleMode === 'domicile') && <div className="flex justify-between items-center"><label className="text-gray-300">Frais Transaction %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-20 bg-gray-700 p-1.5 rounded-lg text-right text-sm" /></div>}
-                                {saleMode === 'depot' && <div className="flex justify-between items-center"><label className="text-gray-300">Commission Dépôt %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(parseFloat(e.target.value))} className="w-20 bg-gray-700 p-1.5 rounded-lg text-right text-sm" /></div>}
+                                <div className="flex justify-between items-center"> <label className="text-gray-300">TVA (%)</label> <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">{availableTvaRates.map(rate => ( <button key={rate} onClick={() => setTvaRate(rate.toString())} className={`px-2 py-1 rounded-md text-xs font-semibold ${tvaRate === rate.toString() ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{rate}%</button> ))}</div> </div>
+                                {(saleMode === 'internet' || saleMode === 'domicile') && <div className="flex justify-between items-center"><label className="text-gray-300">Frais Transaction %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(e.target.value)} className="w-20 bg-gray-700 p-1.5 rounded-lg text-right text-sm" /></div>}
+                                {saleMode === 'depot' && <div className="flex justify-between items-center"><label className="text-gray-300">Commission Dépôt %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(e.target.value)} className="w-20 bg-gray-700 p-1.5 rounded-lg text-right text-sm" /></div>}
                             </div>
                             
                             <div className="space-y-2 pt-2">
@@ -514,7 +533,6 @@ const CostCalculator = () => {
                 </div>
             </div>
 
-            {/* --- BIBLIOTHÈQUE DE PRODUITS SAUVEGARDÉS (EN BAS) --- */}
             <div className="mt-8 bg-gray-800 p-6 rounded-2xl">
                  <h3 className="text-lg font-bold mb-4">Bibliothèque de Produits Calculés</h3>
                  <div className="space-y-3">
