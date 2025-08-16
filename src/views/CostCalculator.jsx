@@ -210,7 +210,6 @@ const CostCalculator = () => {
     const [productName, setProductName] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
-    const [isFinancialsVisible, setIsFinancialsVisible] = useState(false);
     const [isExpensesVisible, setIsExpensesVisible] = useState(false);
     
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
@@ -265,14 +264,22 @@ const CostCalculator = () => {
         let transactionFees = 0;
         let businessCharges = 0;
         let commissionAmount = 0;
+        let finalPackageWeight = 0;
 
         if (mode === 'internet') {
             const productWeight = recipe.reduce((acc, item) => acc + (item.weightPerPiece || (item.density || 1)) * item.quantity, 0);
             const packagingWeight = packaging.reduce((acc, item) => acc + (item.weightPerPiece || 0) * item.quantity, 0);
-            const finalPackageWeight = productWeight + packagingWeight;
-            const applicableRate = shipping.find(rate => finalPackageWeight <= rate.maxWeight);
-            shippingProviderCost = applicableRate ? applicableRate.cost : 0;
-            const shippingCustomerPrice = applicableRate ? applicableRate.price : 0;
+            finalPackageWeight = productWeight + packagingWeight;
+
+            let shippingCustomerPrice = 0;
+            if (finalPackageWeight > 0) {
+                const applicableRate = shipping.find(rate => finalPackageWeight <= rate.maxWeight);
+                if(applicableRate) {
+                    shippingProviderCost = applicableRate.cost;
+                    shippingCustomerPrice = applicableRate.price;
+                }
+            }
+
             finalClientPrice = productPriceTTC + shippingCustomerPrice;
             transactionFees = finalClientPrice * (fees / 100);
             businessCharges = productPriceHT * (charges / 100);
@@ -291,7 +298,7 @@ const CostCalculator = () => {
             finalProfit = productPriceTTC - totalExpenses;
         }
         
-        return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit, transactionFees, businessCharges, shippingProviderCost, commissionAmount };
+        return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit, transactionFees, businessCharges, shippingProviderCost, commissionAmount, finalPackageWeight };
     };
 
     const calculations = useMemo(() => {
@@ -424,13 +431,26 @@ const CostCalculator = () => {
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
-            <h2 className="text-3xl font-bold text-white mb-6">Calculateur de Coût de Production</h2>
+             <div className="flex justify-between items-center mb-6">
+                 <h2 className="text-3xl font-bold text-white">Calculateur de Coût de Production</h2>
+                 <button 
+                    onClick={handleSaveCost} 
+                    disabled={!productName || recipeItems.length === 0}
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <Save size={18}/> {editingCalcId ? 'Mettre à jour le produit' : 'Enregistrer le produit'}
+                </button>
+            </div>
+            
             {renderTabs()}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4">Informations Générales</h3>
-                        <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit" className="w-full bg-gray-700 p-2 rounded-lg"/>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit" className="w-full bg-gray-700 p-2 rounded-lg sm:col-span-2"/>
+                             <div className="bg-gray-900 p-2 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids colis : </span><span className="font-bold ml-2">{calculations.finalPackageWeight.toFixed(2)} g</span></div>
+                        </div>
                     </div>
                     
                     <ItemList title="Composition du Produit Fini" icon={X} items={recipeItems} setList={setRecipeItems} onQuantityChange={handleQuantityChange} />
@@ -438,39 +458,7 @@ const CostCalculator = () => {
                     <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToCalculation} />
                 </div>
                 <div className="space-y-8">
-                    <div className="bg-gray-800 p-6 rounded-2xl">
-                        <button onClick={() => setIsFinancialsVisible(!isFinancialsVisible)} className="w-full flex justify-between items-center text-left">
-                            <h3 className="text-xl font-bold flex items-center gap-2"><Percent size={22}/> Paramètres Financiers</h3>
-                            <ChevronDown className={`transform transition-transform ${isFinancialsVisible ? 'rotate-180' : ''}`} />
-                        </button>
-                        {isFinancialsVisible && 
-                             <div className="mt-4 border-t border-gray-700 pt-4 animate-fade-in space-y-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="text-sm text-gray-400">Multiplicateur de Marge</label>
-                                        <input type="number" step="0.01" value={marginMultiplier} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                                    </div>
-                                     <div>
-                                        <label className="text-sm text-gray-400">Prix de Vente (TTC)</label>
-                                        <input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-sm text-gray-400 block mb-2">TVA (%)</label>
-                                    <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
-                                        {availableTvaRates.map(rate => (
-                                            <button key={rate} onClick={() => setTvaRate(rate)} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>{rate}%</button>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div><label className="text-sm text-gray-400">Frais (Sumup, Stripe...) %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                    <div><label className="text-sm text-gray-400">Commission Dépôt-Vente %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                    {saleMode === 'internet' && (
+                     {saleMode === 'internet' && (
                         <div className="bg-gray-800 p-6 rounded-2xl">
                             <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
                                 <h3 className="text-xl font-bold flex items-center gap-2"><Ship size={22}/> Grille Tarifaire d'Expédition</h3>
@@ -480,40 +468,66 @@ const CostCalculator = () => {
                         </div>
                     )}
                     <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
-                        <h3 className="text-xl font-bold mb-4">Résultats du Calcul ({saleMode})</h3>
-                        <div className="space-y-2">
-                            <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
-                            <hr className="border-gray-700"/>
-                            <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
-                            <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
-                            <hr className="border-gray-700"/>
-                            
-                            <button onClick={() => setIsExpensesVisible(!isExpensesVisible)} className="w-full flex justify-between items-center text-left p-2 text-red-400">
-                                <span className="font-semibold">- Dépenses Totales</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="font-bold">{formatPrice(calculations.totalExpenses)}</span>
-                                    <ChevronDown className={`transform transition-transform ${isExpensesVisible ? 'rotate-180' : ''}`} size={18} />
+                        <h3 className="text-xl font-bold mb-4">Résultats & Paramètres ({saleMode})</h3>
+                        <div className="space-y-4">
+                            {/* --- Section Paramètres --- */}
+                            <div className="space-y-4 p-4 bg-gray-900/50 rounded-lg">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-sm text-gray-400">Multiplicateur de Marge</label>
+                                        <input type="number" step="0.01" value={marginMultiplier.toFixed(2)} onChange={e => setMarginMultiplier(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm text-gray-400">Prix de Vente (TTC)</label>
+                                        <input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                                    </div>
                                 </div>
-                            </button>
-                            
-                            {isExpensesVisible && (
-                                <div className="pl-6 border-l-2 border-gray-700 text-sm text-red-400/80 animate-fade-in">
-                                    <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
-                                    {saleMode === 'internet' && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
-                                    {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
-                                    {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={`Commission du processeur de paiement (${feesRate}%) sur le total facturé.`} />}
-                                    {saleMode === 'depot' && <ExpenseDetailRow label="Commission dépôt" value={calculations.commissionAmount} tooltip={`Commission du dépôt-vente (${depotCommissionRate}%) sur le prix de vente TTC.`} />}
-                                    <ExpenseDetailRow label="Cotisations URSSAF" value={calculations.businessCharges} tooltip={`Cotisations sociales (${chargesRate}%) calculées sur le chiffre d'affaires HT (après déduction de la commission pour les dépôts).`} />
+                                <div>
+                                    <label className="text-sm text-gray-400 block mb-2">TVA (%)</label>
+                                    <div className="flex gap-2 p-1 bg-gray-700 rounded-lg">
+                                        {availableTvaRates.map(rate => (
+                                            <button key={rate} onClick={() => setTvaRate(rate)} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>{rate}%</button>
+                                        ))}
+                                    </div>
                                 </div>
-                            )}
-
-                            <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
-                                <span className="text-green-300 font-semibold">Bénéfice Net Final</span>
-                                <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {(saleMode === 'internet' || saleMode === 'domicile') && <div><label className="text-sm text-gray-400">Frais Transaction %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>}
+                                    {saleMode === 'depot' && <div><label className="text-sm text-gray-400">Commission Dépôt %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(parseFloat(e.target.value))} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>}
+                                </div>
                             </div>
-                        </div>
-                        <div className="mt-8 flex justify-end">
-                             <button onClick={handleSaveCost} disabled={!productName || recipeItems.length === 0} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50"><Save size={18}/> {editingCalcId ? 'Mettre à jour' : 'Enregistrer le calcul'}</button>
+                            
+                            {/* --- Section Résultats --- */}
+                            <div className="space-y-2 pt-4">
+                                <div className="flex justify-between items-center p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
+                                <hr className="border-gray-700/50"/>
+                                <div className="flex justify-between items-center p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg text-white">{formatPrice(calculations.productPriceTTC)}</span></div>
+                                <div className="flex justify-between items-center p-2 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé au Client</span><span className="text-xl text-white">{formatPrice(calculations.finalClientPrice)}</span></div>
+                                <hr className="border-gray-700/50"/>
+                                
+                                <button onClick={() => setIsExpensesVisible(!isExpensesVisible)} className="w-full flex justify-between items-center text-left p-2 text-red-400">
+                                    <span className="font-semibold">- Dépenses Totales</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-bold">{formatPrice(calculations.totalExpenses)}</span>
+                                        <ChevronDown className={`transform transition-transform ${isExpensesVisible ? 'rotate-180' : ''}`} size={18} />
+                                    </div>
+                                </button>
+                                
+                                {isExpensesVisible && (
+                                    <div className="pl-6 border-l-2 border-gray-700 text-sm text-red-400/80 animate-fade-in">
+                                        <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
+                                        {saleMode === 'internet' && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
+                                        {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
+                                        {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={`Commission du processeur de paiement (${feesRate}%) sur le total facturé.`} />}
+                                        {saleMode === 'depot' && <ExpenseDetailRow label="Commission dépôt" value={calculations.commissionAmount} tooltip={`Commission du dépôt-vente (${depotCommissionRate}%) sur le prix de vente TTC.`} />}
+                                        <ExpenseDetailRow label="Cotisations URSSAF" value={calculations.businessCharges} tooltip={`Cotisations sociales (${chargesRate}%) calculées sur le chiffre d'affaires HT (après déduction de la commission pour les dépôts).`} />
+                                    </div>
+                                )}
+
+                                <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
+                                    <span className="text-green-300 font-semibold">Bénéfice Net Final</span>
+                                    <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
