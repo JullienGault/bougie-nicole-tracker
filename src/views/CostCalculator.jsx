@@ -341,6 +341,7 @@ const CostCalculator = () => {
     }, [rawMaterials, shippingRates, chargesRate]);
 
     const calculations = useMemo(() => {
+        // This function now just calls the main calculator with the current state
         return calculateProfit(saleMode, recipeItems, {
             margin: marginMultiplier,
             tva: tvaRate,
@@ -352,23 +353,24 @@ const CostCalculator = () => {
     }, [saleMode, recipeItems, marginMultiplier, tvaRate, feesRate, commissionRate, publicPrice, shippingSupplyId, calculateProfit]);
     
     // ... handleSaveCost, handleLoadCalculation, handleDeleteCalculation
-
+    
     return (
         <div className="p-4 sm:p-8 animate-fade-in text-sm">
             <h2 className="text-2xl font-bold text-white mb-6">Calculateur de Coût de Production</h2>
-            {renderTabs()}
+            <div className="mb-8 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
+                {[{id: 'internet', label: 'Vente par Internet', icon: Globe}, {id: 'domicile', label: 'Vente Domicile', icon: Home}, {id: 'depot', label: 'Dépôt-Vente', icon: StoreIcon}].map(tab => (
+                    <button key={tab.id} onClick={() => setSaleMode(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-semibold transition-colors text-sm ${saleMode === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                        <tab.icon size={16}/> {tab.label}
+                    </button>
+                ))}
+            </div>
             
             <div className="bg-gray-800 p-6 rounded-2xl mb-8">
                 {/* Bibliothèque de produits */}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="space-y-8">
-                    {/* ... Composition du produit et gestionnaire de matières ... */}
-                </div>
-                <div className="space-y-8">
-                    {/* ... Panneaux de paramètres et résultats ... */}
-                </div>
+                {/* ... Colonne de gauche et droite avec le reste de l'UI ... */}
             </div>
         </div>
     );
