@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
@@ -77,10 +77,11 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     const [editingMaterial, setEditingMaterial] = useState(null);
     const [density, setDensity] = useState('1'); 
     const [weightPerPiece, setWeightPerPiece] = useState(''); 
+    const [category, setCategory] = useState('component');
 
     const resetForm = () => {
         setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg'); 
-        setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null);
+        setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null); setCategory('component');
     };
 
     const handleSubmit = async (e) => {
@@ -99,7 +100,7 @@ const RawMaterialManager = ({ materials, onSelect }) => {
             case 'piece': default: standardizedPrice = price / qty; standardizedUnit = 'piece'; break;
         }
         const data = { 
-            name, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit,
+            name, category, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit,
             density: (purchaseUnit === 'L' || purchaseUnit === 'ml') ? parseFloat(density) : null,
             weightPerPiece: purchaseUnit === 'piece' ? parseFloat(weightPerPiece) : null,
         };
@@ -127,15 +128,26 @@ const RawMaterialManager = ({ materials, onSelect }) => {
         setPurchaseQty(material.purchaseQty); setPurchaseUnit(material.purchaseUnit);
         setDensity(material.density || '1');
         setWeightPerPiece(material.weightPerPiece || '');
+        setCategory(material.category || 'component');
     };
+
+    const productComponents = useMemo(() => materials.filter(m => !m.category || m.category === 'component'), [materials]);
+    const packagingComponents = useMemo(() => materials.filter(m => m.category === 'packaging'), [materials]);
 
     return (
         <div className="bg-gray-800 p-6 rounded-2xl">
-            <h3 className="text-xl font-bold mb-4">Matières Premières</h3>
-            <form onSubmit={handleSubmit} className="space-y-3 mb-6">
+            <h3 className="text-xl font-bold mb-4">Matières Premières & Emballages</h3>
+            <form onSubmit={handleSubmit} className="space-y-4 mb-6">
                 <div>
-                    <label className="text-sm text-gray-400">Nom de la matière</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Cire de Soja" className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                    <label className="text-sm text-gray-400">Catégorie</label>
+                    <div className="flex gap-2 p-1 bg-gray-900 rounded-lg mt-1">
+                        <button type="button" onClick={() => setCategory('component')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'component' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Composant Produit</button>
+                        <button type="button" onClick={() => setCategory('packaging')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'packaging' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Matériel d'Emballage</button>
+                    </div>
+                </div>
+                <div>
+                    <label className="text-sm text-gray-400">Nom</label>
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder={category === 'component' ? "Ex: Cire de Soja" : "Ex: Carton d'expédition 15x15"} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-10 gap-4 items-end">
                     <div className="sm:col-span-3"><label className="text-sm text-gray-400">Prix total (€)</label><input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="169.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
@@ -149,31 +161,39 @@ const RawMaterialManager = ({ materials, onSelect }) => {
                 </div>
                 {editingMaterial && <div className="flex justify-end"><button type="button" onClick={resetForm} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button></div>}
             </form>
-            <div className="max-h-64 overflow-y-auto custom-scrollbar">
-                <table className="w-full text-left">
-                     <thead><tr className="border-b border-gray-700 text-xs uppercase text-gray-400"><th className="p-2">Nom</th><th className="p-2">Prix d'achat</th><th className="p-2">Coût standardisé</th><th className="p-2 text-center">Actions</th></tr></thead>
-                    <tbody>
-                        {materials.map(mat => (
-                            <tr key={mat.id} className="border-b border-gray-700/50">
-                                <td className="p-2 font-semibold">{mat.name}</td>
-                                <td className="p-2">{formatPrice(mat.purchasePrice)} / {mat.purchaseQty} {mat.purchaseUnit}</td>
-                                <td className="p-2 font-mono text-xs text-indigo-300">
-                                    {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
-                                        ? `${formatPrice(mat.standardizedPrice * 100)} / 100${mat.standardizedUnit}`
-                                        : `${formatPrice(mat.standardizedPrice)} / ${mat.standardizedUnit}`
-                                    }
-                                    {mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}
-                                </td>
-                                <td className="p-2 flex justify-center gap-2">
-                                    <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18}/></button>
-                                    <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18}/></button>
-                                    <button onClick={() => handleDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-700 rounded" title="Supprimer"><Trash2 size={18}/></button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+
+            {[
+                { title: "Composants de Produit", items: productComponents },
+                { title: "Matériels d'Emballage", items: packagingComponents }
+            ].map(section => (
+                <div key={section.title} className="mt-6">
+                    <h4 className="text-lg font-semibold mb-2">{section.title}</h4>
+                    <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                        <table className="w-full text-left">
+                            <thead><tr className="border-b border-gray-700 text-xs uppercase text-gray-400"><th className="p-2">Nom</th><th className="p-2">Coût standardisé</th><th className="p-2 text-center">Actions</th></tr></thead>
+                            <tbody>
+                                {section.items.map(mat => (
+                                    <tr key={mat.id} className="border-b border-gray-700/50">
+                                        <td className="p-2 font-semibold">{mat.name}</td>
+                                        <td className="p-2 font-mono text-xs text-indigo-300">
+                                            {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
+                                                ? `${formatPrice(mat.standardizedPrice * 100)} / 100${mat.standardizedUnit}`
+                                                : `${formatPrice(mat.standardizedPrice)} / ${mat.standardizedUnit}`
+                                            }
+                                            {mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}
+                                        </td>
+                                        <td className="p-2 flex justify-center gap-2">
+                                            <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18}/></button>
+                                            <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18}/></button>
+                                            <button onClick={() => handleDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-700 rounded" title="Supprimer"><Trash2 size={18}/></button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 };
@@ -186,6 +206,7 @@ const CostCalculator = () => {
     const [shippingRates, setShippingRates] = useState([]);
     const [savedCalculations, setSavedCalculations] = useState([]);
     const [recipeItems, setRecipeItems] = useState([]);
+    const [packagingItems, setPackagingItems] = useState([]);
     const [productName, setProductName] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
@@ -210,24 +231,47 @@ const CostCalculator = () => {
         return () => { unsubMats(); unsubRates(); unsubCalcs(); };
     }, []);
 
-    const handleAddMaterialToRecipe = (material) => {
-        if (recipeItems.find(item => item.materialId === material.id)) {
-            showToast("Cette matière est déjà dans la recette.", "info"); return;
+    const handleAddMaterialToCalculation = (material) => {
+        const targetList = material.category === 'packaging' ? packagingItems : recipeItems;
+        const setTargetList = material.category === 'packaging' ? setPackagingItems : setRecipeItems;
+        
+        if (targetList.find(item => item.materialId === material.id)) {
+            showToast("Cet élément est déjà dans la liste.", "info"); return;
         }
-        setRecipeItems(prev => [...prev, { materialId: material.id, ...material, quantity: 1 }]);
+        setTargetList(prev => [...prev, { materialId: material.id, ...material, quantity: 1 }]);
     };
-    const handleRecipeQuantityChange = (materialId, newQuantity) => setRecipeItems(items => items.map(item => item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item));
-    const handleRemoveFromRecipe = (materialId) => setRecipeItems(items => items.filter(item => item.materialId !== materialId));
+
+    const handleQuantityChange = (list, setList, materialId, newQuantity) => {
+        setList(items => items.map(item => item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item));
+    };
+
+    const handleRemoveItem = (setList, materialId) => {
+        setList(items => items.filter(item => item.materialId !== materialId));
+    };
+
 
     const calculations = useMemo(() => {
         const productCost = recipeItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
-        const finalPackageWeight = recipeItems.reduce((acc, item) => {
+        const packagingCost = packagingItems.reduce((acc, item) => acc + (item.standardizedPrice * item.quantity), 0);
+
+        const productWeight = recipeItems.reduce((acc, item) => {
             let weight = 0;
             if(item.standardizedUnit === 'g') weight = item.quantity;
             else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
             else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
             return acc + weight;
         }, 0);
+        
+        const packagingWeight = packagingItems.reduce((acc, item) => {
+             let weight = 0;
+            if(item.standardizedUnit === 'g') weight = item.quantity;
+            else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
+            else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
+            return acc + weight;
+        }, 0);
+
+        const finalPackageWeight = productWeight + packagingWeight;
+
         const productPriceHT = productCost * marginMultiplier;
         const productPriceTTC = productPriceHT * (1 + tvaRate / 100);
         let shippingProviderCost = 0, shippingCustomerPrice = 0;
@@ -243,19 +287,18 @@ const CostCalculator = () => {
         const transactionTotal = finalClientPrice;
         const transactionFees = transactionTotal * (feesRate / 100);
         const businessCharges = productPriceHT * (chargesRate / 100);
-        const totalExpenses = productCost + shippingProviderCost + transactionFees;
+        const totalExpenses = productCost + packagingCost + shippingProviderCost + transactionFees;
         const profitOnProduct = productPriceHT - productCost - businessCharges;
         const profitOnShipping = shippingCustomerPrice - shippingProviderCost;
-        const finalProfit = profitOnProduct + profitOnShipping - transactionFees;
-        return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses };
-    }, [recipeItems, marginMultiplier, tvaRate, shippingRates, chargesRate, feesRate]);
+        const finalProfit = profitOnProduct + profitOnShipping - transactionFees - packagingCost;
+        
+        return { productCost, packagingCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses };
+    }, [recipeItems, packagingItems, marginMultiplier, tvaRate, shippingRates, chargesRate, feesRate]);
 
-    // Synchronise le champ TTC manuel lorsque les calculs changent (ex: ajout/modif d'un item)
     useEffect(() => {
         setManualTtcPrice(calculations.productPriceTTC.toFixed(2));
     }, [calculations.productPriceTTC]);
     
-    // Gère le recalcul de la marge lorsque le prix TTC est modifié manuellement
     const handleManualTtcPriceChange = (e) => {
         const newTtcPriceString = e.target.value;
         setManualTtcPrice(newTtcPriceString);
@@ -271,11 +314,12 @@ const CostCalculator = () => {
 
     const handleSaveCost = async () => {
         if (!productName || recipeItems.length === 0) {
-            showToast("Veuillez nommer le produit et ajouter au moins une matière première.", "error"); return;
+            showToast("Veuillez nommer le produit et ajouter au moins un composant.", "error"); return;
         }
         const dataToSave = {
             productName, ...calculations, marginMultiplier, tvaRate, chargesRate, feesRate, saleMode,
             items: recipeItems.map(({ id, createdAt, ...item }) => item),
+            packagingItems: packagingItems.map(({ id, createdAt, ...item }) => item),
             updatedAt: serverTimestamp()
         };
         try {
@@ -286,13 +330,14 @@ const CostCalculator = () => {
                 await addDoc(collection(db, 'productsCosts'), { ...dataToSave, createdAt: serverTimestamp() });
                 showToast(`"${productName}" enregistré avec succès !`, "success");
             }
-            setProductName(''); setRecipeItems([]); setEditingCalcId(null);
+            setProductName(''); setRecipeItems([]); setPackagingItems([]); setEditingCalcId(null);
         } catch (error) { console.error(error); showToast("Erreur lors de la sauvegarde.", "error"); }
     };
 
     const handleLoadCalculation = (calc) => {
         setProductName(calc.productName);
         setRecipeItems(calc.items || []);
+        setPackagingItems(calc.packagingItems || []);
         setMarginMultiplier(calc.marginMultiplier || 2.5);
         setTvaRate(calc.tvaRate !== undefined ? calc.tvaRate : 20);
         setFeesRate(calc.feesRate || 1.75);
@@ -318,6 +363,31 @@ const CostCalculator = () => {
         </div>
     );
 
+    const ItemList = ({ title, icon: Icon, items, setList, onQuantityChange }) => (
+         <div className="bg-gray-800 p-6 rounded-2xl">
+            <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Icon size={22} /> {title}</h3>
+             {items.length > 0 && (
+                <div className="grid grid-cols-[1fr_100px_40px_auto] gap-3 items-center px-2 text-xs text-gray-400 uppercase font-semibold mb-2">
+                    <span>Élément</span>
+                    <span className="text-center">Quantité</span>
+                    <span>Unité</span>
+                    <span></span>
+                </div>
+            )}
+            <div className="space-y-2">
+                {items.map(item => (
+                    <div key={item.materialId} className="grid grid-cols-[1fr_100px_40px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded">
+                        <div className="font-semibold truncate pr-2">{item.name}</div>
+                        <input type="number" step="0.1" value={item.quantity} onChange={e => onQuantityChange(list, setList, item.materialId, e.target.value)} className="w-full bg-gray-700 p-1 rounded text-center"/>
+                        <span className="text-xs text-gray-400">{item.standardizedUnit}</span>
+                        <button onClick={() => handleRemoveItem(setList, item.materialId)} className="text-red-500 p-1"><X size={16}/></button>
+                    </div>
+                ))}
+                {items.length === 0 && <p className="text-center text-gray-500 py-4">Ajoutez un élément depuis la bibliothèque de matières.</p>}
+            </div>
+        </div>
+    );
+
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
             <h2 className="text-3xl font-bold text-white mb-6">Calculateur de Coût de Production</h2>
@@ -325,32 +395,18 @@ const CostCalculator = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-8">
                     <div className="bg-gray-800 p-6 rounded-2xl">
-                        <h3 className="text-xl font-bold mb-4">Composition du Produit Fini</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                        <h3 className="text-xl font-bold mb-4">Informations Générales</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit" className="w-full bg-gray-700 p-2 rounded-lg sm:col-span-2"/>
                             <div className="bg-gray-900 p-2 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids colis : </span><span className="font-bold ml-2">{calculations.finalPackageWeight.toFixed(2)} g</span></div>
                         </div>
-                        <div className="space-y-2">
-                            {recipeItems.length > 0 && (
-                                <div className="grid grid-cols-[1fr_100px_40px_auto] gap-3 items-center px-2 text-xs text-gray-400 uppercase font-semibold">
-                                    <span>Matière</span>
-                                    <span className="text-center">Quantité</span>
-                                    <span>Unité</span>
-                                    <span></span>
-                                </div>
-                            )}
-                            {recipeItems.map(item => (
-                                <div key={item.materialId} className="grid grid-cols-[1fr_100px_40px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded">
-                                    <div className="font-semibold truncate pr-2">{item.name}</div>
-                                    <input type="number" step="0.1" value={item.quantity} onChange={e => handleRecipeQuantityChange(item.materialId, e.target.value)} className="w-full bg-gray-700 p-1 rounded text-center"/>
-                                    <span className="text-xs text-gray-400">{item.standardizedUnit}</span>
-                                    <button onClick={() => handleRemoveFromRecipe(item.materialId)} className="text-red-500 p-1"><X size={16}/></button>
-                                </div>
-                            ))}
-                             {recipeItems.length === 0 && <p className="text-center text-gray-500 py-4">Utilisez le bouton <PlusCircle size={16} className="inline-block text-green-400"/> pour ajouter une matière.</p>}
-                        </div>
                     </div>
-                    <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToRecipe} />
+                    
+                    <ItemList title="Composition du Produit Fini" icon={X} items={recipeItems} setList={setRecipeItems} onQuantityChange={handleQuantityChange} />
+
+                    {saleMode === 'internet' && <ItemList title="Emballage pour l'expédition" icon={Box} items={packagingItems} setList={setPackagingItems} onQuantityChange={handleQuantityChange} />}
+
+                    <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToCalculation} />
                 </div>
                 <div className="space-y-8">
                     {saleMode === 'internet' && (
@@ -419,6 +475,7 @@ const CostCalculator = () => {
                             {isExpensesVisible && (
                                 <div className="pl-6 border-l-2 border-gray-700 text-sm text-red-400/80 animate-fade-in">
                                     <div className="flex justify-between items-center p-1"><span>Coût matières</span><span>{formatPrice(calculations.productCost)}</span></div>
+                                    <div className="flex justify-between items-center p-1"><span>Coût emballage</span><span>{formatPrice(calculations.packagingCost)}</span></div>
                                     <div className="flex justify-between items-center p-1"><span>Coût expédition</span><span>{formatPrice(calculations.shippingProviderCost)}</span></div>
                                     <div className="flex justify-between items-center p-1"><span>Frais Sumup</span><span>{formatPrice(calculations.transactionFees)}</span></div>
                                     <div className="flex justify-between items-center p-1"><span>Cotisations</span><span>{formatPrice(calculations.businessCharges)}</span></div>
