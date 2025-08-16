@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Library } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Calculator, Ship, Banknote, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Library, Box } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
@@ -203,16 +203,17 @@ const CostCalculator = () => {
     const [savedCalculations, setSavedCalculations] = useState([]);
     const [recipeItems, setRecipeItems] = useState([]);
     const [productName, setProductName] = useState('');
-    const [shippingSupplyId, setShippingSupplyId] = useState('');
+    const [shippingSupply, setShippingSupply] = useState(null);
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isLibraryVisible, setIsLibraryVisible] = useState(false);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     const [isFinancialsVisible, setIsFinancialsVisible] = useState(false);
     const [isExpensesVisible, setIsExpensesVisible] = useState(false);
     
+    // --- États pour le mode Dépôt-Vente ---
     const [publicPrice, setPublicPrice] = useState('');
     const [commissionRate, setCommissionRate] = useState(30);
-    
+
     const [marginMultiplier, setMarginMultiplier] = useState(2.5);
     const [tvaRate, setTvaRate] = useState(20);
     const chargesRate = 13.30;
@@ -292,52 +293,49 @@ const CostCalculator = () => {
     const calculations = useMemo(() => {
         let productPriceTTC = parseFloat(manualPriceTTC) || 0;
         let productPriceHT = productPriceTTC / (1 + tvaRate / 100);
-        let finalProfit, finalClientPrice, shippingCustomerPrice = 0, shippingProviderCost = 0, transactionFees = 0, businessCharges = 0, totalExpenses = 0, shippingSupplyCost = 0;
-
-        const finalPackageWeight = recipeItems.reduce((acc, item) => {
-            let weight = 0;
-            if(item.standardizedUnit === 'g') weight = item.quantity;
-            else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
-            else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
-            return acc + weight;
-        }, 0);
+        let finalProfit;
 
         if (saleMode === 'depot') {
-            productPriceTTC = parseFloat(publicPrice) || 0;
-            productPriceHT = productPriceTTC / (1 + tvaRate / 100);
-            const commission = productPriceTTC * (commissionRate / 100);
-            businessCharges = productPriceHT * (chargesRate / 100);
-            totalExpenses = productCost + commission;
-            finalProfit = productPriceHT - productCost - businessCharges - commission;
-            finalClientPrice = productPriceTTC;
+            const price = parseFloat(publicPrice) || 0;
+            const commission = price * (commissionRate / 100);
+            finalProfit = price - commission - productCost;
+        } else {
+            const finalPackageWeight = recipeItems.reduce((acc, item) => {
+                let weight = 0;
+                if(item.standardizedUnit === 'g') weight = item.quantity;
+                else if(item.standardizedUnit === 'ml') weight = item.quantity * (item.density || 1);
+                else if(item.standardizedUnit === 'piece') weight = item.quantity * (item.weightPerPiece || 0);
+                return acc + weight;
+            }, 0);
 
-        } else { // internet & domicile
-            if (saleMode === 'internet' && finalPackageWeight > 0 && shippingRates.length > 0) {
-                const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
-                const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
-                if (applicableRate) {
-                    shippingProviderCost = applicableRate.cost;
-                    shippingCustomerPrice = applicableRate.price;
+            let shippingProviderCost = 0, shippingCustomerPrice = 0, shippingSupplyCost = 0;
+            if (saleMode === 'internet') {
+                if (finalPackageWeight > 0 && shippingRates.length > 0) {
+                    const sortedRates = [...shippingRates].sort((a, b) => a.maxWeight - b.maxWeight);
+                    const applicableRate = sortedRates.find(rate => finalPackageWeight <= rate.maxWeight);
+                    if (applicableRate) {
+                        shippingProviderCost = applicableRate.cost;
+                        shippingCustomerPrice = applicableRate.price;
+                    }
+                }
+                if (shippingSupply && shippingSupply.capacity > 0) {
+                    shippingSupplyCost = shippingSupply.standardizedPrice / shippingSupply.capacity;
                 }
             }
-
-            const selectedSupply = rawMaterials.find(m => m.id === shippingSupplyId);
-            if (saleMode === 'internet' && selectedSupply && selectedSupply.capacity > 0) {
-                shippingSupplyCost = selectedSupply.standardizedPrice / selectedSupply.capacity;
-            }
             
-            finalClientPrice = productPriceTTC + shippingCustomerPrice;
+            const finalClientPrice = productPriceTTC + shippingCustomerPrice;
             const transactionTotal = finalClientPrice;
-            transactionFees = transactionTotal * (feesRate / 100);
-            businessCharges = productPriceHT * (chargesRate / 100);
-            totalExpenses = productCost + shippingProviderCost + transactionFees + shippingSupplyCost;
+            const transactionFees = transactionTotal * (feesRate / 100);
+            const businessCharges = productPriceHT * (chargesRate / 100);
             const profitOnProduct = productPriceHT - productCost - businessCharges - shippingSupplyCost;
             const profitOnShipping = shippingCustomerPrice - shippingProviderCost;
             finalProfit = profitOnProduct + profitOnShipping - transactionFees;
+
+            return { ...{ productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses: productCost + shippingProviderCost + transactionFees + shippingSupplyCost }, shippingSupplyCost };
         }
         
-        return { productCost, finalPackageWeight, productPriceHT, productPriceTTC, shippingProviderCost, shippingCustomerPrice, finalClientPrice, transactionFees, businessCharges, finalProfit, totalExpenses, shippingSupplyCost };
-    }, [recipeItems, manualPriceTTC, tvaRate, shippingRates, chargesRate, feesRate, saleMode, productCost, publicPrice, commissionRate, shippingSupplyId, rawMaterials]);
+        return { productCost, finalProfit, publicPrice, commissionRate };
+    }, [recipeItems, manualPriceTTC, tvaRate, shippingRates, chargesRate, feesRate, saleMode, productCost, publicPrice, commissionRate, shippingSupply]);
 
     // ... handleSaveCost, handleLoadCalculation, handleDeleteCalculation
     
@@ -364,9 +362,9 @@ const CostCalculator = () => {
                 <div className="space-y-8">
                     {/* Composition du produit */}
                     {saleMode === 'internet' && 
-                        <div className="bg-gray-800 p-4 rounded-2xl">
-                             <label className="text-xs text-gray-400 flex items-center gap-2 mb-2"><Box size={16}/> Emballage d'Expédition</label>
-                            <select value={shippingSupplyId} onChange={e => setShippingSupplyId(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg text-sm">
+                        <div>
+                            <label className="text-xs text-gray-400">Emballage d'Expédition</label>
+                            <select onChange={e => setShippingSupply(shippingSupplies.find(s => s.id === e.target.value) || null)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 text-sm">
                                 <option value="">Aucun</option>
                                 {shippingSupplies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                             </select>
@@ -376,34 +374,6 @@ const CostCalculator = () => {
                 </div>
                 <div className="space-y-8">
                     {/* Colonne de Droite */}
-                    {saleMode === 'internet' && (
-                        <div className="bg-gray-800 p-6 rounded-2xl">
-                            {/* Grille tarifaire */}
-                        </div>
-                    )}
-                    {saleMode === 'depot' ? (
-                        <div className="bg-gray-800 p-6 rounded-2xl">
-                            <h3 className="text-lg font-bold flex items-center gap-2 mb-4"><Percent size={20}/> Paramètres Dépôt-Vente</h3>
-                            <div><label className="text-xs text-gray-400">Prix de Vente Public (TTC)</label><input type="number" step="0.5" value={publicPrice} onChange={e => setPublicPrice(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 text-sm" /></div>
-                            <div>
-                                <label className="text-xs text-gray-400 block mb-2 mt-4">Commission du Dépôt (%)</label>
-                                <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
-                                    {availableCommissionRates.map(rate => (
-                                        <button key={rate} onClick={() => setCommissionRate(rate)} className={`flex-1 py-1 rounded-md text-xs font-semibold ${commissionRate === rate ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>{rate}%</button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-gray-800 p-6 rounded-2xl">
-                            {/* Paramètres financiers */}
-                        </div>
-                    )}
-                    
-                    <div className="bg-gray-800 p-6 rounded-2xl h-fit sticky top-24">
-                        <h3 className="text-lg font-bold mb-4">Résultats du Calcul</h3>
-                        {/* Affichage des résultats */}
-                    </div>
                 </div>
             </div>
         </div>
