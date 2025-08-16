@@ -267,7 +267,6 @@ const CostCalculator = () => {
         let businessCharges = 0;
         let commissionAmount = 0;
         
-        // --- LOGIQUE DE CALCUL DU POIDS CORRIGÉE ---
         const productWeight = recipe.reduce((acc, item) => {
             const quantity = item.quantity || 0;
             if (item.purchaseUnit === 'piece') {
@@ -408,6 +407,18 @@ const CostCalculator = () => {
         }
     };
     
+    // --- NOUVELLE LOGIQUE DE FILTRAGE ---
+    const usedMaterialIds = useMemo(() => {
+        const recipeIds = recipeItems.map(item => item.materialId);
+        const packagingIds = packagingItems.map(item => item.materialId);
+        return new Set([...recipeIds, ...packagingIds]);
+    }, [recipeItems, packagingItems]);
+
+    const availableMaterials = useMemo(() => {
+        return rawMaterials.filter(material => !usedMaterialIds.has(material.id));
+    }, [rawMaterials, usedMaterialIds]);
+
+
     const renderTabs = () => (
         <div className="mb-6 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
             {[{id: 'internet', label: 'Vente Internet', icon: Globe}, {id: 'domicile', label: 'Vente Domicile', icon: Home}, {id: 'depot', label: 'Dépôt-Vente', icon: StoreIcon}].map(tab => (
@@ -465,22 +476,23 @@ const CostCalculator = () => {
             
             {renderTabs()}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
                 
-                <div className="space-y-6 lg:col-span-1">
+                <div className="lg:col-span-3 space-y-6">
                     <div className="bg-gray-800 p-4 rounded-2xl">
                         <h3 className="text-base font-bold mb-3 flex items-center gap-2"><Wrench size={18}/> Produit Actuel</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
                             <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit..." className="w-full bg-gray-700 p-2 rounded-lg sm:col-span-2 text-sm"/>
                              <div className="bg-gray-900 p-2 rounded-lg text-center flex items-center justify-center"><span className="text-xs text-gray-400">Poids: </span><span className="font-bold ml-2 text-sm">{(calculations.finalPackageWeight || 0).toFixed(0)} g</span></div>
                         </div>
+                        <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} setList={setRecipeItems} onQuantityChange={handleQuantityChange} />
                     </div>
-                    <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} setList={setRecipeItems} onQuantityChange={handleQuantityChange} />
+                    
                     {saleMode === 'internet' && (
-                        <div className="space-y-4">
+                        <div className="bg-gray-800 p-4 rounded-2xl space-y-4">
                            <ItemList title="Éléments d'emballage" icon={Box} items={packagingItems} setList={setPackagingItems} onQuantityChange={handleQuantityChange} />
-                            <div className="bg-gray-800 p-4 rounded-2xl">
-                               <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left">
+                            <div>
+                               <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left p-2">
                                    <h4 className="text-base font-semibold flex items-center gap-2"><Ship size={18}/> Grille Tarifaire d'Expédition</h4>
                                    <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
                                </button>
@@ -488,13 +500,12 @@ const CostCalculator = () => {
                            </div>
                         </div>
                     )}
+
+                    {/* --- ON PASSE LA LISTE FILTRÉE ICI --- */}
+                    <RawMaterialManager materials={availableMaterials} onSelect={handleAddMaterialToCalculation} />
                 </div>
 
-                <div className="lg:col-span-1">
-                    <RawMaterialManager materials={rawMaterials} onSelect={handleAddMaterialToCalculation} />
-                </div>
-
-                <div className="lg:col-span-1">
+                <div className="lg:col-span-2 space-y-6">
                     <div className="bg-gray-800 p-4 rounded-2xl h-fit sticky top-24">
                         <h3 className="text-lg font-bold mb-4">Résultats & Paramètres</h3>
                         <div className="space-y-4">
@@ -530,28 +541,27 @@ const CostCalculator = () => {
                             </div>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <div className="mt-8 bg-gray-800 p-6 rounded-2xl">
-                 <h3 className="text-lg font-bold mb-4">Bibliothèque de Produits Calculés</h3>
-                 <div className="space-y-3">
-                    {savedCalculations.map(calc => (
-                        <div key={calc.id} className="bg-gray-900/50 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
-                            <p className="font-bold text-base w-full sm:w-1/4">{calc.productName}</p>
-                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center w-full text-sm">
-                                <div><span className="text-xs text-cyan-400">Bénéf. Internet</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.internet?.finalProfit || 0)}</p></div>
-                                <div><span className="text-xs text-purple-400">Bénéf. Domicile</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
-                                <div><span className="text-xs text-pink-400">Bénéf. Dépôt</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
-                            </div>
-                            <div className="flex gap-2">
-                                <button onClick={() => handleLoadCalculation(calc)} className="p-2 text-blue-400 hover:bg-gray-700 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14}/> Recharger</button>
-                                <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 text-red-500 hover:bg-gray-700 rounded-lg"><Trash2 size={16}/></button>
-                            </div>
+                    <div className="bg-gray-800 p-6 rounded-2xl">
+                        <h3 className="text-lg font-bold mb-4">Bibliothèque de Produits Calculés</h3>
+                        <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                            {savedCalculations.map(calc => (
+                                <div key={calc.id} className="bg-gray-900/50 p-3 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
+                                    <p className="font-bold text-base w-full sm:w-1/4">{calc.productName}</p>
+                                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center w-full text-sm">
+                                        <div><span className="text-xs text-cyan-400">Bénéf. Internet</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.internet?.finalProfit || 0)}</p></div>
+                                        <div><span className="text-xs text-purple-400">Bénéf. Domicile</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
+                                        <div><span className="text-xs text-pink-400">Bénéf. Dépôt</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleLoadCalculation(calc)} className="p-2 text-blue-400 hover:bg-gray-700 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14}/> Recharger</button>
+                                        <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 text-red-500 hover:bg-gray-700 rounded-lg"><Trash2 size={16}/></button>
+                                    </div>
+                                </div>
+                            ))}
+                            {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4 text-sm">Aucun calcul sauvegardé pour le moment.</p>}
                         </div>
-                    ))}
-                    {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4 text-sm">Aucun calcul sauvegardé pour le moment.</p>}
-                 </div>
+                    </div>
+                </div>
             </div>
         </div>
     );
