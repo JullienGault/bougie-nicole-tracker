@@ -26,6 +26,7 @@ const CostCalculator = () => {
     const [productName, setProductName] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
+    const [isMaterialsVisible, setIsMaterialsVisible] = useState(false); // <-- NOUVEL ÉTAT
     const [shippingService, setShippingService] = useState('Locker');
 
     // --- PARAMÈTRES DE CALCUL ---
@@ -188,7 +189,12 @@ const CostCalculator = () => {
                         </div>
                     )}
 
-                    <RawMaterialManager materials={availableMaterials} onSelect={handleAddMaterialToCalculation} />
+                    <RawMaterialManager 
+                        materials={availableMaterials} 
+                        onSelect={handleAddMaterialToCalculation}
+                        isVisible={isMaterialsVisible}      // <-- PROP AJOUTÉE
+                        setIsVisible={setIsMaterialsVisible}  // <-- PROP AJOUTÉE
+                    />
                 </div>
 
                 <CalculationPanel 
