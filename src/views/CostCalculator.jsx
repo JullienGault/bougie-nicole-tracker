@@ -60,7 +60,6 @@ const CostCalculator = () => {
     });
 
     const handleAddMaterialToCalculation = useCallback((material) => {
-        // CORRECTION: Logique plus robuste pour gérer l'ajout
         if (material.category === 'component') {
             if (recipeItems.find(item => item.materialId === material.id)) {
                 showToast("Ce composant est déjà dans la recette.", "info");
