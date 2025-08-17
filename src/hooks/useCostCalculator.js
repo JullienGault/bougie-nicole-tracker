@@ -47,7 +47,7 @@ const calculateForMode = (mode, commonData) => {
         if (finalPackageWeight > 0) {
             const applicableRate = shipping
                 .filter(rate => rate.service === service)
-                .sort((a, b) => a.maxWeight - b.maxWeight) // Assurer le tri
+                .sort((a, b) => a.maxWeight - b.maxWeight)
                 .find(rate => finalPackageWeight <= rate.maxWeight);
 
             if(applicableRate) {
@@ -58,20 +58,30 @@ const calculateForMode = (mode, commonData) => {
 
         finalClientPrice = productPriceTTC + shippingCustomerPrice;
         transactionFees = finalClientPrice * (fees / 100);
-        businessCharges = productPriceHT * (charges / 100);
+        
+        // CORRECTION URSSAF: Basé sur le CA total facturé (produit + port) ramené en HT
+        const turnoverHT = finalClientPrice / (1 + tva / 100);
+        businessCharges = turnoverHT * (charges / 100);
+        
         totalExpenses = productCost + packagingCost + shippingProviderCost + transactionFees + businessCharges;
         finalProfit = finalClientPrice - totalExpenses;
+
     } else if (mode === 'domicile') {
         transactionFees = finalClientPrice * (fees / 100);
-        businessCharges = productPriceHT * (charges / 100);
-        // Le coût de l'emballage est exclu pour la vente à domicile
+
+        // CORRECTION URSSAF: Basé sur le CA total facturé ramené en HT (ici, le prix du produit)
+        const turnoverHT = finalClientPrice / (1 + tva / 100); // Équivaut à productPriceHT
+        businessCharges = turnoverHT * (charges / 100);
+        
         totalExpenses = productCost + transactionFees + businessCharges;
         finalProfit = finalClientPrice - totalExpenses;
+
     } else if (mode === 'depot') {
         commissionAmount = productPriceTTC * (depotCommission / 100);
-        const netRevenueHT = productPriceHT * (1 - (depotCommission / (1 + tva/100) ) / 100);
-        businessCharges = netRevenueHT * (charges / 100);
-        // CORRECTION : Le coût de l'emballage d'expédition est maintenant aussi exclu pour le dépôt-vente
+        
+        // CORRECTION URSSAF: Basé sur le CA avant commission, donc le prix de vente HT du produit
+        businessCharges = productPriceHT * (charges / 100);
+
         totalExpenses = productCost + commissionAmount + businessCharges;
         finalProfit = productPriceTTC - totalExpenses;
     }
@@ -118,7 +128,6 @@ export const useCostCalculator = ({
         chargesRate
     ]);
 
-    // Cette fonction peut être utilisée pour recalculer pour tous les modes (utile pour la sauvegarde)
     const calculateAllModes = () => {
         const services = ['Locker', 'Point Relais', 'Domicile'];
         const resultsByMode = {};
