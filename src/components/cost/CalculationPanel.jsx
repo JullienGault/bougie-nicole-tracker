@@ -1,5 +1,5 @@
 // src/components/cost/CalculationPanel.jsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { db, deleteDoc, doc } from '../../services/firebase';
 import { Info, RefreshCw, Trash2, ChevronDown, BookOpen } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
@@ -47,7 +47,6 @@ const CalculationPanel = ({
     const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
     const commissionTooltip = `${formatPrice(calculations.productPriceTTC)} (Prix Produit TTC) × ${depotCommissionRate}% = ${formatPrice(calculations.commissionAmount)}`;
     
-    // CORRECTION : Logique de l'infobulle URSSAF mise à jour
     const urssafTooltip = useMemo(() => {
         const tva = parseFloat(tvaRate) || 0;
         const turnoverHT = calculations.finalClientPrice / (1 + tva / 100);
@@ -83,6 +82,12 @@ const CalculationPanel = ({
     };
 
     const multiplierStyle = getMultiplierStyle(marginMultiplier);
+    
+    // NOUVEAU : Calcul du coût d'expédition facturé au client
+    const shippingCustomerPrice = useMemo(() => {
+        if (saleMode !== 'internet') return 0;
+        return calculations.finalClientPrice - calculations.productPriceTTC;
+    }, [saleMode, calculations]);
 
     return (
         <div className="lg:w-2/5 flex flex-col gap-8">
@@ -161,6 +166,12 @@ const CalculationPanel = ({
                         <div className="flex justify-between p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
                         <hr className="border-gray-700/50" />
                         <div className="flex justify-between p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg">{formatPrice(calculations.productPriceTTC)}</span></div>
+                        
+                        {/* NOUVELLE LIGNE AJOUTÉE ICI */}
+                        {saleMode === 'internet' && (
+                            <div className="flex justify-between p-2"><span className="text-gray-300">Expédition (facturée)</span><span className="font-bold text-lg">{formatPrice(shippingCustomerPrice)}</span></div>
+                        )}
+
                         <div className="flex justify-between p-3 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé Client</span><span className="text-xl">{formatPrice(calculations.finalClientPrice)}</span></div>
                         <hr className="border-gray-700/50" />
                         
