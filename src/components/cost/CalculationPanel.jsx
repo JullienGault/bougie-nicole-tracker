@@ -1,0 +1,130 @@
+// src/components/cost/CalculationPanel.jsx
+import React from 'react';
+import { db, deleteDoc, doc } from '../../services/firebase';
+import { Info, RefreshCw, Trash2 } from 'lucide-react';
+import { formatPrice } from '../../utils/formatters';
+
+// Sous-composant pour une ligne de dépense, utilisé uniquement ici
+const ExpenseDetailRow = ({ label, value, tooltip }) => (
+    <div className="flex justify-between items-center py-1">
+        <span className="flex items-center gap-1.5 text-gray-300">
+            {label}
+            {tooltip && <Info size={16} className="text-gray-500 cursor-help" title={tooltip} />}
+        </span>
+        <span>{formatPrice(value)}</span>
+    </div>
+);
+
+const CalculationPanel = ({
+    calculations,
+    savedCalculations,
+    saleMode,
+    shippingService,
+    setShippingService,
+    marginMultiplier,
+    setMarginMultiplier,
+    manualTtcPrice,
+    handleManualTtcPriceChange,
+    tvaRate,
+    setTvaRate,
+    availableTvaRates,
+    feesRate,
+    setFeesRate,
+    depotCommissionRate,
+    setDepotCommissionRate,
+    chargesRate,
+    onLoadCalculation,
+    showToast
+}) => {
+
+    const depotNetRevenueHT = calculations.productPriceHT * (1 - ((parseFloat(depotCommissionRate) || 0) / (1 + (parseFloat(tvaRate) || 0) / 100)) / 100);
+    const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
+    const commissionTooltip = `${formatPrice(calculations.productPriceTTC)} (Prix Produit TTC) × ${depotCommissionRate}% = ${formatPrice(calculations.commissionAmount)}`;
+    const urssafTooltip = saleMode === 'depot'
+        ? `${formatPrice(depotNetRevenueHT)} (Revenu Net HT) × ${chargesRate}% = ${formatPrice(calculations.businessCharges)}`
+        : `${formatPrice(calculations.productPriceHT)} (Prix Produit HT) × ${chargesRate}% = ${formatPrice(calculations.businessCharges)}`;
+
+    const handleDeleteCalculation = async (calcId) => {
+        if (window.confirm("Supprimer ce calcul sauvegardé ?")) {
+            await deleteDoc(doc(db, 'productsCosts', calcId));
+            showToast("Calcul supprimé.", "success");
+        }
+    };
+
+    return (
+        <div className="lg:w-2/5 flex flex-col gap-8">
+            <div className="bg-gray-800 p-6 rounded-2xl">
+                <h3 className="text-xl font-bold mb-4">Résultats & Paramètres</h3>
+                <div className="space-y-6">
+                    {/* PANNEAU DES PARAMÈTRES */}
+                    <div className="space-y-4 p-4 bg-gray-900/50 rounded-lg">
+                        <div className="flex justify-between items-center"><label className="text-gray-300">Multiplicateur Marge</label><input type="number" step="0.01" value={marginMultiplier} onChange={e => setMarginMultiplier(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>
+                        <div className="flex justify-between items-center"><label className="text-gray-300">Prix Vente (TTC)</label><input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>
+                        <div className="flex justify-between items-center"> <label className="text-gray-300">TVA (%)</label> <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">{availableTvaRates.map(rate => (<button key={rate} onClick={() => setTvaRate(rate.toString())} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate.toString() ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{rate}%</button>))}</div> </div>
+                        {(saleMode === 'internet' || saleMode === 'domicile') && <div className="flex justify-between items-center"><label className="text-gray-300">Frais Transaction %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
+                        {saleMode === 'depot' && <div className="flex justify-between items-center"><label className="text-gray-300">Commission Dépôt %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
+                    </div>
+
+                    {saleMode === 'internet' && (
+                        <div className="p-4 bg-gray-900/50 rounded-lg">
+                            <label className="text-gray-300 mb-2 block">Service d'expédition</label>
+                            <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">
+                                {['Locker', 'Point Relais', 'Domicile'].map(service => (
+                                    <button key={service} onClick={() => setShippingService(service)} className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold ${shippingService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{service}</button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* PANNEAU DES RÉSULTATS */}
+                    <div className="space-y-2 pt-2">
+                        <div className="flex justify-between p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
+                        <hr className="border-gray-700/50" />
+                        <div className="flex justify-between p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg">{formatPrice(calculations.productPriceTTC)}</span></div>
+                        <div className="flex justify-between p-3 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé Client</span><span className="text-xl">{formatPrice(calculations.finalClientPrice)}</span></div>
+                        <hr className="border-gray-700/50" />
+
+                        <div className="text-red-400 p-2"><span className="font-semibold">- Dépenses Totales</span><span className="font-bold float-right">{formatPrice(calculations.totalExpenses)}</span></div>
+                        <div className="pl-6 border-l-2 border-gray-700/50 text-base">
+                            <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
+                            {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
+                            {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
+                            {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={transactionFeesTooltip} />}
+                            {saleMode === 'depot' && <ExpenseDetailRow label="Commission dépôt" value={calculations.commissionAmount} tooltip={commissionTooltip} />}
+                            <ExpenseDetailRow label="Cotisations URSSAF" value={calculations.businessCharges} tooltip={urssafTooltip} />
+                        </div>
+
+                        <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
+                            <span className="text-green-300 font-semibold text-lg">Bénéfice Net</span>
+                            <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* PANNEAU DES PRODUITS SAUVEGARDÉS */}
+            <div className="bg-gray-800 p-6 rounded-2xl">
+                <h3 className="text-xl font-bold mb-4">Bibliothèque de Produits Calculés</h3>
+                <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                    {savedCalculations.map(calc => (
+                        <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
+                            <p className="font-bold text-base text-white flex-grow text-left w-full md:w-auto">{calc.productName}</p>
+                            <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
+                                <div><span className="text-xs text-cyan-400 block">Internet</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p></div>
+                                <div><span className="text-xs text-purple-400 block">Domicile</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
+                                <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
+                            </div>
+                            <div className="flex-shrink-0 flex gap-2">
+                                <button onClick={() => onLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
+                                <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
+                            </div>
+                        </div>
+                    ))}
+                    {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4">Aucun calcul sauvegardé pour le moment.</p>}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default CalculationPanel;
