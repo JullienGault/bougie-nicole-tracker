@@ -7,8 +7,10 @@ import { formatPrice } from '../../utils/formatters';
 
 const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) => {
     const { showToast } = useContext(AppContext);
-    // État pour la catégorie affichée (component ou packaging)
-    const [visibleCategory, setVisibleCategory] = useState('component');
+    
+    // Un seul état pour gérer la catégorie active pour le formulaire ET la liste
+    const [category, setCategory] = useState('component');
+    
     const [supplierUrl, setSupplierUrl] = useState('');
     const [name, setName] = useState('');
     const [purchasePrice, setPurchasePrice] = useState('');
@@ -17,8 +19,7 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
     const [editingMaterial, setEditingMaterial] = useState(null);
     const [density, setDensity] = useState('1');
     const [weightPerPiece, setWeightPerPiece] = useState('');
-    const [category, setCategory] = useState('component');
-
+    
     // Nouveaux états pour les dimensions
     const [length, setLength] = useState('');
     const [width, setWidth] = useState('');
@@ -27,9 +28,10 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
 
     const resetForm = () => {
         setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg');
-        setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null); setCategory('component');
+        setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null);
         setSupplierUrl('');
         setLength(''); setWidth(''); setHeight('');
+        // On ne réinitialise pas la catégorie pour rester sur l'onglet actif
     };
 
     const handleSubmit = async (e) => {
@@ -52,7 +54,6 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
             density: (purchaseUnit === 'L' || purchaseUnit === 'ml') ? parseFloat(density) : null,
             weightPerPiece: purchaseUnit === 'piece' ? parseFloat(weightPerPiece) : null,
             supplierUrl: supplierUrl.trim(),
-            // Ajout des dimensions si la catégorie est packaging
             length: category === 'packaging' ? parseFloat(length) || null : null,
             width: category === 'packaging' ? parseFloat(width) || null : null,
             height: category === 'packaging' ? parseFloat(height) || null : null,
@@ -89,13 +90,13 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
         setHeight(material.height || '');
     };
     
-    // Filtrage de la liste des matériaux en fonction de l'onglet actif
+    // Le filtrage utilise maintenant le seul état 'category'
     const displayedMaterials = useMemo(() => {
-        if (visibleCategory === 'component') {
+        if (category === 'component') {
             return materials.filter(m => !m.category || m.category === 'component');
         }
         return materials.filter(m => m.category === 'packaging');
-    }, [materials, visibleCategory]);
+    }, [materials, category]);
 
     return (
         <div className="bg-gray-800 p-6 rounded-2xl flex flex-col">
@@ -107,13 +108,13 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
             {isVisible && (
                 <div className="mt-6 border-t border-gray-700 pt-6 animate-fade-in">
                     <form onSubmit={handleSubmit} className="space-y-4 mb-6">
-                        <div>
-                            <label className="text-sm text-gray-400">Catégorie</label>
-                            <div className="flex gap-2 p-1 bg-gray-900 rounded-lg mt-1">
-                                <button type="button" onClick={() => setCategory('component')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'component' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Composant Produit</button>
-                                <button type="button" onClick={() => setCategory('packaging')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'packaging' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Matériel d'Emballage</button>
-                            </div>
+                        
+                        {/* L'unique jeu d'onglets */}
+                        <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
+                            <button type="button" onClick={() => setCategory('component')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'component' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Composant Produit</button>
+                            <button type="button" onClick={() => setCategory('packaging')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'packaging' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Matériel d'Emballage</button>
                         </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="text-sm text-gray-400">Nom</label>
@@ -125,7 +126,6 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
                             </div>
                         </div>
 
-                        {/* Champs de dimensions pour l'emballage */}
                         {category === 'packaging' && (
                              <div className="p-4 bg-gray-900/50 rounded-lg">
                                 <label className="text-sm text-gray-400 flex items-center gap-2 mb-2"><Ruler size={16}/> Dimensions intérieures (cm)</label>
@@ -149,16 +149,6 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
                         </div>
                         {editingMaterial && <div className="flex justify-end"><button type="button" onClick={resetForm} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button></div>}
                     </form>
-
-                    {/* Système d'onglets pour la liste */}
-                    <div className="flex gap-2 p-1 bg-gray-900 rounded-lg mb-4">
-                        <button onClick={() => setVisibleCategory('component')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${visibleCategory === 'component' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
-                            Composants de Produit
-                        </button>
-                        <button onClick={() => setVisibleCategory('packaging')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${visibleCategory === 'packaging' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
-                            Matériels d'Emballage
-                        </button>
-                    </div>
 
                     <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 max-h-[50vh]">
                         <div className="space-y-2">
