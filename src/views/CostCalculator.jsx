@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon } from 'lucide-react';
+import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler } from 'lucide-react';
 
 // Nouveaux imports des composants et du hook
 import { useCostCalculator } from '../hooks/useCostCalculator';
@@ -10,6 +10,7 @@ import ItemList from '../components/cost/ItemList';
 import RawMaterialManager from '../components/cost/RawMaterialManager';
 import ShippingRateManager from '../components/cost/ShippingRateManager';
 import CalculationPanel from '../components/cost/CalculationPanel';
+import ShippingSimulator from '../components/cost/ShippingSimulator'; // <-- NOUVEL IMPORT
 
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
@@ -28,6 +29,11 @@ const CostCalculator = () => {
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
     const [shippingService, setShippingService] = useState('Locker');
+    
+    // Nouveaux états pour les dimensions du produit fini
+    const [productLength, setProductLength] = useState('');
+    const [productWidth, setProductWidth] = useState('');
+    const [productHeight, setProductHeight] = useState('');
 
     // --- PARAMÈTRES DE CALCUL ---
     const [tvaRate, setTvaRate] = useState('0');
@@ -90,6 +96,18 @@ const CostCalculator = () => {
         }
     };
 
+    const resetProductForm = () => {
+        setProductName('');
+        setRecipeItems([]);
+        setPackagingItems([]);
+        setEditingCalcId(null);
+        setMarginMultiplier('3.50');
+        setManualTtcPrice('0.00');
+        setProductLength('');
+        setProductWidth('');
+        setProductHeight('');
+    };
+
     // --- LOGIQUE DE SAUVEGARDE ET CHARGEMENT ---
     const handleSaveCost = async () => {
         if (!productName || recipeItems.length === 0) {
@@ -105,6 +123,9 @@ const CostCalculator = () => {
             feesRate: parseFloat(feesRate) || 0,
             depotCommissionRate: parseFloat(depotCommissionRate) || 0,
             resultsByMode: calculateAllModes(),
+            productLength: parseFloat(productLength) || null,
+            productWidth: parseFloat(productWidth) || null,
+            productHeight: parseFloat(productHeight) || null,
             updatedAt: serverTimestamp()
         };
 
@@ -116,12 +137,7 @@ const CostCalculator = () => {
                 await addDoc(collection(db, 'productsCosts'), { ...dataToSave, createdAt: serverTimestamp() });
                 showToast(`"${productName}" enregistré avec succès !`, "success");
             }
-            setProductName('');
-            setRecipeItems([]);
-            setPackagingItems([]);
-            setEditingCalcId(null);
-            setMarginMultiplier('3.50');
-            setManualTtcPrice('0.00');
+            resetProductForm();
         } catch (error) { console.error(error); showToast("Erreur lors de la sauvegarde.", "error"); }
     };
 
@@ -135,15 +151,20 @@ const CostCalculator = () => {
         setDepotCommissionRate((calc.depotCommissionRate || 30).toString());
         setManualTtcPrice((calc.resultsByMode?.depot?.productPriceTTC || 0).toFixed(2));
         setEditingCalcId(calc.id);
+        setProductLength(calc.productLength || '');
+        setProductWidth(calc.productWidth || '');
+        setProductHeight(calc.productHeight || '');
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     
-    const availableMaterials = useMemo(() => {
+    const { availableMaterials, packagingMaterials } = useMemo(() => {
         const usedMaterialIds = new Set([
             ...recipeItems.map(item => item.materialId),
             ...packagingItems.map(item => item.materialId)
         ]);
-        return rawMaterials.filter(material => !usedMaterialIds.has(material.id));
+        const available = rawMaterials.filter(material => !usedMaterialIds.has(material.id));
+        const packaging = rawMaterials.filter(material => material.category === 'packaging');
+        return { availableMaterials: available, packagingMaterials: packaging };
     }, [rawMaterials, recipeItems, packagingItems]);
 
 
@@ -169,14 +190,24 @@ const CostCalculator = () => {
                 <div className="lg:w-3/5 flex flex-col gap-8">
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Wrench size={22}/> Produit Actuel</h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                             <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit..." className="w-full bg-gray-700 p-3 rounded-lg sm:col-span-2"/>
                              <div className="bg-gray-900 p-3 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids: </span><span className="font-bold ml-2 text-lg">{(calculations.finalPackageWeight || 0).toFixed(0)} g</span></div>
                         </div>
+
+                        {/* Champs de dimensions pour le produit fini */}
+                        <div className="p-4 bg-gray-900/50 rounded-lg mb-6">
+                            <label className="text-sm text-gray-400 flex items-center gap-2 mb-2"><Ruler size={16}/> Dimensions du produit fini (cm) - <i className='text-xs'>Optionnel</i></label>
+                            <div className="grid grid-cols-3 gap-3">
+                                <input type="number" step="0.1" value={productLength} onChange={e => setProductLength(e.target.value)} placeholder="Longueur" className="w-full bg-gray-700 p-2 rounded-lg" />
+                                <input type="number" step="0.1" value={productWidth} onChange={e => setProductWidth(e.target.value)} placeholder="Largeur" className="w-full bg-gray-700 p-2 rounded-lg" />
+                                <input type="number" step="0.1" value={productHeight} onChange={e => setProductHeight(e.target.value)} placeholder="Hauteur" className="w-full bg-gray-700 p-2 rounded-lg" />
+                            </div>
+                        </div>
+
                         <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} onQuantityChange={handleRecipeQuantityChange} onRemoveItem={handleRemoveRecipeItem} />
                     </div>
                     
-                    {/* CORRECTION : La carte ne s'affiche que pour le mode 'internet' */}
                     {saleMode === 'internet' && (
                         <div className="bg-gray-800 p-6 rounded-2xl space-y-4">
                            <ItemList title="Éléments d'emballage & Expédition" icon={Box} items={packagingItems} onQuantityChange={handlePackagingQuantityChange} onRemoveItem={handleRemovePackagingItem} />
@@ -220,6 +251,15 @@ const CostCalculator = () => {
                     showToast={showToast}
                 />
             </main>
+            
+            {/* Section du simulateur ajoutée à la fin */}
+            <div className="mt-8 pt-8 border-t-2 border-gray-700">
+                <ShippingSimulator 
+                    savedCalculations={savedCalculations} 
+                    packagingMaterials={packagingMaterials}
+                    shippingRates={shippingRates}
+                />
+            </div>
         </div>
     );
 };
