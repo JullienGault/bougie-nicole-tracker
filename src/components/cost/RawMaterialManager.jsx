@@ -2,36 +2,30 @@
 import React, { useState, useMemo, useContext } from 'react';
 import { db, addDoc, updateDoc, deleteDoc, doc, collection, serverTimestamp } from '../../services/firebase';
 import { AppContext } from '../../contexts/AppContext';
-import { Building, PlusCircle, Save, Edit, Trash2, ChevronDown, Link as LinkIcon, Ruler } from 'lucide-react';
+import { PlusCircle, Save, Edit, Trash2, Link as LinkIcon, Ruler } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
-const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) => {
+// Sous-composant pour gérer une seule catégorie (Composant ou Emballage)
+const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, onDelete }) => {
     const { showToast } = useContext(AppContext);
     
-    // Un seul état pour gérer la catégorie active pour le formulaire ET la liste
-    const [category, setCategory] = useState('component');
-    
-    const [supplierUrl, setSupplierUrl] = useState('');
     const [name, setName] = useState('');
+    const [supplierUrl, setSupplierUrl] = useState('');
     const [purchasePrice, setPurchasePrice] = useState('');
     const [purchaseQty, setPurchaseQty] = useState('');
-    const [purchaseUnit, setPurchaseUnit] = useState('kg');
-    const [editingMaterial, setEditingMaterial] = useState(null);
+    const [purchaseUnit, setPurchaseUnit] = useState(category === 'component' ? 'kg' : 'piece');
     const [density, setDensity] = useState('1');
     const [weightPerPiece, setWeightPerPiece] = useState('');
-    
-    // Nouveaux états pour les dimensions
     const [length, setLength] = useState('');
     const [width, setWidth] = useState('');
     const [height, setHeight] = useState('');
-
+    const [editingMaterial, setEditingMaterial] = useState(null);
 
     const resetForm = () => {
-        setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg');
-        setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null);
-        setSupplierUrl('');
-        setLength(''); setWidth(''); setHeight('');
-        // On ne réinitialise pas la catégorie pour rester sur l'onglet actif
+        setName(''); setSupplierUrl(''); setPurchasePrice(''); setPurchaseQty('');
+        setPurchaseUnit(category === 'component' ? 'kg' : 'piece');
+        setDensity('1'); setWeightPerPiece(''); setLength(''); setWidth(''); setHeight('');
+        setEditingMaterial(null);
     };
 
     const handleSubmit = async (e) => {
@@ -70,6 +64,76 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
         } catch (error) { console.error(error); showToast("Une erreur est survenue.", "error"); }
     };
 
+    const startEditing = (material) => {
+        setEditingMaterial(material); setName(material.name); setPurchasePrice(material.purchasePrice);
+        setPurchaseQty(material.purchaseQty); setPurchaseUnit(material.purchaseUnit);
+        setDensity(material.density || '1');
+        setWeightPerPiece(material.weightPerPiece || '');
+        setSupplierUrl(material.supplierUrl || '');
+        setLength(material.length || '');
+        setWidth(material.width || '');
+        setHeight(material.height || '');
+        onEdit(material.id); // Notifie le parent qu'une édition est en cours
+    };
+
+    return (
+        <div className="bg-gray-900/50 p-4 rounded-xl flex flex-col">
+            <h4 className="font-bold text-lg mb-4 text-center">{title}</h4>
+            <form onSubmit={handleSubmit} className="space-y-3 mb-4">
+                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nom" className="w-full bg-gray-700 p-2 rounded-lg" />
+                {category === 'packaging' && (
+                    <div className="grid grid-cols-3 gap-2">
+                        <input type="number" step="0.1" value={length} onChange={e => setLength(e.target.value)} placeholder="L (cm)" className="w-full bg-gray-700 p-2 rounded-lg" />
+                        <input type="number" step="0.1" value={width} onChange={e => setWidth(e.target.value)} placeholder="l (cm)" className="w-full bg-gray-700 p-2 rounded-lg" />
+                        <input type="number" step="0.1" value={height} onChange={e => setHeight(e.target.value)} placeholder="H (cm)" className="w-full bg-gray-700 p-2 rounded-lg" />
+                    </div>
+                )}
+                <div className="grid grid-cols-3 gap-2">
+                    <input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="Prix €" className="w-full bg-gray-700 p-2 rounded-lg" />
+                    <input type="number" step="0.01" value={purchaseQty} onChange={e => setPurchaseQty(e.target.value)} placeholder="Qté" className="w-full bg-gray-700 p-2 rounded-lg" />
+                    <select value={purchaseUnit} onChange={e => setPurchaseUnit(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg h-[42px]">
+                        <option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="ml">ml</option><option value="piece">pièce(s)</option>
+                    </select>
+                </div>
+                 {purchaseUnit === 'piece' && <input type="number" step="0.1" value={weightPerPiece} onChange={e => setWeightPerPiece(e.target.value)} placeholder="Poids / pièce (g)" className="w-full bg-gray-700 p-2 rounded-lg" />}
+                <button type="submit" className="w-full bg-indigo-600 py-2 px-4 rounded-lg flex items-center justify-center gap-2">
+                    {editingMaterial ? <Save size={18} /> : <PlusCircle size={18} />} {editingMaterial ? 'Enregistrer' : 'Ajouter'}
+                </button>
+                 {editingMaterial && <button type="button" onClick={resetForm} className="w-full text-center text-xs text-gray-400 hover:text-white mt-1">Annuler</button>}
+            </form>
+
+            <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 max-h-[40vh]">
+                <div className="space-y-2">
+                    {materials.map(mat => (
+                        <div key={mat.id} className="bg-gray-700/50 p-2 rounded-lg">
+                            <div className="flex justify-between items-center">
+                                <span className="font-semibold truncate pr-2">{mat.name}</span>
+                                <div className="flex items-center gap-1 flex-shrink-0">
+                                    <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-600 rounded" title="Ajouter au calcul"><PlusCircle size={18} /></button>
+                                    <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-600 rounded" title="Modifier"><Edit size={18} /></button>
+                                    <button onClick={() => onDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-600 rounded" title="Supprimer"><Trash2 size={18} /></button>
+                                </div>
+                            </div>
+                             <span className="font-mono text-xs text-indigo-300">
+                                {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
+                                    ? `${formatPrice(mat.standardizedPrice * 100)}/100${mat.standardizedUnit}`
+                                    : `${formatPrice(mat.standardizedPrice)}/${mat.standardizedUnit}`
+                                }
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- Composant Principal ---
+const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) => {
+    const { showToast } = useContext(AppContext);
+    
+    const [editingId, setEditingId] = useState(null); // Pour suivre quelle colonne a un formulaire actif
+
     const handleDelete = async (materialId) => {
         if (window.confirm("Êtes-vous sûr de vouloir supprimer cette matière première ?")) {
             await deleteDoc(doc(db, 'rawMaterials', materialId));
@@ -77,109 +141,38 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
         }
     };
 
-    const startEditing = (material) => {
-        setIsVisible(true);
-        setEditingMaterial(material); setName(material.name); setPurchasePrice(material.purchasePrice);
-        setPurchaseQty(material.purchaseQty); setPurchaseUnit(material.purchaseUnit);
-        setDensity(material.density || '1');
-        setWeightPerPiece(material.weightPerPiece || '');
-        setCategory(material.category || 'component');
-        setSupplierUrl(material.supplierUrl || '');
-        setLength(material.length || '');
-        setWidth(material.width || '');
-        setHeight(material.height || '');
-    };
-    
-    // Le filtrage utilise maintenant le seul état 'category'
-    const displayedMaterials = useMemo(() => {
-        if (category === 'component') {
-            return materials.filter(m => !m.category || m.category === 'component');
-        }
-        return materials.filter(m => m.category === 'packaging');
-    }, [materials, category]);
+    const { componentMaterials, packagingMaterials } = useMemo(() => {
+        return {
+            componentMaterials: materials.filter(m => !m.category || m.category === 'component'),
+            packagingMaterials: materials.filter(m => m.category === 'packaging')
+        };
+    }, [materials]);
 
     return (
         <div className="bg-gray-800 p-6 rounded-2xl flex flex-col">
             <button onClick={() => setIsVisible(!isVisible)} className="w-full flex justify-between items-center text-left">
-                <h3 className="text-xl font-bold flex items-center gap-2"><Building size={22} /> Bibliothèque des Matières</h3>
-                <ChevronDown className={`transform transition-transform ${isVisible ? 'rotate-180' : ''}`} />
+                <h3 className="text-xl font-bold">Bibliothèque des Matières</h3>
+                {/* Icône ChevronDown retirée pour un look plus épuré car le titre est maintenant plus simple */}
             </button>
 
             {isVisible && (
-                <div className="mt-6 border-t border-gray-700 pt-6 animate-fade-in">
-                    <form onSubmit={handleSubmit} className="space-y-4 mb-6">
-                        
-                        {/* L'unique jeu d'onglets */}
-                        <div className="flex gap-2 p-1 bg-gray-900 rounded-lg">
-                            <button type="button" onClick={() => setCategory('component')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'component' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Composant Produit</button>
-                            <button type="button" onClick={() => setCategory('packaging')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'packaging' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Matériel d'Emballage</button>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-sm text-gray-400">Nom</label>
-                                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder={category === 'component' ? "Ex: Cire de Soja" : "Ex: Carton d'expédition 15x15"} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                            </div>
-                            <div>
-                                <label className="text-sm text-gray-400">Lien Fournisseur (URL)</label>
-                                <input type="url" value={supplierUrl} onChange={e => setSupplierUrl(e.target.value)} placeholder="https://..." className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
-                            </div>
-                        </div>
-
-                        {category === 'packaging' && (
-                             <div className="p-4 bg-gray-900/50 rounded-lg">
-                                <label className="text-sm text-gray-400 flex items-center gap-2 mb-2"><Ruler size={16}/> Dimensions intérieures (cm)</label>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <input type="number" step="0.1" value={length} onChange={e => setLength(e.target.value)} placeholder="Longueur" className="w-full bg-gray-700 p-2 rounded-lg" />
-                                    <input type="number" step="0.1" value={width} onChange={e => setWidth(e.target.value)} placeholder="Largeur" className="w-full bg-gray-700 p-2 rounded-lg" />
-                                    <input type="number" step="0.1" value={height} onChange={e => setHeight(e.target.value)} placeholder="Hauteur" className="w-full bg-gray-700 p-2 rounded-lg" />
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="grid grid-cols-1 sm:grid-cols-10 gap-4 items-end">
-                            <div className="sm:col-span-3"><label className="text-sm text-gray-400">Prix total (€)</label><input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="169.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                            <div className="sm:col-span-2"><label className="text-sm text-gray-400">Qté achetée</label><input type="number" step="0.01" value={purchaseQty} onChange={e => setPurchaseQty(e.target.value)} placeholder="20" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                            <div className="sm:col-span-2"><label className="text-sm text-gray-400">Unité</label><select value={purchaseUnit} onChange={e => setPurchaseUnit(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1 h-[42px]"><option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="ml">ml</option><option value="piece">pièce(s)</option></select></div>
-                            {(purchaseUnit === 'L' || purchaseUnit === 'ml') && <div className="sm:col-span-3"><label className="text-sm text-gray-400">Densité (g/ml)</label><input type="number" step="0.01" value={density} onChange={e => setDensity(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>}
-                            {purchaseUnit === 'piece' && <div className="sm:col-span-3"><label className="text-sm text-gray-400">Poids / pièce (g)</label><input type="number" step="0.1" value={weightPerPiece} onChange={e => setWeightPerPiece(e.target.value)} placeholder="ex: 250" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>}
-                            <button type="submit" className="bg-indigo-600 py-2 px-4 rounded-lg flex items-center justify-center gap-2 h-[42px] sm:col-span-3 sm:col-start-8">
-                                {editingMaterial ? <Save size={18} /> : <PlusCircle size={18} />} {editingMaterial ? 'Enregistrer' : 'Ajouter'}
-                            </button>
-                        </div>
-                        {editingMaterial && <div className="flex justify-end"><button type="button" onClick={resetForm} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button></div>}
-                    </form>
-
-                    <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 max-h-[50vh]">
-                        <div className="space-y-2">
-                            <div className="grid grid-cols-[1fr_120px_auto] gap-3 px-2 text-xs uppercase text-gray-400"><span>Nom</span><span>Coût standardisé</span><span className="text-center">Actions</span></div>
-                            {displayedMaterials.map(mat => (
-                                <div key={mat.id} className="grid grid-cols-[1fr_120px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded-lg">
-                                    <div className="font-semibold truncate">
-                                        {mat.name}
-                                        {mat.category ==='packaging' && mat.length && <span className="text-xs text-gray-400 ml-2">{mat.length}x{mat.width}x{mat.height}cm</span>}
-                                    </div>
-                                    <span className="font-mono text-sm text-indigo-300">
-                                        {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
-                                            ? `${formatPrice(mat.standardizedPrice * 100)}/100${mat.standardizedUnit}`
-                                            : `${formatPrice(mat.standardizedPrice)}/${mat.standardizedUnit}`
-                                        }
-                                        {mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}
-                                    </span>
-                                    <div className="flex justify-center gap-1">
-                                        {mat.supplierUrl && (
-                                            <a href={mat.supplierUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 p-1 hover:bg-gray-700 rounded" title="Voir le fournisseur">
-                                                <LinkIcon size={18} />
-                                            </a>
-                                        )}
-                                        <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18} /></button>
-                                        <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18} /></button>
-                                        <button onClick={() => handleDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-700 rounded" title="Supprimer"><Trash2 size={18} /></button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                <div className="mt-6 border-t border-gray-700 pt-6 animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <MaterialCategoryColumn 
+                        title="Composants Produit"
+                        category="component"
+                        materials={componentMaterials}
+                        onSelect={onSelect}
+                        onEdit={setEditingId}
+                        onDelete={handleDelete}
+                    />
+                    <MaterialCategoryColumn 
+                        title="Matériels d'Emballage"
+                        category="packaging"
+                        materials={packagingMaterials}
+                        onSelect={onSelect}
+                        onEdit={setEditingId}
+                        onDelete={handleDelete}
+                    />
                 </div>
             )}
         </div>
