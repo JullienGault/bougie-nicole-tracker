@@ -55,6 +55,22 @@ const CalculationPanel = ({
         }
     };
 
+    // Logique pour le badge du multiplicateur
+    const getMultiplierStyle = (multiplier) => {
+        const value = parseFloat(multiplier);
+        const tooltipText = "Seuils de rentabilité :\n- Rouge (< x2.5): Marge faible/à risque\n- Orange (x2.5 - x3.49): Marge correcte\n- Vert (≥ x3.5): Marge saine";
+
+        if (value >= 3.5) {
+            return { className: "bg-green-600 text-white", tooltip: tooltipText };
+        }
+        if (value >= 2.5) {
+            return { className: "bg-orange-500 text-white", tooltip: tooltipText };
+        }
+        return { className: "bg-red-600 text-white", tooltip: tooltipText };
+    };
+
+    const multiplierStyle = getMultiplierStyle(marginMultiplier);
+
     return (
         <div className="lg:w-2/5 flex flex-col gap-8">
             <div className="bg-gray-800 p-6 rounded-2xl">
@@ -62,7 +78,28 @@ const CalculationPanel = ({
                 <div className="space-y-6">
                     {/* PANNEAU DES PARAMÈTRES */}
                     <div className="space-y-4 p-4 bg-gray-900/50 rounded-lg">
-                        <div className="flex justify-between items-center"><label className="text-gray-300">Multiplicateur Marge</label><input type="number" step="0.01" value={marginMultiplier} onChange={e => setMarginMultiplier(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>
+                        <div className="flex justify-between items-center">
+                            <label className="text-gray-300">Multiplicateur Marge</label>
+                            <div className="flex items-center gap-2">
+                                <span
+                                    title={multiplierStyle.tooltip}
+                                    className={`px-2 py-1 rounded-md text-sm font-bold cursor-help ${multiplierStyle.className}`}
+                                >
+                                    x{parseFloat(marginMultiplier || 0).toFixed(2)}
+                                </span>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={marginMultiplier}
+                                    onChange={e => setMarginMultiplier(e.target.value)}
+                                    onBlur={e => {
+                                        const formattedValue = parseFloat(e.target.value || 0).toFixed(2);
+                                        setMarginMultiplier(formattedValue);
+                                    }}
+                                    className="w-24 bg-gray-700 p-2 rounded-lg text-right"
+                                />
+                            </div>
+                        </div>
                         <div className="flex justify-between items-center"><label className="text-gray-300">Prix Vente (TTC)</label><input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>
                         <div className="flex justify-between items-center"> <label className="text-gray-300">TVA (%)</label> <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">{availableTvaRates.map(rate => (<button key={rate} onClick={() => setTvaRate(rate.toString())} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate.toString() ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{rate}%</button>))}</div> </div>
                         {(saleMode === 'internet' || saleMode === 'domicile') && <div className="flex justify-between items-center"><label className="text-gray-300">Frais Transaction %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
