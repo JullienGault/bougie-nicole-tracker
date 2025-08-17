@@ -1,17 +1,18 @@
 // src/components/cost/CalculationPanel.jsx
-import React from 'react';
+import React, { useState } from 'react';
 import { db, deleteDoc, doc } from '../../services/firebase';
-import { Info, RefreshCw, Trash2 } from 'lucide-react';
+import { Info, RefreshCw, Trash2, ChevronDown } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
-// Sous-composant pour une ligne de dépense, corrigé pour un meilleur affichage du tooltip
+// Sous-composant pour une ligne de dépense, utilisant le nouveau tooltip CSS
 const ExpenseDetailRow = ({ label, value, tooltip }) => (
     <div className="flex justify-between items-center py-1">
         <span className="flex items-center gap-1.5 text-gray-300">
             {label}
             {tooltip && (
-                <span title={tooltip} className="cursor-help">
+                <span className="tooltip-container">
                     <Info size={16} className="text-gray-500" />
+                    <span className="tooltip-text">{tooltip}</span>
                 </span>
             )}
         </span>
@@ -40,6 +41,8 @@ const CalculationPanel = ({
     onLoadCalculation,
     showToast
 }) => {
+    // Nouvel état pour la section pliable des dépenses
+    const [isExpensesVisible, setIsExpensesVisible] = useState(false);
 
     const depotNetRevenueHT = calculations.productPriceHT * (1 - ((parseFloat(depotCommissionRate) || 0) / (1 + (parseFloat(tvaRate) || 0) / 100)) / 100);
     const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
@@ -60,13 +63,11 @@ const CalculationPanel = ({
         const value = parseFloat(multiplier);
         const tooltipText = "Seuils de rentabilité :\n- Rouge (< x2.5): Marge faible/à risque\n- Orange (x2.5 - x3.49): Marge correcte\n- Vert (≥ x3.5): Marge saine";
 
-        if (value >= 3.5) {
-            return { className: "bg-green-600 text-white", tooltip: tooltipText };
-        }
-        if (value >= 2.5) {
-            return { className: "bg-orange-500 text-white", tooltip: tooltipText };
-        }
-        return { className: "bg-red-600 text-white", tooltip: tooltipText };
+        let colorClass = "bg-red-600 text-white";
+        if (value >= 3.5) colorClass = "bg-green-600 text-white";
+        else if (value >= 2.5) colorClass = "bg-orange-500 text-white";
+        
+        return { className: colorClass, tooltip: tooltipText };
     };
 
     const multiplierStyle = getMultiplierStyle(marginMultiplier);
@@ -81,12 +82,12 @@ const CalculationPanel = ({
                         <div className="flex justify-between items-center">
                             <label className="text-gray-300">Multiplicateur Marge</label>
                             <div className="flex items-center gap-2">
-                                <span
-                                    title={multiplierStyle.tooltip}
-                                    className={`px-2 py-1 rounded-md text-sm font-bold cursor-help ${multiplierStyle.className}`}
-                                >
-                                    x{parseFloat(marginMultiplier || 0).toFixed(2)}
-                                </span>
+                                <div className="tooltip-container">
+                                    <span className={`px-2 py-1 rounded-md text-sm font-bold ${multiplierStyle.className}`}>
+                                        x{parseFloat(marginMultiplier || 0).toFixed(2)}
+                                    </span>
+                                    <span className="tooltip-text">{multiplierStyle.tooltip}</span>
+                                </div>
                                 <input
                                     type="number"
                                     step="0.01"
@@ -124,16 +125,25 @@ const CalculationPanel = ({
                         <div className="flex justify-between p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg">{formatPrice(calculations.productPriceTTC)}</span></div>
                         <div className="flex justify-between p-3 font-semibold bg-gray-900/50 rounded-md"><span className="text-gray-200">Total Facturé Client</span><span className="text-xl">{formatPrice(calculations.finalClientPrice)}</span></div>
                         <hr className="border-gray-700/50" />
+                        
+                        <button onClick={() => setIsExpensesVisible(!isExpensesVisible)} className="w-full flex justify-between items-center text-red-400 p-2 text-left">
+                            <span className="font-semibold">- Dépenses Totales</span>
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold">{formatPrice(calculations.totalExpenses)}</span>
+                                <ChevronDown className={`transform transition-transform ${isExpensesVisible ? 'rotate-180' : ''}`} size={20} />
+                            </div>
+                        </button>
 
-                        <div className="text-red-400 p-2"><span className="font-semibold">- Dépenses Totales</span><span className="font-bold float-right">{formatPrice(calculations.totalExpenses)}</span></div>
-                        <div className="pl-6 border-l-2 border-gray-700/50 text-base">
-                            <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
-                            {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
-                            {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
-                            {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={transactionFeesTooltip} />}
-                            {saleMode === 'depot' && <ExpenseDetailRow label="Commission dépôt" value={calculations.commissionAmount} tooltip={commissionTooltip} />}
-                            <ExpenseDetailRow label="Cotisations URSSAF" value={calculations.businessCharges} tooltip={urssafTooltip} />
-                        </div>
+                        {isExpensesVisible && (
+                            <div className="pl-6 border-l-2 border-gray-700/50 text-base animate-fade-in">
+                                <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
+                                {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
+                                {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
+                                {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={transactionFeesTooltip} />}
+                                {saleMode === 'depot' && <ExpenseDetailRow label="Commission dépôt" value={calculations.commissionAmount} tooltip={commissionTooltip} />}
+                                <ExpenseDetailRow label="Cotisations URSSAF" value={calculations.businessCharges} tooltip={urssafTooltip} />
+                            </div>
+                        )}
 
                         <div className="flex justify-between items-center bg-green-500/10 p-4 rounded-lg border border-green-500/30 mt-4">
                             <span className="text-green-300 font-semibold text-lg">Bénéfice Net</span>
