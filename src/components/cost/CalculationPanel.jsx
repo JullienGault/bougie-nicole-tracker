@@ -4,12 +4,16 @@ import { db, deleteDoc, doc } from '../../services/firebase';
 import { Info, RefreshCw, Trash2 } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
-// Sous-composant pour une ligne de dépense, utilisé uniquement ici
+// Sous-composant pour une ligne de dépense, corrigé pour un meilleur affichage du tooltip
 const ExpenseDetailRow = ({ label, value, tooltip }) => (
     <div className="flex justify-between items-center py-1">
         <span className="flex items-center gap-1.5 text-gray-300">
             {label}
-            {tooltip && <Info size={16} className="text-gray-500 cursor-help" title={tooltip} />}
+            {tooltip && (
+                <span title={tooltip} className="cursor-help">
+                    <Info size={16} className="text-gray-500" />
+                </span>
+            )}
         </span>
         <span>{formatPrice(value)}</span>
     </div>
