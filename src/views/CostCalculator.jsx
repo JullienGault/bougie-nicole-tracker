@@ -1,7 +1,7 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp } from '../services/firebase';
-import { AppContext } from '../../contexts/AppContext';
+import { AppContext } from '../contexts/AppContext'; // CHEMIN CORRIGÉ ICI
 import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler } from 'lucide-react';
 
 import { useCostCalculator } from '../hooks/useCostCalculator';
@@ -9,7 +9,7 @@ import ItemList from '../components/cost/ItemList';
 import RawMaterialManager from '../components/cost/RawMaterialManager';
 import ShippingRateManager from '../components/cost/ShippingRateManager';
 import CalculationPanel from '../components/cost/CalculationPanel';
-import ShippingSimulator from '../components/cost/ShippingSimulator'; // <-- IMPORT DU SIMULATEUR
+import ShippingSimulator from '../components/cost/ShippingSimulator';
 
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
@@ -247,7 +247,6 @@ const CostCalculator = () => {
                 />
             </div>
             
-            {/* SECTION DU SIMULATEUR AJOUTÉE À LA FIN */}
             <div className="mt-8 pt-8 border-t-2 border-gray-700">
                 <ShippingSimulator 
                     savedCalculations={savedCalculations} 
