@@ -64,13 +64,15 @@ const calculateForMode = (mode, commonData) => {
     } else if (mode === 'domicile') {
         transactionFees = finalClientPrice * (fees / 100);
         businessCharges = productPriceHT * (charges / 100);
-        totalExpenses = productCost + packagingCost + transactionFees + businessCharges; // packagingCost inclus ici
+        // CORRECTION : Le coût de l'emballage est maintenant exclu pour la vente à domicile
+        totalExpenses = productCost + transactionFees + businessCharges;
         finalProfit = finalClientPrice - totalExpenses;
     } else if (mode === 'depot') {
         commissionAmount = productPriceTTC * (depotCommission / 100);
         const netRevenueHT = productPriceHT * (1 - (depotCommission / (1 + tva/100) ) / 100);
         businessCharges = netRevenueHT * (charges / 100);
-        totalExpenses = productCost + packagingCost + commissionAmount + businessCharges; // packagingCost inclus ici
+        // Le coût de l'emballage reste inclus ici car le produit doit être prêt à la vente
+        totalExpenses = productCost + packagingCost + commissionAmount + businessCharges;
         finalProfit = productPriceTTC - totalExpenses;
     }
     
