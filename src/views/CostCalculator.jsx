@@ -60,8 +60,9 @@ const CostCalculator = () => {
     });
 
     const handleAddMaterialToCalculation = (material) => {
-        const targetList = material.category === 'packaging' ? packagingItems : recipeItems;
-        const setTargetList = material.category === 'packaging' ? setPackagingItems : setRecipeItems;
+        // MODIFICATION: On ajoute l'emballage produit uniquement à la liste packagingItems
+        const targetList = material.category === 'packaging' && material.packagingSubCategory === 'productPackaging' ? packagingItems : recipeItems;
+        const setTargetList = material.category === 'packaging' && material.packagingSubCategory === 'productPackaging' ? setPackagingItems : setRecipeItems;
         
         if (targetList.find(item => item.materialId === material.id)) {
             showToast("Cet élément est déjà dans la liste.", "info"); return;
@@ -167,14 +168,16 @@ const CostCalculator = () => {
         return { className: colorClass, tooltip: tooltipText };
     };
     
-    const { availableMaterials, packagingMaterials } = useMemo(() => {
+    // NOUVELLE LOGIQUE DE FILTRAGE
+    const { availableMaterials, shippingBoxes, shippingConsumables } = useMemo(() => {
         const usedMaterialIds = new Set([
             ...recipeItems.map(item => item.materialId),
             ...packagingItems.map(item => item.materialId)
         ]);
         const available = rawMaterials.filter(material => !usedMaterialIds.has(material.id));
-        const packaging = rawMaterials.filter(material => material.category === 'packaging');
-        return { availableMaterials: available, packagingMaterials: packaging };
+        const boxes = rawMaterials.filter(m => m.packagingSubCategory === 'shippingBox');
+        const consumables = rawMaterials.filter(m => m.packagingSubCategory === 'shippingConsumable');
+        return { availableMaterials: available, shippingBoxes: boxes, shippingConsumables: consumables };
     }, [rawMaterials, recipeItems, packagingItems]);
 
 
@@ -251,11 +254,9 @@ const CostCalculator = () => {
 
                         <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} onQuantityChange={handleRecipeQuantityChange} onRemoveItem={handleRemoveRecipeItem} />
                         
-                        {saleMode === 'internet' && (
-                            <div className="mt-6">
-                               <ItemList title="Éléments d'emballage & Expédition" icon={Box} items={packagingItems} onQuantityChange={handlePackagingQuantityChange} onRemoveItem={handleRemovePackagingItem} />
-                            </div>
-                        )}
+                        <div className="mt-6">
+                           <ItemList title="Emballage du Produit (boîte, étiquette...)" icon={Box} items={packagingItems} onQuantityChange={handlePackagingQuantityChange} onRemoveItem={handleRemovePackagingItem} />
+                        </div>
                     </div>
                     
                     {saleMode === 'internet' && (
@@ -288,7 +289,6 @@ const CostCalculator = () => {
                     depotCommissionRate={depotCommissionRate}
                     setDepotCommissionRate={setDepotCommissionRate}
                     chargesRate={chargesRate}
-                    showToast={showToast}
                 />
             </main>
             
@@ -304,7 +304,8 @@ const CostCalculator = () => {
             <div className="mt-8 pt-8 border-t-2 border-gray-700">
                 <ShippingSimulator 
                     savedCalculations={savedCalculations} 
-                    packagingMaterials={packagingMaterials}
+                    shippingBoxes={shippingBoxes}
+                    shippingConsumables={shippingConsumables}
                     shippingRates={shippingRates}
                     tvaRate={tvaRate}
                     feesRate={feesRate}
