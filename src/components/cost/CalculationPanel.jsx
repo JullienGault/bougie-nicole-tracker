@@ -44,12 +44,25 @@ const CalculationPanel = ({
     const [isExpensesVisible, setIsExpensesVisible] = useState(false);
     const [isLibraryVisible, setIsLibraryVisible] = useState(false); // Par défaut pliée
 
-    const depotNetRevenueHT = calculations.productPriceHT * (1 - ((parseFloat(depotCommissionRate) || 0) / (1 + (parseFloat(tvaRate) || 0) / 100)) / 100);
     const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
     const commissionTooltip = `${formatPrice(calculations.productPriceTTC)} (Prix Produit TTC) × ${depotCommissionRate}% = ${formatPrice(calculations.commissionAmount)}`;
-    const urssafTooltip = saleMode === 'depot'
-        ? `${formatPrice(depotNetRevenueHT)} (Revenu Net HT) × ${chargesRate}% = ${formatPrice(calculations.businessCharges)}`
-        : `${formatPrice(calculations.productPriceHT)} (Prix Produit HT) × ${chargesRate}% = ${formatPrice(calculations.businessCharges)}`;
+    
+    // CORRECTION : Logique de l'infobulle URSSAF mise à jour
+    const urssafTooltip = useMemo(() => {
+        const tva = parseFloat(tvaRate) || 0;
+        const turnoverHT = calculations.finalClientPrice / (1 + tva / 100);
+        switch(saleMode) {
+            case 'internet':
+                return `${formatPrice(turnoverHT)} (CA HT) × ${chargesRate}% = ${formatPrice(calculations.businessCharges)}`;
+            case 'domicile':
+                 return `${formatPrice(calculations.productPriceHT)} (CA HT) × ${chargesRate}% = ${formatPrice(calculations.businessCharges)}`;
+            case 'depot':
+                return `${formatPrice(calculations.productPriceHT)} (CA HT avant commission) × ${chargesRate}% = ${formatPrice(calculations.businessCharges)}`;
+            default:
+                return '';
+        }
+    }, [saleMode, calculations, tvaRate, chargesRate]);
+
 
     const handleDeleteCalculation = async (calcId) => {
         if (window.confirm("Supprimer ce calcul sauvegardé ?")) {
@@ -73,14 +86,13 @@ const CalculationPanel = ({
 
     return (
         <div className="lg:w-2/5 flex flex-col gap-8">
-            {/* NOUVEAU : PANNEAU PLIABLE POUR LA BIBLIOTHÈQUE */}
             <div className="bg-gray-800 p-6 rounded-2xl">
-                <button onClick={() => setIsLibraryVisible(!isLibraryVisible)} className="w-full flex justify-between items-center text-left">
+                <button onClick={() => setIsLibraryVisible(!isLibraryVisible)} className="w-full flex justify-between items-center text-left mb-6">
                     <h3 className="text-xl font-bold flex items-center gap-2"><BookOpen size={22} /> Bibliothèque de Produits</h3>
                     <ChevronDown className={`transform transition-transform ${isLibraryVisible ? 'rotate-180' : ''}`} />
                 </button>
                 {isLibraryVisible && (
-                    <div className="mt-6 border-t border-gray-700 pt-6 animate-fade-in">
+                    <div className="mb-6 border-t border-gray-700 pt-6 animate-fade-in">
                         <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
                             {savedCalculations.map(calc => (
                                 <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
