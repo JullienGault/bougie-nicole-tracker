@@ -26,12 +26,12 @@ const CostCalculator = () => {
     const [productName, setProductName] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
-    const [isMaterialsVisible, setIsMaterialsVisible] = useState(false); // <-- NOUVEL ÉTAT
+    const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
     const [shippingService, setShippingService] = useState('Locker');
 
     // --- PARAMÈTRES DE CALCUL ---
     const [tvaRate, setTvaRate] = useState('0');
-    const [marginMultiplier, setMarginMultiplier] = useState('2.5');
+    const [marginMultiplier, setMarginMultiplier] = useState('3.50'); // Initialisé à une valeur saine et formatée
     const chargesRate = 13.30; // Constante
     const [feesRate, setFeesRate] = useState('1.75');
     const [depotCommissionRate, setDepotCommissionRate] = useState('30');
@@ -86,7 +86,7 @@ const CostCalculator = () => {
             const tva = parseFloat(tvaRate) || 0;
             const newHtPrice = newTtcPrice / (1 + tva / 100);
             const newMultiplier = newHtPrice / productCost;
-            setMarginMultiplier(newMultiplier.toFixed(4));
+            setMarginMultiplier(newMultiplier.toFixed(2)); // Formatage à 2 décimales
         }
     };
 
@@ -120,7 +120,7 @@ const CostCalculator = () => {
             setRecipeItems([]);
             setPackagingItems([]);
             setEditingCalcId(null);
-            setMarginMultiplier('2.5');
+            setMarginMultiplier('3.50');
             setManualTtcPrice('0.00');
         } catch (error) { console.error(error); showToast("Erreur lors de la sauvegarde.", "error"); }
     };
@@ -129,7 +129,7 @@ const CostCalculator = () => {
         setProductName(calc.productName);
         setRecipeItems(calc.items || []);
         setPackagingItems(calc.packagingItems || []);
-        setMarginMultiplier((calc.marginMultiplier || 2.5).toString());
+        setMarginMultiplier(parseFloat(calc.marginMultiplier || 3.5).toFixed(2)); // Formatage à 2 décimales
         setTvaRate((calc.tvaRate !== undefined ? calc.tvaRate : 0).toString());
         setFeesRate((calc.feesRate || 1.75).toString());
         setDepotCommissionRate((calc.depotCommissionRate || 30).toString());
@@ -192,8 +192,8 @@ const CostCalculator = () => {
                     <RawMaterialManager 
                         materials={availableMaterials} 
                         onSelect={handleAddMaterialToCalculation}
-                        isVisible={isMaterialsVisible}      // <-- PROP AJOUTÉE
-                        setIsVisible={setIsMaterialsVisible}  // <-- PROP AJOUTÉE
+                        isVisible={isMaterialsVisible}
+                        setIsVisible={setIsMaterialsVisible}
                     />
                 </div>
 
