@@ -2,11 +2,13 @@
 import React, { useState, useMemo, useContext } from 'react';
 import { db, addDoc, updateDoc, deleteDoc, doc, collection, serverTimestamp } from '../../services/firebase';
 import { AppContext } from '../../contexts/AppContext';
-import { Building, PlusCircle, Save, Edit, Trash2, ChevronDown } from 'lucide-react';
+import { Building, PlusCircle, Save, Edit, Trash2, ChevronDown, Link as LinkIcon } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
 const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) => {
     const { showToast } = useContext(AppContext);
+    // Ajout de l'état pour l'URL du fournisseur
+    const [supplierUrl, setSupplierUrl] = useState('');
     const [name, setName] = useState('');
     const [purchasePrice, setPurchasePrice] = useState('');
     const [purchaseQty, setPurchaseQty] = useState('');
@@ -19,6 +21,8 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
     const resetForm = () => {
         setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg'); 
         setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null); setCategory('component');
+        // Vider le champ URL
+        setSupplierUrl('');
     };
 
     const handleSubmit = async (e) => {
@@ -40,6 +44,8 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
             name, category, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit,
             density: (purchaseUnit === 'L' || purchaseUnit === 'ml') ? parseFloat(density) : null,
             weightPerPiece: purchaseUnit === 'piece' ? parseFloat(weightPerPiece) : null,
+            // Ajout de l'URL du fournisseur aux données
+            supplierUrl: supplierUrl.trim(),
         };
         try {
             if (editingMaterial) {
@@ -61,12 +67,14 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
     };
 
     const startEditing = (material) => {
-        setIsVisible(true); // Ouvre la carte si elle est fermée
+        setIsVisible(true);
         setEditingMaterial(material); setName(material.name); setPurchasePrice(material.purchasePrice);
         setPurchaseQty(material.purchaseQty); setPurchaseUnit(material.purchaseUnit);
         setDensity(material.density || '1');
         setWeightPerPiece(material.weightPerPiece || '');
         setCategory(material.category || 'component');
+        // Pré-remplir le champ URL
+        setSupplierUrl(material.supplierUrl || '');
     };
 
     const productComponents = useMemo(() => materials.filter(m => !m.category || m.category === 'component'), [materials]);
@@ -89,9 +97,15 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
                                 <button type="button" onClick={() => setCategory('packaging')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${category === 'packaging' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>Matériel d'Emballage</button>
                             </div>
                         </div>
-                        <div>
-                            <label className="text-sm text-gray-400">Nom</label>
-                            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder={category === 'component' ? "Ex: Cire de Soja" : "Ex: Carton d'expédition 15x15"} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-sm text-gray-400">Nom</label>
+                                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder={category === 'component' ? "Ex: Cire de Soja" : "Ex: Carton d'expédition 15x15"} className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                            </div>
+                            <div>
+                                <label className="text-sm text-gray-400">Lien Fournisseur (URL)</label>
+                                <input type="url" value={supplierUrl} onChange={e => setSupplierUrl(e.target.value)} placeholder="https://..." className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
+                            </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-10 gap-4 items-end">
                             <div className="sm:col-span-3"><label className="text-sm text-gray-400">Prix total (€)</label><input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="169.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
@@ -126,6 +140,11 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
                                                 {mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}
                                             </span>
                                             <div className="flex justify-center gap-1">
+                                                {mat.supplierUrl && (
+                                                    <a href={mat.supplierUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 p-1 hover:bg-gray-700 rounded" title="Voir le fournisseur">
+                                                        <LinkIcon size={18}/>
+                                                    </a>
+                                                )}
                                                 <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18}/></button>
                                                 <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18}/></button>
                                                 <button onClick={() => handleDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-700 rounded" title="Supprimer"><Trash2 size={18}/></button>
