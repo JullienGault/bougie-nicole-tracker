@@ -1,6 +1,6 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
-import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp, deleteDoc } from '../services/firebase';
+import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp, deleteDoc } from '../../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler, BookOpen, RefreshCw, Trash2 } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
@@ -59,16 +59,24 @@ const CostCalculator = () => {
         marginMultiplier, tvaRate, feesRate, depotCommissionRate, chargesRate
     });
 
-    const handleAddMaterialToCalculation = (material) => {
-        // MODIFICATION: On ajoute l'emballage produit uniquement à la liste packagingItems
-        const targetList = material.category === 'packaging' && material.packagingSubCategory === 'productPackaging' ? packagingItems : recipeItems;
-        const setTargetList = material.category === 'packaging' && material.packagingSubCategory === 'productPackaging' ? setPackagingItems : setRecipeItems;
-        
-        if (targetList.find(item => item.materialId === material.id)) {
-            showToast("Cet élément est déjà dans la liste.", "info"); return;
+    const handleAddMaterialToCalculation = useCallback((material) => {
+        // CORRECTION: Logique plus robuste pour gérer l'ajout
+        if (material.category === 'component') {
+            if (recipeItems.find(item => item.materialId === material.id)) {
+                showToast("Ce composant est déjà dans la recette.", "info");
+                return;
+            }
+            setRecipeItems(prev => [...prev, { materialId: material.id, ...material, quantity: 1 }]);
+        } else if (material.category === 'packaging' && material.packagingSubCategory === 'productPackaging') {
+            if (packagingItems.find(item => item.materialId === material.id)) {
+                showToast("Cet emballage est déjà dans la liste.", "info");
+                return;
+            }
+            setPackagingItems(prev => [...prev, { materialId: material.id, ...material, quantity: 1 }]);
+        } else {
+            showToast("Cet article (ex: carton d'expédition) ne peut pas être ajouté directement à un produit.", "error");
         }
-        setTargetList(prev => [...prev, { materialId: material.id, ...material, quantity: 1 }]);
-    };
+    }, [recipeItems, packagingItems, showToast]);
     
     const handleRecipeQuantityChange = useCallback((materialId, newQuantity) => setRecipeItems(items => items.map(item => item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item)), []);
     const handlePackagingQuantityChange = useCallback((materialId, newQuantity) => setPackagingItems(items => items.map(item => item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item)), []);
@@ -168,7 +176,6 @@ const CostCalculator = () => {
         return { className: colorClass, tooltip: tooltipText };
     };
     
-    // NOUVELLE LOGIQUE DE FILTRAGE
     const { availableMaterials, shippingBoxes, shippingConsumables } = useMemo(() => {
         const usedMaterialIds = new Set([
             ...recipeItems.map(item => item.materialId),
