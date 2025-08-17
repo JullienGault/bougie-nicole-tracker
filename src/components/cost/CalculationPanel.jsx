@@ -1,7 +1,7 @@
 // src/components/cost/CalculationPanel.jsx
 import React, { useState } from 'react';
 import { db, deleteDoc, doc } from '../../services/firebase';
-import { Info, RefreshCw, Trash2, ChevronDown } from 'lucide-react';
+import { Info, RefreshCw, Trash2, ChevronDown, BookOpen } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
 // Sous-composant pour une ligne de dépense, utilisant le nouveau tooltip CSS
@@ -41,8 +41,8 @@ const CalculationPanel = ({
     onLoadCalculation,
     showToast
 }) => {
-    // Nouvel état pour la section pliable des dépenses
     const [isExpensesVisible, setIsExpensesVisible] = useState(false);
+    const [isLibraryVisible, setIsLibraryVisible] = useState(false); // Par défaut pliée
 
     const depotNetRevenueHT = calculations.productPriceHT * (1 - ((parseFloat(depotCommissionRate) || 0) / (1 + (parseFloat(tvaRate) || 0) / 100)) / 100);
     const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
@@ -58,7 +58,6 @@ const CalculationPanel = ({
         }
     };
 
-    // Logique pour le badge du multiplicateur
     const getMultiplierStyle = (multiplier) => {
         const value = parseFloat(multiplier);
         const tooltipText = "Seuils de rentabilité :\n- Rouge (< x2.5): Marge faible/à risque\n- Orange (x2.5 - x3.49): Marge correcte\n- Vert (≥ x3.5): Marge saine";
@@ -74,10 +73,38 @@ const CalculationPanel = ({
 
     return (
         <div className="lg:w-2/5 flex flex-col gap-8">
+            {/* NOUVEAU : PANNEAU PLIABLE POUR LA BIBLIOTHÈQUE */}
+            <div className="bg-gray-800 p-6 rounded-2xl">
+                <button onClick={() => setIsLibraryVisible(!isLibraryVisible)} className="w-full flex justify-between items-center text-left">
+                    <h3 className="text-xl font-bold flex items-center gap-2"><BookOpen size={22} /> Bibliothèque de Produits</h3>
+                    <ChevronDown className={`transform transition-transform ${isLibraryVisible ? 'rotate-180' : ''}`} />
+                </button>
+                {isLibraryVisible && (
+                    <div className="mt-6 border-t border-gray-700 pt-6 animate-fade-in">
+                        <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                            {savedCalculations.map(calc => (
+                                <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <p className="font-bold text-base text-white flex-grow text-left w-full md:w-auto">{calc.productName}</p>
+                                    <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
+                                        <div><span className="text-xs text-cyan-400 block">Internet</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p></div>
+                                        <div><span className="text-xs text-purple-400 block">Domicile</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
+                                        <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
+                                    </div>
+                                    <div className="flex-shrink-0 flex gap-2">
+                                        <button onClick={() => onLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
+                                        <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
+                                    </div>
+                                </div>
+                            ))}
+                            {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4">Aucun calcul sauvegardé.</p>}
+                        </div>
+                    </div>
+                )}
+            </div>
+
             <div className="bg-gray-800 p-6 rounded-2xl">
                 <h3 className="text-xl font-bold mb-4">Résultats & Paramètres</h3>
                 <div className="space-y-6">
-                    {/* PANNEAU DES PARAMÈTRES */}
                     <div className="space-y-4 p-4 bg-gray-900/50 rounded-lg">
                         <div className="flex justify-between items-center">
                             <label className="text-gray-300">Multiplicateur Marge</label>
@@ -118,7 +145,6 @@ const CalculationPanel = ({
                         </div>
                     )}
 
-                    {/* PANNEAU DES RÉSULTATS */}
                     <div className="space-y-2 pt-2">
                         <div className="flex justify-between p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
                         <hr className="border-gray-700/50" />
@@ -137,7 +163,6 @@ const CalculationPanel = ({
                         {isExpensesVisible && (
                             <div className="pl-6 border-l-2 border-gray-700/50 text-base animate-fade-in">
                                 <ExpenseDetailRow label="Coût matières" value={calculations.productCost} tooltip="Coût total des composants du produit." />
-                                {/* CORRECTION : La ligne ne s'affiche que pour le mode 'internet' */}
                                 {saleMode === 'internet' && <ExpenseDetailRow label="Coût emballage" value={calculations.packagingCost} tooltip="Coût du carton, étiquettes, etc." />}
                                 {saleMode === 'internet' && <ExpenseDetailRow label="Coût expédition" value={calculations.shippingProviderCost} tooltip="Ce que vous payez réellement au transporteur." />}
                                 {(saleMode === 'internet' || saleMode === 'domicile') && <ExpenseDetailRow label="Frais de transaction" value={calculations.transactionFees} tooltip={transactionFeesTooltip} />}
@@ -151,28 +176,6 @@ const CalculationPanel = ({
                             <span className="font-bold text-3xl text-green-400">{formatPrice(calculations.finalProfit)}</span>
                         </div>
                     </div>
-                </div>
-            </div>
-
-            {/* PANNEAU DES PRODUITS SAUVEGARDÉS */}
-            <div className="bg-gray-800 p-6 rounded-2xl">
-                <h3 className="text-xl font-bold mb-4">Bibliothèque de Produits Calculés</h3>
-                <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
-                    {savedCalculations.map(calc => (
-                        <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
-                            <p className="font-bold text-base text-white flex-grow text-left w-full md:w-auto">{calc.productName}</p>
-                            <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
-                                <div><span className="text-xs text-cyan-400 block">Internet</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p></div>
-                                <div><span className="text-xs text-purple-400 block">Domicile</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
-                                <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
-                            </div>
-                            <div className="flex-shrink-0 flex gap-2">
-                                <button onClick={() => onLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
-                                <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
-                            </div>
-                        </div>
-                    ))}
-                    {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4">Aucun calcul sauvegardé pour le moment.</p>}
                 </div>
             </div>
         </div>
