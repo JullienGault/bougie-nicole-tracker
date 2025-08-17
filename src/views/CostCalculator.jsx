@@ -196,7 +196,6 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     );
 };
 
-// --- CORRECTION : Le composant ItemList est maintenant défini EN DEHORS du composant principal ---
 const ItemList = ({ title, icon: Icon, items, onQuantityChange, onRemoveItem }) => (
     <div className="p-4 rounded-2xl">
         <h3 className="text-lg font-bold mb-3 flex items-center gap-2"><Icon size={20} /> {title}</h3>
@@ -239,14 +238,16 @@ const CostCalculator = () => {
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     
+    // --- MODIFIÉ : TVA par défaut à 0% ---
+    const [tvaRate, setTvaRate] = useState('0');
     const [marginMultiplier, setMarginMultiplier] = useState('2.5');
-    const [tvaRate, setTvaRate] = useState('20');
     const chargesRate = 13.30;
     const [feesRate, setFeesRate] = useState('1.75');
     const [depotCommissionRate, setDepotCommissionRate] = useState('30');
     const [manualTtcPrice, setManualTtcPrice] = useState('0.00');
 
-    const availableTvaRates = [20, 10, 5.5, 0];
+    // --- MODIFIÉ : Ordre des TVA inversé ---
+    const availableTvaRates = [0, 5.5, 10, 20];
 
     useEffect(() => {
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
@@ -267,8 +268,7 @@ const CostCalculator = () => {
         }
         setTargetList(prev => [...prev, { materialId: material.id, ...material, quantity: 1 }]);
     };
-
-    // --- CORRECTION : Handlers spécifiques pour chaque liste, wrappés dans useCallback ---
+    
     const handleRecipeQuantityChange = useCallback((materialId, newQuantity) => {
         setRecipeItems(items => items.map(item => 
             item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item
@@ -435,7 +435,7 @@ const CostCalculator = () => {
         setRecipeItems(calc.items || []);
         setPackagingItems(calc.packagingItems || []);
         setMarginMultiplier((calc.marginMultiplier || 2.5).toString());
-        setTvaRate((calc.tvaRate !== undefined ? calc.tvaRate : 20).toString());
+        setTvaRate((calc.tvaRate !== undefined ? calc.tvaRate : 0).toString());
         setFeesRate((calc.feesRate || 1.75).toString());
         setDepotCommissionRate((calc.depotCommissionRate || 30).toString());
         setManualTtcPrice((calc.resultsByMode?.depot?.productPriceTTC || 0).toFixed(2));
@@ -557,16 +557,28 @@ const CostCalculator = () => {
                         <h3 className="text-xl font-bold mb-4">Bibliothèque de Produits Calculés</h3>
                         <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
                             {savedCalculations.map(calc => (
-                                <div key={calc.id} className="bg-gray-900/50 p-4 rounded-lg flex flex-col sm:flex-row justify-between items-center gap-4">
-                                    <p className="font-bold text-lg w-full sm:w-1/3">{calc.productName}</p>
-                                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center w-full">
-                                        <div><span className="text-sm text-cyan-400">Bénéf. Internet</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.internet?.finalProfit || 0)}</p></div>
-                                        <div><span className="text-sm text-purple-400">Bénéf. Domicile</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
-                                        <div><span className="text-sm text-pink-400">Bénéf. Dépôt</span><p className="font-semibold">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
+                                // --- MODIFIÉ : Nouvelle structure d'affichage ---
+                                <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <p className="font-bold text-base text-white flex-grow text-left w-full md:w-auto">{calc.productName}</p>
+                                    
+                                    <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
+                                        <div>
+                                            <span className="text-xs text-cyan-400 block">Internet</span>
+                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.internet?.finalProfit || 0)}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-purple-400 block">Domicile</span>
+                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-xs text-pink-400 block">Dépôt</span>
+                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => handleLoadCalculation(calc)} className="p-2 text-blue-400 hover:bg-gray-700 rounded-lg flex items-center gap-2 text-sm"><RefreshCw size={16}/> Recharger</button>
-                                        <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 text-red-500 hover:bg-gray-700 rounded-lg"><Trash2 size={18}/></button>
+                                    
+                                    <div className="flex-shrink-0 flex gap-2">
+                                        <button onClick={() => handleLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14}/> Recharger</button>
+                                        <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16}/></button>
                                     </div>
                                 </div>
                             ))}
