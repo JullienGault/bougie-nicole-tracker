@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useContext } from 'react';
 import { db, addDoc, updateDoc, deleteDoc, doc, collection, serverTimestamp } from '../../services/firebase';
 import { AppContext } from '../../contexts/AppContext';
-import { Building, PlusCircle, Save, Edit, Trash2, ChevronDown, Link as LinkIcon } from 'lucide-react';
+import { Building, PlusCircle, Save, Edit, Trash2, ChevronDown, Link as LinkIcon, Ruler } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
 const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) => {
@@ -19,10 +19,17 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
     const [weightPerPiece, setWeightPerPiece] = useState('');
     const [category, setCategory] = useState('component');
 
+    // Nouveaux états pour les dimensions
+    const [length, setLength] = useState('');
+    const [width, setWidth] = useState('');
+    const [height, setHeight] = useState('');
+
+
     const resetForm = () => {
         setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg');
         setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null); setCategory('component');
         setSupplierUrl('');
+        setLength(''); setWidth(''); setHeight('');
     };
 
     const handleSubmit = async (e) => {
@@ -45,6 +52,10 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
             density: (purchaseUnit === 'L' || purchaseUnit === 'ml') ? parseFloat(density) : null,
             weightPerPiece: purchaseUnit === 'piece' ? parseFloat(weightPerPiece) : null,
             supplierUrl: supplierUrl.trim(),
+            // Ajout des dimensions si la catégorie est packaging
+            length: category === 'packaging' ? parseFloat(length) || null : null,
+            width: category === 'packaging' ? parseFloat(width) || null : null,
+            height: category === 'packaging' ? parseFloat(height) || null : null,
         };
         try {
             if (editingMaterial) {
@@ -55,7 +66,7 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
                 showToast("Matière première ajoutée.", "success");
             }
             resetForm();
-        } catch (error) { showToast("Une erreur est survenue.", "error"); }
+        } catch (error) { console.error(error); showToast("Une erreur est survenue.", "error"); }
     };
 
     const handleDelete = async (materialId) => {
@@ -73,6 +84,9 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
         setWeightPerPiece(material.weightPerPiece || '');
         setCategory(material.category || 'component');
         setSupplierUrl(material.supplierUrl || '');
+        setLength(material.length || '');
+        setWidth(material.width || '');
+        setHeight(material.height || '');
     };
     
     // Filtrage de la liste des matériaux en fonction de l'onglet actif
@@ -110,6 +124,19 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
                                 <input type="url" value={supplierUrl} onChange={e => setSupplierUrl(e.target.value)} placeholder="https://..." className="w-full bg-gray-700 p-2 rounded-lg mt-1" />
                             </div>
                         </div>
+
+                        {/* Champs de dimensions pour l'emballage */}
+                        {category === 'packaging' && (
+                             <div className="p-4 bg-gray-900/50 rounded-lg">
+                                <label className="text-sm text-gray-400 flex items-center gap-2 mb-2"><Ruler size={16}/> Dimensions intérieures (cm)</label>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <input type="number" step="0.1" value={length} onChange={e => setLength(e.target.value)} placeholder="Longueur" className="w-full bg-gray-700 p-2 rounded-lg" />
+                                    <input type="number" step="0.1" value={width} onChange={e => setWidth(e.target.value)} placeholder="Largeur" className="w-full bg-gray-700 p-2 rounded-lg" />
+                                    <input type="number" step="0.1" value={height} onChange={e => setHeight(e.target.value)} placeholder="Hauteur" className="w-full bg-gray-700 p-2 rounded-lg" />
+                                </div>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 sm:grid-cols-10 gap-4 items-end">
                             <div className="sm:col-span-3"><label className="text-sm text-gray-400">Prix total (€)</label><input type="number" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} placeholder="169.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                             <div className="sm:col-span-2"><label className="text-sm text-gray-400">Qté achetée</label><input type="number" step="0.01" value={purchaseQty} onChange={e => setPurchaseQty(e.target.value)} placeholder="20" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
@@ -138,7 +165,10 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
                             <div className="grid grid-cols-[1fr_120px_auto] gap-3 px-2 text-xs uppercase text-gray-400"><span>Nom</span><span>Coût standardisé</span><span className="text-center">Actions</span></div>
                             {displayedMaterials.map(mat => (
                                 <div key={mat.id} className="grid grid-cols-[1fr_120px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded-lg">
-                                    <span className="font-semibold truncate">{mat.name}</span>
+                                    <div className="font-semibold truncate">
+                                        {mat.name}
+                                        {mat.category ==='packaging' && mat.length && <span className="text-xs text-gray-400 ml-2">{mat.length}x{mat.width}x{mat.height}cm</span>}
+                                    </div>
                                     <span className="font-mono text-sm text-indigo-300">
                                         {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
                                             ? `${formatPrice(mat.standardizedPrice * 100)}/100${mat.standardizedUnit}`
