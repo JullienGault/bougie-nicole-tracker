@@ -37,7 +37,7 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
 
     const calculationResults = useMemo(() => {
         if (simulatedItems.length === 0) {
-            return { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalWeight: 0 };
+            return { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalWeight: 0, shippingCustomerPrice: 0, boxCost: 0, shippingProviderCost: 0, transactionFees: 0, businessCharges: 0 };
         }
 
         const tva = parseFloat(tvaRate) || 0;
@@ -50,7 +50,8 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
         let totalWeight = 0;
 
         simulatedItems.forEach(item => {
-            const itemData = item.resultsByMode?.internet; // On se base sur le mode internet pour les coûts produits
+            // CORRECTION: On utilise une clé existante comme 'Locker' au lieu de 'internet' qui n'existe pas.
+            const itemData = item.resultsByMode?.Locker; 
             if (!itemData) return;
             totalProductCost += itemData.productCost * item.quantity;
             totalProductPriceTTC += itemData.productPriceTTC * item.quantity;
