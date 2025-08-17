@@ -108,7 +108,7 @@ const ShippingRateManager = ({ rates }) => {
         }
     };
 
-    const filteredRates = useMemo(() => rates.filter(r => r.service === activeService), [rates, activeService]);
+    const filteredRates = useMemo(() => rates.filter(r => r.service === activeService).sort((a, b) => a.maxWeight - b.maxWeight), [rates, activeService]);
     
     return (
         <>
@@ -148,8 +148,6 @@ const ShippingRateManager = ({ rates }) => {
         </>
     );
 };
-
-// --- Les autres sous-composants restent les mêmes...
 
 const RawMaterialManager = ({ materials, onSelect }) => {
     const { showToast } = useContext(AppContext);
@@ -307,7 +305,15 @@ const ItemList = ({ title, icon: Icon, items, onQuantityChange, onRemoveItem }) 
     </div>
 );
 
+// --- CORRECTION : Ce composant est maintenant défini en dehors du composant principal ---
+const ExpenseDetailRow = ({ label, value, tooltip }) => (
+    <div className="flex justify-between items-center py-1">
+        <span className="flex items-center gap-1.5 text-gray-300"> {label} <Info size={16} className="text-gray-500" title={tooltip} /> </span>
+        <span>{formatPrice(value)}</span>
+    </div>
+);
 
+// --- Composant Principal ---
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
     const [saleMode, setSaleMode] = useState('internet');
@@ -320,7 +326,6 @@ const CostCalculator = () => {
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     
-    // --- NOUVEL ÉTAT : Pour choisir le service d'expédition ---
     const [shippingService, setShippingService] = useState('Locker');
 
     const [tvaRate, setTvaRate] = useState('0');
@@ -373,7 +378,6 @@ const CostCalculator = () => {
     }, []);
 
     const calculateForMode = (mode, commonData) => {
-        // --- MODIFIÉ : Ajout de `shippingService` pour le calcul ---
         const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping, service } = commonData;
         
         const margin = parseFloat(marginStr) || 0;
@@ -417,7 +421,6 @@ const CostCalculator = () => {
         if (mode === 'internet') {
             let shippingCustomerPrice = 0;
             if (finalPackageWeight > 0) {
-                // --- MODIFIÉ : On filtre par service avant de chercher le tarif ---
                 const applicableRate = shipping
                     .filter(rate => rate.service === service)
                     .find(rate => finalPackageWeight <= rate.maxWeight);
@@ -459,7 +462,7 @@ const CostCalculator = () => {
             fees: feesRate,
             depotCommission: depotCommissionRate, 
             shipping: shippingRates,
-            service: shippingService // On passe le service au calcul
+            service: shippingService
         };
         return calculateForMode(saleMode, commonData);
     }, [recipeItems, packagingItems, marginMultiplier, tvaRate, feesRate, depotCommissionRate, shippingRates, saleMode, shippingService]);
@@ -485,18 +488,20 @@ const CostCalculator = () => {
         }
         
         const services = ['Locker', 'Point Relais', 'Domicile'];
-        const resultsByMode = { depot: calculateForMode('depot', { /*...*/ }) };
-        
-        // On calcule pour chaque service d'expédition
-        services.forEach(service => {
-            const commonData = {
-                recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
-                tva: tvaRate, charges: chargesRate, fees: feesRate,
-                shipping: shippingRates, service: service
-            };
-            resultsByMode[service] = calculateForMode('internet', commonData);
-        });
+        const resultsByMode = {};
 
+        const baseData = {
+            recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
+            tva: tvaRate, charges: chargesRate, fees: feesRate,
+            depotCommission: depotCommissionRate, shipping: shippingRates
+        };
+
+        resultsByMode['depot'] = calculateForMode('depot', baseData);
+        resultsByMode['domicile'] = calculateForMode('domicile', baseData);
+        
+        services.forEach(service => {
+            resultsByMode[service] = calculateForMode('internet', {...baseData, service: service});
+        });
 
         const dataToSave = {
             productName, 
@@ -506,7 +511,7 @@ const CostCalculator = () => {
             tvaRate: parseFloat(tvaRate) || 0,
             feesRate: parseFloat(feesRate) || 0,
             depotCommissionRate: parseFloat(depotCommissionRate) || 0,
-            resultsByMode, // Contient maintenant les calculs pour tous les services
+            resultsByMode,
             updatedAt: serverTimestamp()
         };
 
@@ -625,7 +630,6 @@ const CostCalculator = () => {
                                 {saleMode === 'depot' && <div className="flex justify-between items-center"><label className="text-gray-300">Commission Dépôt %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
                             </div>
                             
-                            {/* --- NOUVEAU : Sélecteur de service d'expédition --- */}
                             {saleMode === 'internet' && (
                                 <div className="p-4 bg-gray-900/50 rounded-lg">
                                     <label className="text-gray-300 mb-2 block">Service d'expédition</label>
@@ -670,16 +674,16 @@ const CostCalculator = () => {
                                     
                                     <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
                                         <div>
-                                            <span className="text-xs text-cyan-400 block">Locker</span>
+                                            <span className="text-xs text-cyan-400 block">Internet</span>
                                             <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p>
                                         </div>
                                         <div>
-                                            <span className="text-xs text-purple-400 block">Relais</span>
-                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.['Point Relais']?.finalProfit || 0)}</p>
+                                            <span className="text-xs text-purple-400 block">Domicile</span>
+                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p>
                                         </div>
                                         <div>
-                                            <span className="text-xs text-pink-400 block">Domicile</span>
-                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Domicile?.finalProfit || 0)}</p>
+                                            <span className="text-xs text-pink-400 block">Dépôt</span>
+                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p>
                                         </div>
                                     </div>
                                     
