@@ -31,8 +31,8 @@ const CostCalculator = () => {
 
     // --- PARAMÈTRES DE CALCUL ---
     const [tvaRate, setTvaRate] = useState('0');
-    const [marginMultiplier, setMarginMultiplier] = useState('3.50'); // Initialisé à une valeur saine et formatée
-    const chargesRate = 13.30; // Constante
+    const [marginMultiplier, setMarginMultiplier] = useState('3.50');
+    const chargesRate = 13.4; // <-- TAUX MIS À JOUR
     const [feesRate, setFeesRate] = useState('1.75');
     const [depotCommissionRate, setDepotCommissionRate] = useState('30');
     const [manualTtcPrice, setManualTtcPrice] = useState('0.00');
@@ -86,7 +86,7 @@ const CostCalculator = () => {
             const tva = parseFloat(tvaRate) || 0;
             const newHtPrice = newTtcPrice / (1 + tva / 100);
             const newMultiplier = newHtPrice / productCost;
-            setMarginMultiplier(newMultiplier.toFixed(2)); // Formatage à 2 décimales
+            setMarginMultiplier(newMultiplier.toFixed(2));
         }
     };
 
@@ -129,7 +129,7 @@ const CostCalculator = () => {
         setProductName(calc.productName);
         setRecipeItems(calc.items || []);
         setPackagingItems(calc.packagingItems || []);
-        setMarginMultiplier(parseFloat(calc.marginMultiplier || 3.5).toFixed(2)); // Formatage à 2 décimales
+        setMarginMultiplier(parseFloat(calc.marginMultiplier || 3.5).toFixed(2));
         setTvaRate((calc.tvaRate !== undefined ? calc.tvaRate : 0).toString());
         setFeesRate((calc.feesRate || 1.75).toString());
         setDepotCommissionRate((calc.depotCommissionRate || 30).toString());
@@ -213,8 +213,7 @@ const CostCalculator = () => {
                     feesRate={feesRate}
                     setFeesRate={setFeesRate}
                     depotCommissionRate={depotCommissionRate}
-                    setDepotCommissionRate={setDepotCommissionRate}
-                    chargesRate={chargesRate}
+                    setDepotCommissionRate={chargesRate}
                     onLoadCalculation={handleLoadCalculation}
                     showToast={showToast}
                 />
