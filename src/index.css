@@ -1,3 +1,36 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* --- DEBUT DU STYLE POUR LES INFOBULLES PERSONNALISÉES --- */
+.tooltip-container {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip-container .tooltip-text {
+  visibility: hidden;
+  width: 220px;
+  background-color: #111827; /* bg-gray-900 */
+  color: #fff;
+  text-align: left;
+  border-radius: 6px;
+  padding: 8px 12px;
+  position: absolute;
+  z-index: 10;
+  bottom: 125%; /* Positionne le tooltip au-dessus de l'icône */
+  left: 50%;
+  margin-left: -110px; /* La moitié de la largeur pour centrer */
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  white-space: pre-line; /* Respecte les sauts de ligne */
+  border: 1px solid #374151; /* border-gray-700 */
+}
+
+.tooltip-container:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+/* --- FIN DU STYLE --- */
