@@ -100,20 +100,30 @@ const CalculationPanel = ({
                 {isLibraryVisible && (
                     <div className="mb-6 border-t border-gray-700 pt-6 animate-fade-in">
                         <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
-                            {savedCalculations.map(calc => (
-                                <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
-                                    <p className="font-bold text-base text-white flex-grow text-left w-full md:w-auto">{calc.productName}</p>
-                                    <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
-                                        <div><span className="text-xs text-cyan-400 block">Internet</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p></div>
-                                        <div><span className="text-xs text-purple-400 block">Domicile</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
-                                        <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
+                            {savedCalculations.map(calc => {
+                                // On applique la même logique de style pour chaque produit de la liste
+                                const itemMultiplierStyle = getMultiplierStyle(calc.marginMultiplier);
+                                return (
+                                    <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
+                                        <div className="flex items-center gap-2 flex-grow text-left w-full md:w-auto">
+                                            {/* NOUVELLE PASTILLE DE COULEUR ICI */}
+                                            <span className={`px-2 py-1 rounded-md text-sm font-bold ${itemMultiplierStyle.className}`}>
+                                                x{parseFloat(calc.marginMultiplier || 0).toFixed(2)}
+                                            </span>
+                                            <p className="font-bold text-base text-white">{calc.productName}</p>
+                                        </div>
+                                        <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
+                                            <div><span className="text-xs text-cyan-400 block">Internet</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p></div>
+                                            <div><span className="text-xs text-purple-400 block">Domicile</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
+                                            <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
+                                        </div>
+                                        <div className="flex-shrink-0 flex gap-2">
+                                            <button onClick={() => onLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
+                                            <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
+                                        </div>
                                     </div>
-                                    <div className="flex-shrink-0 flex gap-2">
-                                        <button onClick={() => onLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
-                                        <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                             {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4">Aucun calcul sauvegardé.</p>}
                         </div>
                     </div>
@@ -168,7 +178,6 @@ const CalculationPanel = ({
                         <hr className="border-gray-700/50" />
                         <div className="flex justify-between p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg">{formatPrice(calculations.productPriceTTC)}</span></div>
                         
-                        {/* NOUVELLE LIGNE POUR LA TVA */}
                         {tvaAmount > 0 && (
                              <div className="flex justify-between text-sm text-gray-400 pl-4"><span>dont TVA ({tvaRate}%)</span><span>{formatPrice(tvaAmount)}</span></div>
                         )}
