@@ -83,10 +83,11 @@ const CalculationPanel = ({
 
     const multiplierStyle = getMultiplierStyle(marginMultiplier);
     
-    // NOUVEAU : Calcul du coût d'expédition facturé au client
-    const shippingCustomerPrice = useMemo(() => {
-        if (saleMode !== 'internet') return 0;
-        return calculations.finalClientPrice - calculations.productPriceTTC;
+    // Calculs pour l'affichage dans les résultats
+    const { shippingCustomerPrice, tvaAmount } = useMemo(() => {
+        const shipping = (saleMode === 'internet') ? calculations.finalClientPrice - calculations.productPriceTTC : 0;
+        const tva = calculations.productPriceTTC - calculations.productPriceHT;
+        return { shippingCustomerPrice: shipping, tvaAmount: tva };
     }, [saleMode, calculations]);
 
     return (
@@ -167,7 +168,11 @@ const CalculationPanel = ({
                         <hr className="border-gray-700/50" />
                         <div className="flex justify-between p-2"><span className="text-gray-300">Prix Produit (TTC)</span><span className="font-bold text-lg">{formatPrice(calculations.productPriceTTC)}</span></div>
                         
-                        {/* NOUVELLE LIGNE AJOUTÉE ICI */}
+                        {/* NOUVELLE LIGNE POUR LA TVA */}
+                        {tvaAmount > 0 && (
+                             <div className="flex justify-between text-sm text-gray-400 pl-4"><span>dont TVA ({tvaRate}%)</span><span>{formatPrice(tvaAmount)}</span></div>
+                        )}
+
                         {saleMode === 'internet' && (
                             <div className="flex justify-between p-2"><span className="text-gray-300">Expédition (facturée)</span><span className="font-bold text-lg">{formatPrice(shippingCustomerPrice)}</span></div>
                         )}
