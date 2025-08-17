@@ -1,8 +1,9 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
-import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp } from '../services/firebase';
-import { AppContext } from '../contexts/AppContext'; // CHEMIN CORRIGÉ ICI
-import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler } from 'lucide-react';
+import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp, deleteDoc } from '../services/firebase';
+import { AppContext } from '../contexts/AppContext';
+import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler, BookOpen, RefreshCw, Trash2 } from 'lucide-react';
+import { formatPrice } from '../utils/formatters';
 
 import { useCostCalculator } from '../hooks/useCostCalculator';
 import ItemList from '../components/cost/ItemList';
@@ -25,6 +26,7 @@ const CostCalculator = () => {
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     const [isMaterialsVisible, setIsMaterialsVisible] = useState(true);
+    const [isLibraryVisible, setIsLibraryVisible] = useState(true);
     
     const [productLength, setProductLength] = useState('');
     const [productWidth, setProductWidth] = useState('');
@@ -147,6 +149,24 @@ const CostCalculator = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     
+    const handleDeleteCalculation = async (calcId) => {
+        if (window.confirm("Supprimer ce calcul sauvegardé ?")) {
+            await deleteDoc(doc(db, 'productsCosts', calcId));
+            showToast("Calcul supprimé.", "success");
+        }
+    };
+    
+    const getMultiplierStyle = (multiplier) => {
+        const value = parseFloat(multiplier);
+        const tooltipText = "Seuils de rentabilité :\n- Rouge (< x2.5): Marge faible/à risque\n- Orange (x2.5 - x3.49): Marge correcte\n- Vert (≥ x3.5): Marge saine";
+
+        let colorClass = "bg-red-600 text-white";
+        if (value >= 3.5) colorClass = "bg-green-600 text-white";
+        else if (value >= 2.5) colorClass = "bg-orange-500 text-white";
+        
+        return { className: colorClass, tooltip: tooltipText };
+    };
+    
     const { availableMaterials, packagingMaterials } = useMemo(() => {
         const usedMaterialIds = new Set([
             ...recipeItems.map(item => item.materialId),
@@ -167,6 +187,42 @@ const CostCalculator = () => {
                 </button>
             </header>
             
+            <div className="bg-gray-800 p-6 rounded-2xl mb-8">
+                <button onClick={() => setIsLibraryVisible(!isLibraryVisible)} className="w-full flex justify-between items-center text-left mb-6">
+                    <h3 className="text-xl font-bold flex items-center gap-2"><BookOpen size={22} /> Bibliothèque de Produits</h3>
+                    <ChevronDown className={`transform transition-transform ${isLibraryVisible ? 'rotate-180' : ''}`} />
+                </button>
+                {isLibraryVisible && (
+                    <div className="mb-6 border-t border-gray-700 pt-6 animate-fade-in">
+                        <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                            {savedCalculations.map(calc => {
+                                const itemMultiplierStyle = getMultiplierStyle(calc.marginMultiplier);
+                                return (
+                                    <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
+                                        <div className="flex items-center gap-2 flex-grow text-left w-full md:w-auto">
+                                            <span className={`px-2 py-1 rounded-md text-sm font-bold ${itemMultiplierStyle.className}`}>
+                                                x{parseFloat(calc.marginMultiplier || 0).toFixed(2)}
+                                            </span>
+                                            <p className="font-bold text-base text-white">{calc.productName}</p>
+                                        </div>
+                                        <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
+                                            <div><span className="text-xs text-cyan-400 block">Internet</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p></div>
+                                            <div><span className="text-xs text-purple-400 block">Domicile</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
+                                            <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
+                                        </div>
+                                        <div className="flex-shrink-0 flex gap-2">
+                                            <button onClick={() => handleLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
+                                            <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4">Aucun calcul sauvegardé.</p>}
+                        </div>
+                    </div>
+                )}
+            </div>
+
             <div className="mb-6 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
                 {[{id: 'internet', label: 'Vente Internet', icon: Globe}, {id: 'domicile', label: 'Vente Domicile', icon: Home}, {id: 'depot', label: 'Dépôt-Vente', icon: StoreIcon}].map(tab => (
                      <button key={tab.id} onClick={() => setSaleMode(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-semibold transition-colors text-sm ${saleMode === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
@@ -217,7 +273,6 @@ const CostCalculator = () => {
 
                 <CalculationPanel 
                     calculations={calculations}
-                    savedCalculations={savedCalculations}
                     saleMode={saleMode}
                     shippingService={shippingService}
                     setShippingService={setShippingService}
@@ -233,7 +288,6 @@ const CostCalculator = () => {
                     depotCommissionRate={depotCommissionRate}
                     setDepotCommissionRate={setDepotCommissionRate}
                     chargesRate={chargesRate}
-                    onLoadCalculation={handleLoadCalculation}
                     showToast={showToast}
                 />
             </main>
