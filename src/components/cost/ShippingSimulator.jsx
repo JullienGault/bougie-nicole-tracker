@@ -1,9 +1,9 @@
 // src/components/cost/ShippingSimulator.jsx
 import React, { useState, useMemo } from 'react';
-import { PlusCircle, Trash2, Box, Weight, AlertTriangle, CheckCircle } from 'lucide-react';
+import { PlusCircle, Trash2, Box, Weight, Info } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
-const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRates }) => {
+const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRates, tvaRate, feesRate, chargesRate }) => {
     const [simulatedItems, setSimulatedItems] = useState([]);
     const [selectedBoxId, setSelectedBoxId] = useState('');
     const [shippingService, setShippingService] = useState('Locker');
@@ -31,53 +31,65 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
         setSimulatedItems(prev => prev.filter(item => item.id !== calcId));
     };
 
-    const { totalWeight, totalVolume, totalNetProfit, shippingCost } = useMemo(() => {
-        let weight = 0;
-        let volume = 0;
-        let profit = 0;
-
-        simulatedItems.forEach(item => {
-            const itemWeight = item.resultsByMode?.Locker?.finalPackageWeight || 0; // Le poids du produit est le même partout
-            const itemProfit = item.resultsByMode?.[shippingService.toLowerCase()]?.finalProfit || 0;
-            const itemVolume = (item.productLength || 0) * (item.productWidth || 0) * (item.productHeight || 0);
-
-            weight += itemWeight * item.quantity;
-            volume += itemVolume * item.quantity;
-            profit += itemProfit * item.quantity;
-        });
-
-        let finalShippingCost = 0;
-        if (weight > 0) {
-             const applicableRate = shippingRates
-                .filter(rate => rate.service === shippingService)
-                .sort((a, b) => a.maxWeight - b.maxWeight)
-                .find(rate => weight <= rate.maxWeight);
-            if (applicableRate) {
-                finalShippingCost = applicableRate.price;
-            }
-        }
-        
-        // On soustrait le coût d'envoi du profit total car le profit par item ne l'inclut pas.
-        profit -= finalShippingCost;
-
-        return { totalWeight: weight, totalVolume: volume, totalNetProfit: profit, shippingCost: finalShippingCost };
-    }, [simulatedItems, shippingRates, shippingService]);
-
     const selectedBox = useMemo(() => {
         return packagingMaterials.find(p => p.id === selectedBoxId);
     }, [packagingMaterials, selectedBoxId]);
 
-    const boxVolume = useMemo(() => {
-        if (!selectedBox) return 0;
-        return (selectedBox.length || 0) * (selectedBox.width || 0) * (selectedBox.height || 0);
-    }, [selectedBox]);
+    const calculationResults = useMemo(() => {
+        if (simulatedItems.length === 0) {
+            return { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalWeight: 0 };
+        }
 
-    // On considère que les produits ne doivent pas dépasser 90% du volume du carton pour le calage
-    const isBoxBigEnough = boxVolume > 0 && totalVolume > 0 ? totalVolume <= (boxVolume * 0.9) : false;
+        const tva = parseFloat(tvaRate) || 0;
+        const fees = parseFloat(feesRate) || 0;
+        const charges = parseFloat(chargesRate) || 0;
+
+        // 1. Calculs de base sur les produits
+        let totalProductCost = 0;
+        let totalProductPriceTTC = 0;
+        let totalWeight = 0;
+
+        simulatedItems.forEach(item => {
+            const itemData = item.resultsByMode?.internet; // On se base sur le mode internet pour les coûts produits
+            if (!itemData) return;
+            totalProductCost += itemData.productCost * item.quantity;
+            totalProductPriceTTC += itemData.productPriceTTC * item.quantity;
+            totalWeight += itemData.finalPackageWeight * item.quantity;
+        });
+
+        // 2. Coût de l'emballage (1 seul carton)
+        const boxCost = selectedBox?.standardizedPrice || 0;
+
+        // 3. Coût de l'expédition (selon le poids total)
+        let shippingProviderCost = 0;
+        let shippingCustomerPrice = 0;
+        if (totalWeight > 0) {
+             const applicableRate = shippingRates
+                .filter(rate => rate.service === shippingService)
+                .sort((a, b) => a.maxWeight - b.maxWeight)
+                .find(rate => totalWeight <= rate.maxWeight);
+            if (applicableRate) {
+                shippingProviderCost = applicableRate.cost;
+                shippingCustomerPrice = applicableRate.price;
+            }
+        }
+
+        // 4. Calculs financiers globaux
+        const totalRevenue = totalProductPriceTTC + shippingCustomerPrice;
+        const transactionFees = totalRevenue * (fees / 100);
+        const turnoverHT = totalRevenue / (1 + tva / 100);
+        const businessCharges = turnoverHT * (charges / 100);
+
+        const totalCost = totalProductCost + boxCost + shippingProviderCost + transactionFees + businessCharges;
+        const totalProfit = totalRevenue - totalCost;
+
+        return { totalRevenue, totalCost, totalProfit, totalWeight, shippingCustomerPrice, boxCost, shippingProviderCost, transactionFees, businessCharges };
+
+    }, [simulatedItems, selectedBox, shippingService, shippingRates, tvaRate, feesRate, chargesRate]);
 
     return (
         <div className="bg-gray-800 p-6 rounded-2xl">
-            <h3 className="text-xl font-bold mb-4">Simulateur d'Envoi</h3>
+            <h3 className="text-xl font-bold mb-4">Simulateur d'Envoi de Colis</h3>
             <div className="flex flex-col md:flex-row gap-8">
                 {/* Colonne de gauche: Bibliothèque et colis */}
                 <div className="md:w-1/2 space-y-4">
@@ -113,7 +125,7 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
                         <select value={selectedBoxId} onChange={e => setSelectedBoxId(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mb-2">
                             <option value="">-- Sélectionner un carton --</option>
                             {packagingMaterials.map(p => (
-                                <option key={p.id} value={p.id}>{p.name} ({p.length}x{p.width}x{p.height}cm)</option>
+                                <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                         </select>
                          <div className="flex gap-1 p-1 bg-gray-900 rounded-lg">
@@ -124,23 +136,29 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
                     </div>
                     <div>
                          <h4 className="font-semibold mb-2">4. Résultat de la simulation</h4>
-                         <div className="p-4 bg-gray-900/50 rounded-lg space-y-3">
-                            <div className="flex justify-between items-center"><span className="text-gray-400 flex items-center gap-2"><Weight size={16}/> Poids Total</span><span className="font-bold text-lg">{totalWeight.toFixed(0)} g</span></div>
-                            <div className="flex justify-between items-center"><span className="text-gray-400 flex items-center gap-2"><Box size={16}/> Volume Produits</span><span className="font-bold text-lg">{totalVolume.toFixed(0)} cm³</span></div>
-                            {selectedBox && <div className="flex justify-between items-center"><span className="text-gray-400">Volume Carton</span><span>{boxVolume.toFixed(0)} cm³</span></div>}
-                            
-                            {selectedBoxId && totalVolume > 0 && (
-                                isBoxBigEnough ? (
-                                    <div className="bg-green-500/10 text-green-400 p-2 rounded-md text-sm flex items-center gap-2"><CheckCircle size={16}/> Le carton est adapté.</div>
-                                ) : (
-                                    <div className="bg-red-500/10 text-red-400 p-2 rounded-md text-sm flex items-center gap-2"><AlertTriangle size={16}/> Le carton est trop petit !</div>
-                                )
-                            )}
-
+                         <div className="p-4 bg-gray-900/50 rounded-lg space-y-2 text-sm">
+                            <div className="flex justify-between items-center"><span className="text-gray-400 flex items-center gap-2"><Weight size={16}/> Poids Total du Colis</span><span className="font-bold">{calculationResults.totalWeight.toFixed(0)} g</span></div>
                             <hr className="border-gray-700"/>
-
-                            <div className="flex justify-between items-center text-lg"><span className="text-gray-300">Coût d'envoi</span><span className="font-semibold">{formatPrice(shippingCost)}</span></div>
-                            <div className="flex justify-between items-center bg-green-500/10 p-3 rounded-lg"><span className="text-green-300 font-semibold text-lg">Bénéfice Net Estimé</span><span className="font-bold text-2xl text-green-400">{formatPrice(totalNetProfit)}</span></div>
+                            <div className="flex justify-between items-center"><span>Total Produits TTC</span><span>{formatPrice(calculationResults.totalRevenue - calculationResults.shippingCustomerPrice)}</span></div>
+                            <div className="flex justify-between items-center"><span>Expédition (facturée client)</span><span>{formatPrice(calculationResults.shippingCustomerPrice)}</span></div>
+                            <div className="flex justify-between items-center font-bold text-base border-t border-gray-700 pt-2"><span>Total Facturé Client</span><span>{formatPrice(calculationResults.totalRevenue)}</span></div>
+                            
+                            <div className="pt-2">
+                                <p className="text-red-400 font-semibold">- Dépenses du Colis</p>
+                                <div className="pl-4 text-gray-300">
+                                    <div className="flex justify-between"><span>Coût total des produits</span><span>{formatPrice(calculationResults.totalCost - calculationResults.boxCost - calculationResults.shippingProviderCost - calculationResults.transactionFees - calculationResults.businessCharges)}</span></div>
+                                    <div className="flex justify-between"><span>Coût du carton</span><span>{formatPrice(calculationResults.boxCost)}</span></div>
+                                    <div className="flex justify-between"><span>Coût transporteur</span><span>{formatPrice(calculationResults.shippingProviderCost)}</span></div>
+                                    <div className="flex justify-between"><span>Frais de transaction</span><span>{formatPrice(calculationResults.transactionFees)}</span></div>
+                                    <div className="flex justify-between"><span>Cotisations URSSAF</span><span>{formatPrice(calculationResults.businessCharges)}</span></div>
+                                    <div className="flex justify-between font-bold border-t border-gray-700/50 mt-1 pt-1"><span>Total Dépenses</span><span>{formatPrice(calculationResults.totalCost)}</span></div>
+                                </div>
+                            </div>
+                            
+                            <div className="flex justify-between items-center bg-green-500/10 p-3 rounded-lg mt-2 !-mx-4 !-mb-4">
+                                <span className="text-green-300 font-semibold text-lg">Bénéfice Net du Colis</span>
+                                <span className="font-bold text-2xl text-green-400">{formatPrice(calculationResults.totalProfit)}</span>
+                            </div>
                          </div>
                     </div>
                 </div>
