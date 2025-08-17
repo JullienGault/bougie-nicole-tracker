@@ -7,21 +7,21 @@ import { formatPrice } from '../../utils/formatters';
 
 const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) => {
     const { showToast } = useContext(AppContext);
-    // Ajout de l'état pour l'URL du fournisseur
+    // État pour la catégorie affichée (component ou packaging)
+    const [visibleCategory, setVisibleCategory] = useState('component');
     const [supplierUrl, setSupplierUrl] = useState('');
     const [name, setName] = useState('');
     const [purchasePrice, setPurchasePrice] = useState('');
     const [purchaseQty, setPurchaseQty] = useState('');
     const [purchaseUnit, setPurchaseUnit] = useState('kg');
     const [editingMaterial, setEditingMaterial] = useState(null);
-    const [density, setDensity] = useState('1'); 
-    const [weightPerPiece, setWeightPerPiece] = useState(''); 
+    const [density, setDensity] = useState('1');
+    const [weightPerPiece, setWeightPerPiece] = useState('');
     const [category, setCategory] = useState('component');
 
     const resetForm = () => {
-        setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg'); 
+        setName(''); setPurchasePrice(''); setPurchaseQty(''); setPurchaseUnit('kg');
         setDensity('1'); setWeightPerPiece(''); setEditingMaterial(null); setCategory('component');
-        // Vider le champ URL
         setSupplierUrl('');
     };
 
@@ -40,11 +40,10 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
             case 'ml': standardizedPrice = price / qty; standardizedUnit = 'ml'; break;
             case 'piece': default: standardizedPrice = price / qty; standardizedUnit = 'piece'; break;
         }
-        const data = { 
+        const data = {
             name, category, purchasePrice: price, purchaseQty: qty, purchaseUnit, standardizedPrice, standardizedUnit,
             density: (purchaseUnit === 'L' || purchaseUnit === 'ml') ? parseFloat(density) : null,
             weightPerPiece: purchaseUnit === 'piece' ? parseFloat(weightPerPiece) : null,
-            // Ajout de l'URL du fournisseur aux données
             supplierUrl: supplierUrl.trim(),
         };
         try {
@@ -58,7 +57,7 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
             resetForm();
         } catch (error) { showToast("Une erreur est survenue.", "error"); }
     };
-    
+
     const handleDelete = async (materialId) => {
         if (window.confirm("Êtes-vous sûr de vouloir supprimer cette matière première ?")) {
             await deleteDoc(doc(db, 'rawMaterials', materialId));
@@ -73,20 +72,24 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
         setDensity(material.density || '1');
         setWeightPerPiece(material.weightPerPiece || '');
         setCategory(material.category || 'component');
-        // Pré-remplir le champ URL
         setSupplierUrl(material.supplierUrl || '');
     };
-
-    const productComponents = useMemo(() => materials.filter(m => !m.category || m.category === 'component'), [materials]);
-    const packagingComponents = useMemo(() => materials.filter(m => m.category === 'packaging'), [materials]);
+    
+    // Filtrage de la liste des matériaux en fonction de l'onglet actif
+    const displayedMaterials = useMemo(() => {
+        if (visibleCategory === 'component') {
+            return materials.filter(m => !m.category || m.category === 'component');
+        }
+        return materials.filter(m => m.category === 'packaging');
+    }, [materials, visibleCategory]);
 
     return (
         <div className="bg-gray-800 p-6 rounded-2xl flex flex-col">
             <button onClick={() => setIsVisible(!isVisible)} className="w-full flex justify-between items-center text-left">
-                <h3 className="text-xl font-bold flex items-center gap-2"><Building size={22}/> Bibliothèque des Matières</h3>
+                <h3 className="text-xl font-bold flex items-center gap-2"><Building size={22} /> Bibliothèque des Matières</h3>
                 <ChevronDown className={`transform transition-transform ${isVisible ? 'rotate-180' : ''}`} />
             </button>
-            
+
             {isVisible && (
                 <div className="mt-6 border-t border-gray-700 pt-6 animate-fade-in">
                     <form onSubmit={handleSubmit} className="space-y-4 mb-6">
@@ -114,46 +117,48 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
                             {(purchaseUnit === 'L' || purchaseUnit === 'ml') && <div className="sm:col-span-3"><label className="text-sm text-gray-400">Densité (g/ml)</label><input type="number" step="0.01" value={density} onChange={e => setDensity(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>}
                             {purchaseUnit === 'piece' && <div className="sm:col-span-3"><label className="text-sm text-gray-400">Poids / pièce (g)</label><input type="number" step="0.1" value={weightPerPiece} onChange={e => setWeightPerPiece(e.target.value)} placeholder="ex: 250" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>}
                             <button type="submit" className="bg-indigo-600 py-2 px-4 rounded-lg flex items-center justify-center gap-2 h-[42px] sm:col-span-3 sm:col-start-8">
-                                {editingMaterial ? <Save size={18}/> : <PlusCircle size={18}/>} {editingMaterial ? 'Enregistrer' : 'Ajouter'}
+                                {editingMaterial ? <Save size={18} /> : <PlusCircle size={18} />} {editingMaterial ? 'Enregistrer' : 'Ajouter'}
                             </button>
                         </div>
                         {editingMaterial && <div className="flex justify-end"><button type="button" onClick={resetForm} className="bg-gray-600 py-2 px-4 rounded-lg">Annuler</button></div>}
                     </form>
 
+                    {/* Système d'onglets pour la liste */}
+                    <div className="flex gap-2 p-1 bg-gray-900 rounded-lg mb-4">
+                        <button onClick={() => setVisibleCategory('component')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${visibleCategory === 'component' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                            Composants de Produit
+                        </button>
+                        <button onClick={() => setVisibleCategory('packaging')} className={`flex-1 py-1.5 rounded-md text-sm font-semibold ${visibleCategory === 'packaging' ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                            Matériels d'Emballage
+                        </button>
+                    </div>
+
                     <div className="flex-grow overflow-y-auto custom-scrollbar pr-2 max-h-[50vh]">
-                        {[
-                            { title: "Composants de Produit", items: productComponents },
-                            { title: "Matériels d'Emballage", items: packagingComponents }
-                        ].map(section => (
-                            <div key={section.title} className="mt-4">
-                                <h4 className="text-lg font-semibold mb-2">{section.title}</h4>
-                                <div className="space-y-2">
-                                    <div className="grid grid-cols-[1fr_120px_auto] gap-3 px-2 text-xs uppercase text-gray-400"><span>Nom</span><span>Coût standardisé</span><span className="text-center">Actions</span></div>
-                                    {section.items.map(mat => (
-                                        <div key={mat.id} className="grid grid-cols-[1fr_120px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded-lg">
-                                            <span className="font-semibold truncate">{mat.name}</span>
-                                            <span className="font-mono text-sm text-indigo-300">
-                                                {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
-                                                    ? `${formatPrice(mat.standardizedPrice * 100)}/100${mat.standardizedUnit}`
-                                                    : `${formatPrice(mat.standardizedPrice)}/${mat.standardizedUnit}`
-                                                }
-                                                {mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}
-                                            </span>
-                                            <div className="flex justify-center gap-1">
-                                                {mat.supplierUrl && (
-                                                    <a href={mat.supplierUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 p-1 hover:bg-gray-700 rounded" title="Voir le fournisseur">
-                                                        <LinkIcon size={18}/>
-                                                    </a>
-                                                )}
-                                                <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18}/></button>
-                                                <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18}/></button>
-                                                <button onClick={() => handleDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-700 rounded" title="Supprimer"><Trash2 size={18}/></button>
-                                            </div>
-                                        </div>
-                                    ))}
+                        <div className="space-y-2">
+                            <div className="grid grid-cols-[1fr_120px_auto] gap-3 px-2 text-xs uppercase text-gray-400"><span>Nom</span><span>Coût standardisé</span><span className="text-center">Actions</span></div>
+                            {displayedMaterials.map(mat => (
+                                <div key={mat.id} className="grid grid-cols-[1fr_120px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded-lg">
+                                    <span className="font-semibold truncate">{mat.name}</span>
+                                    <span className="font-mono text-sm text-indigo-300">
+                                        {(mat.standardizedUnit === 'g' || mat.standardizedUnit === 'ml')
+                                            ? `${formatPrice(mat.standardizedPrice * 100)}/100${mat.standardizedUnit}`
+                                            : `${formatPrice(mat.standardizedPrice)}/${mat.standardizedUnit}`
+                                        }
+                                        {mat.weightPerPiece && ` (${mat.weightPerPiece}g)`}
+                                    </span>
+                                    <div className="flex justify-center gap-1">
+                                        {mat.supplierUrl && (
+                                            <a href={mat.supplierUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 p-1 hover:bg-gray-700 rounded" title="Voir le fournisseur">
+                                                <LinkIcon size={18} />
+                                            </a>
+                                        )}
+                                        <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-700 rounded" title="Ajouter au calcul"><PlusCircle size={18} /></button>
+                                        <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-700 rounded" title="Modifier"><Edit size={18} /></button>
+                                        <button onClick={() => handleDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-700 rounded" title="Supprimer"><Trash2 size={18} /></button>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
