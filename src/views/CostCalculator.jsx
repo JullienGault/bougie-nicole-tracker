@@ -5,7 +5,7 @@ import { AppContext } from '../contexts/AppContext';
 import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon } from 'lucide-react';
 
 // Nouveaux imports des composants et du hook
-import { useCostCalculator } from '../../hooks/useCostCalculator';
+import { useCostCalculator } from '../hooks/useCostCalculator';
 import ItemList from '../../components/cost/ItemList';
 import RawMaterialManager from '../../components/cost/RawMaterialManager';
 import ShippingRateManager from '../../components/cost/ShippingRateManager';
