@@ -1,7 +1,7 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp } from '../services/firebase';
-import { AppContext } from '../contexts/AppContext';
+import { AppContext } from '../../contexts/AppContext';
 import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler } from 'lucide-react';
 
 import { useCostCalculator } from '../hooks/useCostCalculator';
@@ -9,6 +9,7 @@ import ItemList from '../components/cost/ItemList';
 import RawMaterialManager from '../components/cost/RawMaterialManager';
 import ShippingRateManager from '../components/cost/ShippingRateManager';
 import CalculationPanel from '../components/cost/CalculationPanel';
+import ShippingSimulator from '../components/cost/ShippingSimulator'; // <-- IMPORT DU SIMULATEUR
 
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
@@ -23,7 +24,7 @@ const CostCalculator = () => {
     const [productName, setProductName] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
-    const [isMaterialsVisible, setIsMaterialsVisible] = useState(true); // Ouvert par défaut
+    const [isMaterialsVisible, setIsMaterialsVisible] = useState(true);
     
     const [productLength, setProductLength] = useState('');
     const [productWidth, setProductWidth] = useState('');
@@ -146,12 +147,14 @@ const CostCalculator = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     
-    const availableMaterials = useMemo(() => {
+    const { availableMaterials, packagingMaterials } = useMemo(() => {
         const usedMaterialIds = new Set([
             ...recipeItems.map(item => item.materialId),
             ...packagingItems.map(item => item.materialId)
         ]);
-        return rawMaterials.filter(material => !usedMaterialIds.has(material.id));
+        const available = rawMaterials.filter(material => !usedMaterialIds.has(material.id));
+        const packaging = rawMaterials.filter(material => material.category === 'packaging');
+        return { availableMaterials: available, packagingMaterials: packaging };
     }, [rawMaterials, recipeItems, packagingItems]);
 
 
@@ -241,6 +244,18 @@ const CostCalculator = () => {
                     onSelect={handleAddMaterialToCalculation}
                     isVisible={isMaterialsVisible}
                     setIsVisible={setIsMaterialsVisible}
+                />
+            </div>
+            
+            {/* SECTION DU SIMULATEUR AJOUTÉE À LA FIN */}
+            <div className="mt-8 pt-8 border-t-2 border-gray-700">
+                <ShippingSimulator 
+                    savedCalculations={savedCalculations} 
+                    packagingMaterials={packagingMaterials}
+                    shippingRates={shippingRates}
+                    tvaRate={tvaRate}
+                    feesRate={feesRate}
+                    chargesRate={chargesRate}
                 />
             </div>
         </div>
