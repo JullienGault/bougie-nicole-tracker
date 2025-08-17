@@ -1,27 +1,39 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
-import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
+import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy, where, writeBatch, getDocs } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
-import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box, Info, Building, Wrench } from 'lucide-react';
+import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box, Info, Building, Wrench, PackagePlus } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
 
 
 // --- Sous-composant pour la Grille Tarifaire ---
 const ShippingRateManager = ({ rates }) => {
     const { showToast } = useContext(AppContext);
+    const [activeService, setActiveService] = useState('Locker');
     const [maxWeight, setMaxWeight] = useState('');
     const [providerCost, setProviderCost] = useState('');
     const [customerPrice, setCustomerPrice] = useState('');
     const [editingId, setEditingId] = useState(null);
 
+    const services = ['Locker', 'Point Relais', 'Domicile'];
+
     const handleSaveRate = async () => {
         const weight = parseInt(maxWeight, 10);
         const cost = parseFloat(providerCost);
         const price = parseFloat(customerPrice);
+
         if (isNaN(weight) || weight <= 0 || isNaN(cost) || cost < 0 || isNaN(price) || price < 0) {
-            showToast("Veuillez entrer des valeurs valides pour tous les champs.", "error"); return;
+            showToast("Veuillez entrer des valeurs valides pour tous les champs.", "error");
+            return;
         }
-        const data = { maxWeight: weight, cost, price };
+
+        const data = { 
+            service: activeService,
+            maxWeight: weight, 
+            cost, 
+            price 
+        };
+
         try {
             if (editingId) {
                 await updateDoc(doc(db, 'shippingRates', editingId), data);
@@ -31,7 +43,9 @@ const ShippingRateManager = ({ rates }) => {
                 showToast("Nouveau tarif ajouté.", "success");
             }
             setMaxWeight(''); setProviderCost(''); setCustomerPrice(''); setEditingId(null);
-        } catch (error) { showToast("Erreur lors de la sauvegarde du tarif.", "error"); }
+        } catch (error) { 
+            showToast("Erreur lors de la sauvegarde du tarif.", "error"); 
+        }
     };
 
     const handleDeleteRate = async (rateId) => {
@@ -40,9 +54,76 @@ const ShippingRateManager = ({ rates }) => {
             showToast("Tarif supprimé.", "success");
         }
     };
+
+    const handleInitializeRates = async () => {
+        if (!window.confirm("Cette action va ajouter les 45 tarifs de base de Mondial Relay. Si des tarifs existent déjà, ils ne seront pas dupliqués. Continuer ?")) {
+            return;
+        }
+
+        const mondialRelayRates = {
+            'Locker': [
+                {w: 250, c: 3.59}, {w: 500, c: 3.59}, {w: 750, c: 3.59}, {w: 1000, c: 3.59}, {w: 2000, c: 5.39}, 
+                {w: 3000, c: 5.99}, {w: 4000, c: 6.89}, {w: 5000, c: 9.29}, {w: 7000, c: 12.19}, {w: 10000, c: 13.69}, 
+                {w: 15000, c: 19.79}, {w: 20000, c: 20.89}, {w: 25000, c: 31.00}
+            ],
+            'Point Relais': [
+                {w: 250, c: 4.20}, {w: 500, c: 4.30}, {w: 750, c: 5.40}, {w: 1000, c: 5.40}, {w: 2000, c: 6.60},
+                {w: 3000, c: 7.40}, {w: 4000, c: 8.90}, {w: 5000, c: 12.40}, {w: 7000, c: 14.40}, {w: 10000, c: 14.40},
+                {w: 15000, c: 22.40}, {w: 20000, c: 22.40}, {w: 25000, c: 32.40}
+            ],
+            'Domicile': [
+                {w: 250, c: 4.99}, {w: 500, c: 6.79}, {w: 750, c: 8.55}, {w: 1000, c: 8.79}, {w: 2000, c: 9.99},
+                {w: 3000, c: 14.99}, {w: 4000, c: 14.99}, {w: 5000, c: 14.99}, {w: 7000, c: 18.99}, {w: 10000, c: 23.99},
+                {w: 15000, c: 28.99}, {w: 20000, c: 39.70}, {w: 25000, c: 39.70}
+            ]
+        };
+
+        try {
+            const batch = writeBatch(db);
+            let count = 0;
+            for (const service of services) {
+                const existingRatesSnapshot = await getDocs(query(collection(db, 'shippingRates'), where('service', '==', service)));
+                if (existingRatesSnapshot.empty) {
+                    mondialRelayRates[service].forEach(rate => {
+                        const rateDocRef = doc(collection(db, 'shippingRates'));
+                        batch.set(rateDocRef, {
+                            service: service,
+                            maxWeight: rate.w,
+                            cost: rate.c,
+                            price: rate.c // Prix client initialisé au coût
+                        });
+                        count++;
+                    });
+                }
+            }
+            if (count > 0) {
+                await batch.commit();
+                showToast(`${count} tarifs ont été ajoutés avec succès !`, "success");
+            } else {
+                showToast("Les tarifs semblent déjà initialisés pour tous les services.", "info");
+            }
+        } catch (error) {
+            console.error("Erreur lors de l'initialisation des tarifs :", error);
+            showToast("Une erreur est survenue lors de l'initialisation.", "error");
+        }
+    };
+
+    const filteredRates = useMemo(() => rates.filter(r => r.service === activeService), [rates, activeService]);
     
     return (
         <>
+            <div className="flex justify-between items-center mb-4">
+                <div className="flex gap-1 p-1 bg-gray-900 rounded-lg">
+                    {services.map(service => (
+                        <button key={service} onClick={() => setActiveService(service)} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${activeService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>
+                            {service}
+                        </button>
+                    ))}
+                </div>
+                <button onClick={handleInitializeRates} className="p-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg flex items-center gap-2 text-xs">
+                    <PackagePlus size={16}/> Pré-remplir les tarifs Mondial Relay
+                </button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end mb-4">
                 <div><label className="text-sm text-gray-400">Poids max (g)</label><input type="number" value={maxWeight} onChange={e => setMaxWeight(e.target.value)} placeholder="500" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                 <div><label className="text-sm text-gray-400">Coût Transporteur (€)</label><input type="number" step="0.01" value={providerCost} onChange={e => setProviderCost(e.target.value)} placeholder="4.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
@@ -50,7 +131,7 @@ const ShippingRateManager = ({ rates }) => {
                 <button onClick={handleSaveRate} className="bg-indigo-600 py-2 px-4 rounded-lg h-[42px]">{editingId ? 'Modifier' : 'Ajouter'}</button>
             </div>
             <div className="max-h-48 overflow-y-auto custom-scrollbar">
-                {rates.map(rate => (
+                {filteredRates.map(rate => (
                     <div key={rate.id} className="flex justify-between items-center p-2 bg-gray-900/50 rounded mb-2">
                         <span>Jusqu'à <span className="font-bold">{rate.maxWeight}g</span></span>
                         <div className="text-right">
@@ -58,7 +139,7 @@ const ShippingRateManager = ({ rates }) => {
                             <span className="text-xs text-yellow-400">{formatPrice(rate.cost)} <span className="text-gray-400">(Coût)</span></span>
                         </div>
                         <div className="flex gap-2">
-                           <button onClick={() => { setEditingId(rate.id); setMaxWeight(rate.maxWeight); setProviderCost(rate.cost); setCustomerPrice(rate.price); }} className="text-yellow-400 p-1"><Edit size={16}/></button>
+                           <button onClick={() => { setEditingId(rate.id); setMaxWeight(rate.maxWeight); setProviderCost(rate.cost); setCustomerPrice(rate.price); setActiveService(rate.service) }} className="text-yellow-400 p-1"><Edit size={16}/></button>
                            <button onClick={() => handleDeleteRate(rate.id)} className="text-red-500 p-1"><Trash2 size={16}/></button>
                         </div>
                     </div>
@@ -67,6 +148,8 @@ const ShippingRateManager = ({ rates }) => {
         </>
     );
 };
+
+// --- Les autres sous-composants restent les mêmes...
 
 const RawMaterialManager = ({ materials, onSelect }) => {
     const { showToast } = useContext(AppContext);
@@ -225,7 +308,6 @@ const ItemList = ({ title, icon: Icon, items, onQuantityChange, onRemoveItem }) 
 );
 
 
-// --- Composant Principal ---
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
     const [saleMode, setSaleMode] = useState('internet');
@@ -238,7 +320,9 @@ const CostCalculator = () => {
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     
-    // --- MODIFIÉ : TVA par défaut à 0% ---
+    // --- NOUVEL ÉTAT : Pour choisir le service d'expédition ---
+    const [shippingService, setShippingService] = useState('Locker');
+
     const [tvaRate, setTvaRate] = useState('0');
     const [marginMultiplier, setMarginMultiplier] = useState('2.5');
     const chargesRate = 13.30;
@@ -246,7 +330,6 @@ const CostCalculator = () => {
     const [depotCommissionRate, setDepotCommissionRate] = useState('30');
     const [manualTtcPrice, setManualTtcPrice] = useState('0.00');
 
-    // --- MODIFIÉ : Ordre des TVA inversé ---
     const availableTvaRates = [0, 5.5, 10, 20];
 
     useEffect(() => {
@@ -290,7 +373,8 @@ const CostCalculator = () => {
     }, []);
 
     const calculateForMode = (mode, commonData) => {
-        const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping } = commonData;
+        // --- MODIFIÉ : Ajout de `shippingService` pour le calcul ---
+        const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping, service } = commonData;
         
         const margin = parseFloat(marginStr) || 0;
         const tva = parseFloat(tvaStr) || 0;
@@ -333,7 +417,11 @@ const CostCalculator = () => {
         if (mode === 'internet') {
             let shippingCustomerPrice = 0;
             if (finalPackageWeight > 0) {
-                const applicableRate = shipping.find(rate => finalPackageWeight <= rate.maxWeight);
+                // --- MODIFIÉ : On filtre par service avant de chercher le tarif ---
+                const applicableRate = shipping
+                    .filter(rate => rate.service === service)
+                    .find(rate => finalPackageWeight <= rate.maxWeight);
+
                 if(applicableRate) {
                     shippingProviderCost = applicableRate.cost;
                     shippingCustomerPrice = applicableRate.price;
@@ -363,12 +451,18 @@ const CostCalculator = () => {
 
     const calculations = useMemo(() => {
         const commonData = {
-            recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
-            tva: tvaRate, charges: chargesRate, fees: feesRate,
-            depotCommission: depotCommissionRate, shipping: shippingRates
+            recipe: recipeItems, 
+            packaging: packagingItems, 
+            margin: marginMultiplier,
+            tva: tvaRate, 
+            charges: chargesRate, 
+            fees: feesRate,
+            depotCommission: depotCommissionRate, 
+            shipping: shippingRates,
+            service: shippingService // On passe le service au calcul
         };
         return calculateForMode(saleMode, commonData);
-    }, [recipeItems, packagingItems, marginMultiplier, tvaRate, feesRate, depotCommissionRate, shippingRates, saleMode]);
+    }, [recipeItems, packagingItems, marginMultiplier, tvaRate, feesRate, depotCommissionRate, shippingRates, saleMode, shippingService]);
 
     const handleManualTtcPriceChange = (e) => {
         const newTtcPriceString = e.target.value;
@@ -390,17 +484,19 @@ const CostCalculator = () => {
             showToast("Veuillez nommer le produit et ajouter au moins un composant.", "error"); return;
         }
         
-        const commonData = {
-            recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
-            tva: tvaRate, charges: chargesRate, fees: feesRate,
-            depotCommission: depotCommissionRate, shipping: shippingRates
-        };
+        const services = ['Locker', 'Point Relais', 'Domicile'];
+        const resultsByMode = { depot: calculateForMode('depot', { /*...*/ }) };
+        
+        // On calcule pour chaque service d'expédition
+        services.forEach(service => {
+            const commonData = {
+                recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
+                tva: tvaRate, charges: chargesRate, fees: feesRate,
+                shipping: shippingRates, service: service
+            };
+            resultsByMode[service] = calculateForMode('internet', commonData);
+        });
 
-        const resultsByMode = {
-            internet: calculateForMode('internet', commonData),
-            domicile: calculateForMode('domicile', commonData),
-            depot: calculateForMode('depot', commonData)
-        };
 
         const dataToSave = {
             productName, 
@@ -410,7 +506,7 @@ const CostCalculator = () => {
             tvaRate: parseFloat(tvaRate) || 0,
             feesRate: parseFloat(feesRate) || 0,
             depotCommissionRate: parseFloat(depotCommissionRate) || 0,
-            resultsByMode, 
+            resultsByMode, // Contient maintenant les calculs pour tous les services
             updatedAt: serverTimestamp()
         };
 
@@ -529,6 +625,18 @@ const CostCalculator = () => {
                                 {saleMode === 'depot' && <div className="flex justify-between items-center"><label className="text-gray-300">Commission Dépôt %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
                             </div>
                             
+                            {/* --- NOUVEAU : Sélecteur de service d'expédition --- */}
+                            {saleMode === 'internet' && (
+                                <div className="p-4 bg-gray-900/50 rounded-lg">
+                                    <label className="text-gray-300 mb-2 block">Service d'expédition</label>
+                                    <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">
+                                        {['Locker', 'Point Relais', 'Domicile'].map(service => (
+                                            <button key={service} onClick={() => setShippingService(service)} className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold ${shippingService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{service}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-2 pt-2">
                                 <div className="flex justify-between p-2"><span className="text-gray-400">Coût de Production</span><span className="font-bold text-lg text-yellow-400">{formatPrice(calculations.productCost)}</span></div>
                                 <hr className="border-gray-700/50"/>
@@ -557,22 +665,21 @@ const CostCalculator = () => {
                         <h3 className="text-xl font-bold mb-4">Bibliothèque de Produits Calculés</h3>
                         <div className="space-y-3 max-h-[40vh] overflow-y-auto custom-scrollbar">
                             {savedCalculations.map(calc => (
-                                // --- MODIFIÉ : Nouvelle structure d'affichage ---
                                 <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
                                     <p className="font-bold text-base text-white flex-grow text-left w-full md:w-auto">{calc.productName}</p>
                                     
                                     <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
                                         <div>
-                                            <span className="text-xs text-cyan-400 block">Internet</span>
-                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.internet?.finalProfit || 0)}</p>
+                                            <span className="text-xs text-cyan-400 block">Locker</span>
+                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p>
                                         </div>
                                         <div>
-                                            <span className="text-xs text-purple-400 block">Domicile</span>
-                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p>
+                                            <span className="text-xs text-purple-400 block">Relais</span>
+                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.['Point Relais']?.finalProfit || 0)}</p>
                                         </div>
                                         <div>
-                                            <span className="text-xs text-pink-400 block">Dépôt</span>
-                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p>
+                                            <span className="text-xs text-pink-400 block">Domicile</span>
+                                            <p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Domicile?.finalProfit || 0)}</p>
                                         </div>
                                     </div>
                                     
