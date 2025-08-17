@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useContext } from 'react';
 import { db, addDoc, updateDoc, deleteDoc, doc, collection, serverTimestamp } from '../../services/firebase';
 import { AppContext } from '../../contexts/AppContext';
-import { PlusCircle, Save, Edit, Trash2, Link as LinkIcon, Ruler } from 'lucide-react';
+import { PlusCircle, Save, Edit, Trash2, Box, Package, ChevronDown } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
 // Sous-composant pour gérer une seule catégorie (Composant ou Emballage)
@@ -20,11 +20,14 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
     const [width, setWidth] = useState('');
     const [height, setHeight] = useState('');
     const [editingMaterial, setEditingMaterial] = useState(null);
+    // NOUVEL ÉTAT: Pour la sous-catégorie d'emballage
+    const [packagingSubCategory, setPackagingSubCategory] = useState('productPackaging');
 
     const resetForm = () => {
         setName(''); setSupplierUrl(''); setPurchasePrice(''); setPurchaseQty('');
         setPurchaseUnit(category === 'component' ? 'kg' : 'piece');
         setDensity('1'); setWeightPerPiece(''); setLength(''); setWidth(''); setHeight('');
+        setPackagingSubCategory('productPackaging');
         setEditingMaterial(null);
     };
 
@@ -51,7 +54,10 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
             length: category === 'packaging' ? parseFloat(length) || null : null,
             width: category === 'packaging' ? parseFloat(width) || null : null,
             height: category === 'packaging' ? parseFloat(height) || null : null,
+            // AJOUT: Sauvegarde de la sous-catégorie
+            packagingSubCategory: category === 'packaging' ? packagingSubCategory : null,
         };
+
         try {
             if (editingMaterial) {
                 await updateDoc(doc(db, 'rawMaterials', editingMaterial.id), data);
@@ -73,15 +79,27 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
         setLength(material.length || '');
         setWidth(material.width || '');
         setHeight(material.height || '');
-        onEdit(material.id); // Notifie le parent qu'une édition est en cours
+        // AJOUT: Chargement de la sous-catégorie
+        setPackagingSubCategory(material.packagingSubCategory || 'productPackaging');
+        onEdit(material.id);
     };
 
     return (
         <div className="bg-gray-900/50 p-4 rounded-xl flex flex-col">
             <h4 className="font-bold text-lg mb-4 text-center">{title}</h4>
             <form onSubmit={handleSubmit} className="space-y-3 mb-4">
-                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nom" className="w-full bg-gray-700 p-2 rounded-lg" />
                 {category === 'packaging' && (
+                    <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Type d'emballage</label>
+                        <select value={packagingSubCategory} onChange={e => setPackagingSubCategory(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg h-[42px]">
+                            <option value="productPackaging">Emballage Produit</option>
+                            <option value="shippingBox">Carton d'Expédition</option>
+                            <option value="shippingConsumable">Consommable d'Expédition</option>
+                        </select>
+                    </div>
+                )}
+                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nom" className="w-full bg-gray-700 p-2 rounded-lg" />
+                {packagingSubCategory === 'shippingBox' && (
                     <div className="grid grid-cols-3 gap-2">
                         <input type="number" step="0.1" value={length} onChange={e => setLength(e.target.value)} placeholder="L (cm)" className="w-full bg-gray-700 p-2 rounded-lg" />
                         <input type="number" step="0.1" value={width} onChange={e => setWidth(e.target.value)} placeholder="l (cm)" className="w-full bg-gray-700 p-2 rounded-lg" />
@@ -132,7 +150,7 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
 const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) => {
     const { showToast } = useContext(AppContext);
     
-    const [editingId, setEditingId] = useState(null); // Pour suivre quelle colonne a un formulaire actif
+    const [editingId, setEditingId] = useState(null);
 
     const handleDelete = async (materialId) => {
         if (window.confirm("Êtes-vous sûr de vouloir supprimer cette matière première ?")) {
@@ -143,7 +161,7 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
 
     const { componentMaterials, packagingMaterials } = useMemo(() => {
         return {
-            componentMaterials: materials.filter(m => !m.category || m.category === 'component'),
+            componentMaterials: materials.filter(m => m.category === 'component'),
             packagingMaterials: materials.filter(m => m.category === 'packaging')
         };
     }, [materials]);
@@ -152,7 +170,7 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
         <div className="bg-gray-800 p-6 rounded-2xl flex flex-col">
             <button onClick={() => setIsVisible(!isVisible)} className="w-full flex justify-between items-center text-left">
                 <h3 className="text-xl font-bold">Bibliothèque des Matières</h3>
-                {/* Icône ChevronDown retirée pour un look plus épuré car le titre est maintenant plus simple */}
+                <ChevronDown className={`transform transition-transform ${isVisible ? 'rotate-180' : ''}`} />
             </button>
 
             {isVisible && (
