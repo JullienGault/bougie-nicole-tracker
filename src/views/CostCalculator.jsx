@@ -4,38 +4,31 @@ import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, ser
 import { AppContext } from '../contexts/AppContext';
 import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler } from 'lucide-react';
 
-// Nouveaux imports des composants et du hook
 import { useCostCalculator } from '../hooks/useCostCalculator';
 import ItemList from '../components/cost/ItemList';
 import RawMaterialManager from '../components/cost/RawMaterialManager';
 import ShippingRateManager from '../components/cost/ShippingRateManager';
 import CalculationPanel from '../components/cost/CalculationPanel';
-import ShippingSimulator from '../components/cost/ShippingSimulator'; // <-- NOUVEL IMPORT
 
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
 
-    // --- GESTION DES DONNÉES DE BASE ---
     const [rawMaterials, setRawMaterials] = useState([]);
     const [shippingRates, setShippingRates] = useState([]);
     const [savedCalculations, setSavedCalculations] = useState([]);
 
-    // --- ÉTATS DU CALCULATEUR ACTUEL ---
     const [saleMode, setSaleMode] = useState('internet');
     const [recipeItems, setRecipeItems] = useState([]);
     const [packagingItems, setPackagingItems] = useState([]);
     const [productName, setProductName] = useState('');
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
-    const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
-    const [shippingService, setShippingService] = useState('Locker');
+    const [isMaterialsVisible, setIsMaterialsVisible] = useState(true); // Ouvert par défaut
     
-    // Nouveaux états pour les dimensions du produit fini
     const [productLength, setProductLength] = useState('');
     const [productWidth, setProductWidth] = useState('');
     const [productHeight, setProductHeight] = useState('');
 
-    // --- PARAMÈTRES DE CALCUL ---
     const [tvaRate, setTvaRate] = useState('0');
     const [marginMultiplier, setMarginMultiplier] = useState('3.50');
     const chargesRate = 13.4;
@@ -43,8 +36,8 @@ const CostCalculator = () => {
     const [depotCommissionRate, setDepotCommissionRate] = useState('30');
     const [manualTtcPrice, setManualTtcPrice] = useState('0.00');
     const availableTvaRates = [0, 5.5, 10, 20];
+    const [shippingService, setShippingService] = useState('Locker');
 
-    // --- FETCH DES DONNÉES FIREBASE ---
     useEffect(() => {
         const qMats = query(collection(db, 'rawMaterials'), orderBy('name'));
         const unsubMats = onSnapshot(qMats, (snap) => setRawMaterials(snap.docs.map(d => ({ id: d.id, ...d.data() }))));
@@ -58,13 +51,11 @@ const CostCalculator = () => {
         return () => { unsubMats(); unsubRates(); unsubCalcs(); };
     }, []);
 
-    // --- UTILISATION DU HOOK DE CALCUL ---
     const { calculations, calculateAllModes } = useCostCalculator({
         saleMode, recipeItems, packagingItems, shippingRates, shippingService,
         marginMultiplier, tvaRate, feesRate, depotCommissionRate, chargesRate
     });
 
-    // --- LOGIQUE DE MANIPULATION DES LISTES ---
     const handleAddMaterialToCalculation = (material) => {
         const targetList = material.category === 'packaging' ? packagingItems : recipeItems;
         const setTargetList = material.category === 'packaging' ? setPackagingItems : setRecipeItems;
@@ -80,7 +71,6 @@ const CostCalculator = () => {
     const handleRemoveRecipeItem = useCallback((materialId) => setRecipeItems(items => items.filter(item => item.materialId !== materialId)), []);
     const handleRemovePackagingItem = useCallback((materialId) => setPackagingItems(items => items.filter(item => item.materialId !== materialId)), []);
 
-    // --- LOGIQUE DE GESTION DU PRIX ET DE LA MARGE ---
     const handleManualTtcPriceChange = (e) => {
         const newTtcPriceString = e.target.value;
         setManualTtcPrice(newTtcPriceString);
@@ -108,7 +98,6 @@ const CostCalculator = () => {
         setProductHeight('');
     };
 
-    // --- LOGIQUE DE SAUVEGARDE ET CHARGEMENT ---
     const handleSaveCost = async () => {
         if (!productName || recipeItems.length === 0) {
             showToast("Veuillez nommer le produit et ajouter au moins un composant.", "error"); return;
@@ -157,14 +146,12 @@ const CostCalculator = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     
-    const { availableMaterials, packagingMaterials } = useMemo(() => {
+    const availableMaterials = useMemo(() => {
         const usedMaterialIds = new Set([
             ...recipeItems.map(item => item.materialId),
             ...packagingItems.map(item => item.materialId)
         ]);
-        const available = rawMaterials.filter(material => !usedMaterialIds.has(material.id));
-        const packaging = rawMaterials.filter(material => material.category === 'packaging');
-        return { availableMaterials: available, packagingMaterials: packaging };
+        return rawMaterials.filter(material => !usedMaterialIds.has(material.id));
     }, [rawMaterials, recipeItems, packagingItems]);
 
 
@@ -186,7 +173,6 @@ const CostCalculator = () => {
             </div>
 
             <main className="flex flex-col lg:flex-row gap-8">
-                
                 <div className="lg:w-3/5 flex flex-col gap-8">
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Wrench size={22}/> Produit Actuel</h3>
@@ -195,7 +181,6 @@ const CostCalculator = () => {
                              <div className="bg-gray-900 p-3 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids: </span><span className="font-bold ml-2 text-lg">{(calculations.finalPackageWeight || 0).toFixed(0)} g</span></div>
                         </div>
 
-                        {/* Champs de dimensions pour le produit fini */}
                         <div className="p-4 bg-gray-900/50 rounded-lg mb-6">
                             <label className="text-sm text-gray-400 flex items-center gap-2 mb-2"><Ruler size={16}/> Dimensions du produit fini (cm) - <i className='text-xs'>Optionnel</i></label>
                             <div className="grid grid-cols-3 gap-3">
@@ -206,11 +191,16 @@ const CostCalculator = () => {
                         </div>
 
                         <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} onQuantityChange={handleRecipeQuantityChange} onRemoveItem={handleRemoveRecipeItem} />
+                        
+                        {saleMode === 'internet' && (
+                            <div className="mt-6">
+                               <ItemList title="Éléments d'emballage & Expédition" icon={Box} items={packagingItems} onQuantityChange={handlePackagingQuantityChange} onRemoveItem={handleRemovePackagingItem} />
+                            </div>
+                        )}
                     </div>
                     
                     {saleMode === 'internet' && (
                         <div className="bg-gray-800 p-6 rounded-2xl space-y-4">
-                           <ItemList title="Éléments d'emballage & Expédition" icon={Box} items={packagingItems} onQuantityChange={handlePackagingQuantityChange} onRemoveItem={handleRemovePackagingItem} />
                            <div>
                                <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left p-2">
                                    <h4 className="text-lg font-semibold flex items-center gap-2"><Ship size={20}/> Grille Tarifaire d'Expédition</h4>
@@ -220,13 +210,6 @@ const CostCalculator = () => {
                            </div>
                         </div>
                     )}
-
-                    <RawMaterialManager 
-                        materials={availableMaterials} 
-                        onSelect={handleAddMaterialToCalculation}
-                        isVisible={isMaterialsVisible}
-                        setIsVisible={setIsMaterialsVisible}
-                    />
                 </div>
 
                 <CalculationPanel 
@@ -252,12 +235,12 @@ const CostCalculator = () => {
                 />
             </main>
             
-            {/* Section du simulateur ajoutée à la fin */}
             <div className="mt-8 pt-8 border-t-2 border-gray-700">
-                <ShippingSimulator 
-                    savedCalculations={savedCalculations} 
-                    packagingMaterials={packagingMaterials}
-                    shippingRates={shippingRates}
+                 <RawMaterialManager 
+                    materials={availableMaterials} 
+                    onSelect={handleAddMaterialToCalculation}
+                    isVisible={isMaterialsVisible}
+                    setIsVisible={setIsMaterialsVisible}
                 />
             </div>
         </div>
