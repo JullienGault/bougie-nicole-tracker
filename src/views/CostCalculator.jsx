@@ -1,5 +1,5 @@
 // src/views/CostCalculator.jsx
-import React, { useState, useEffect, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, query, orderBy } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { PlusCircle, Trash2, Save, X, Edit, Ship, Percent, ChevronDown, RefreshCw, Globe, Home, Store as StoreIcon, Box, Info, Building, Wrench } from 'lucide-react';
@@ -196,6 +196,36 @@ const RawMaterialManager = ({ materials, onSelect }) => {
     );
 };
 
+// --- CORRECTION : Le composant ItemList est maintenant défini EN DEHORS du composant principal ---
+const ItemList = ({ title, icon: Icon, items, onQuantityChange, onRemoveItem }) => (
+    <div className="p-4 rounded-2xl">
+        <h3 className="text-lg font-bold mb-3 flex items-center gap-2"><Icon size={20} /> {title}</h3>
+        {items.length > 0 && (
+            <div className="grid grid-cols-[1fr_80px_40px_auto] gap-3 items-center px-2 text-sm text-gray-400 uppercase font-semibold mb-2">
+                <span>Élément</span><span className="text-center">Qté</span><span>Unité</span>
+            </div>
+        )}
+        <div className="space-y-2 max-h-[30vh] overflow-y-auto custom-scrollbar pr-2">
+            {items.map(item => (
+                <div key={item.materialId} className="grid grid-cols-[1fr_80px_40px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded-lg">
+                    <div className="font-semibold truncate pr-2">{item.name}</div>
+                    <input 
+                        type="number" 
+                        step="0.1" 
+                        value={item.quantity} 
+                        onChange={e => onQuantityChange(item.materialId, e.target.value)} 
+                        className="w-full bg-gray-700 p-1 rounded text-center"
+                    />
+                    <span className="text-sm text-gray-400">{item.standardizedUnit}</span>
+                    <button onClick={() => onRemoveItem(item.materialId)} className="text-red-500 p-1"><X size={18}/></button>
+                </div>
+            ))}
+            {items.length === 0 && <p className="text-center text-gray-500 py-4">Ajoutez un élément depuis la bibliothèque.</p>}
+        </div>
+    </div>
+);
+
+
 // --- Composant Principal ---
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
@@ -238,13 +268,26 @@ const CostCalculator = () => {
         setTargetList(prev => [...prev, { materialId: material.id, ...material, quantity: 1 }]);
     };
 
-    const handleQuantityChange = (list, setList, materialId, newQuantity) => {
-        setList(items => items.map(item => item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item));
-    };
+    // --- CORRECTION : Handlers spécifiques pour chaque liste, wrappés dans useCallback ---
+    const handleRecipeQuantityChange = useCallback((materialId, newQuantity) => {
+        setRecipeItems(items => items.map(item => 
+            item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item
+        ));
+    }, []);
 
-    const handleRemoveItem = (setList, materialId) => {
-        setList(items => items.filter(item => item.materialId !== materialId));
-    };
+    const handlePackagingQuantityChange = useCallback((materialId, newQuantity) => {
+        setPackagingItems(items => items.map(item => 
+            item.materialId === materialId ? { ...item, quantity: parseFloat(newQuantity) || 0 } : item
+        ));
+    }, []);
+
+    const handleRemoveRecipeItem = useCallback((materialId) => {
+        setRecipeItems(items => items.filter(item => item.materialId !== materialId));
+    }, []);
+
+    const handleRemovePackagingItem = useCallback((materialId) => {
+        setPackagingItems(items => items.filter(item => item.materialId !== materialId));
+    }, []);
 
     const calculateForMode = (mode, commonData) => {
         const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping } = commonData;
@@ -427,35 +470,6 @@ const CostCalculator = () => {
             ))}
         </div>
     );
-
-    const ItemList = ({ title, icon: Icon, items, setList, onQuantityChange }) => (
-        <div className="p-4 rounded-2xl">
-            <h3 className="text-lg font-bold mb-3 flex items-center gap-2"><Icon size={20} /> {title}</h3>
-            {items.length > 0 && (
-                <div className="grid grid-cols-[1fr_80px_40px_auto] gap-3 items-center px-2 text-sm text-gray-400 uppercase font-semibold mb-2">
-                    <span>Élément</span><span className="text-center">Qté</span><span>Unité</span>
-                </div>
-            )}
-            <div className="space-y-2 max-h-[30vh] overflow-y-auto custom-scrollbar pr-2">
-                {items.map(item => (
-                    <div key={item.materialId} className="grid grid-cols-[1fr_80px_40px_auto] gap-3 items-center bg-gray-900/50 p-2 rounded-lg">
-                        <div className="font-semibold truncate pr-2">{item.name}</div>
-                        <input type="number" step="0.1" value={item.quantity} onChange={e => onQuantityChange(items, setList, item.materialId, e.target.value)} className="w-full bg-gray-700 p-1 rounded text-center"/>
-                        <span className="text-sm text-gray-400">{item.standardizedUnit}</span>
-                        <button onClick={() => handleRemoveItem(setList, item.materialId)} className="text-red-500 p-1"><X size={18}/></button>
-                    </div>
-                ))}
-                {items.length === 0 && <p className="text-center text-gray-500 py-4">Ajoutez un élément depuis la bibliothèque.</p>}
-            </div>
-        </div>
-    );
-
-    const ExpenseDetailRow = ({ label, value, tooltip }) => (
-        <div className="flex justify-between items-center py-1">
-            <span className="flex items-center gap-1.5 text-gray-300"> {label} <Info size={16} className="text-gray-500" title={tooltip} /> </span>
-            <span>{formatPrice(value)}</span>
-        </div>
-    );
     
     const depotNetRevenueHT = calculations.productPriceHT * (1 - ((parseFloat(depotCommissionRate) || 0) / (1 + (parseFloat(tvaRate) || 0)/100) ) / 100);
     const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
@@ -475,10 +489,8 @@ const CostCalculator = () => {
             
             {renderTabs()}
 
-            {/* --- NOUVELLE STRUCTURE FLEXBOX --- */}
             <div className="flex flex-col lg:flex-row gap-8">
                 
-                {/* --- COLONNE DE GAUCHE --- */}
                 <div className="lg:w-3/5 flex flex-col gap-8">
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><Wrench size={22}/> Produit Actuel</h3>
@@ -486,12 +498,12 @@ const CostCalculator = () => {
                             <input type="text" value={productName} onChange={e => setProductName(e.target.value)} placeholder="Nom du produit..." className="w-full bg-gray-700 p-3 rounded-lg sm:col-span-2"/>
                              <div className="bg-gray-900 p-3 rounded-lg text-center flex items-center justify-center"><span className="text-sm text-gray-400">Poids: </span><span className="font-bold ml-2 text-lg">{(calculations.finalPackageWeight || 0).toFixed(0)} g</span></div>
                         </div>
-                        <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} setList={setRecipeItems} onQuantityChange={handleQuantityChange} />
+                        <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} onQuantityChange={handleRecipeQuantityChange} onRemoveItem={handleRemoveRecipeItem} />
                     </div>
                     
                     {saleMode === 'internet' && (
                         <div className="bg-gray-800 p-6 rounded-2xl space-y-4">
-                           <ItemList title="Éléments d'emballage" icon={Box} items={packagingItems} setList={setPackagingItems} onQuantityChange={handleQuantityChange} />
+                           <ItemList title="Éléments d'emballage" icon={Box} items={packagingItems} onQuantityChange={handlePackagingQuantityChange} onRemoveItem={handleRemovePackagingItem} />
                             <div>
                                <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left p-2">
                                    <h4 className="text-lg font-semibold flex items-center gap-2"><Ship size={20}/> Grille Tarifaire d'Expédition</h4>
@@ -505,7 +517,6 @@ const CostCalculator = () => {
                     <RawMaterialManager materials={availableMaterials} onSelect={handleAddMaterialToCalculation} />
                 </div>
 
-                {/* --- COLONNE DE DROITE --- */}
                 <div className="lg:w-2/5 flex flex-col gap-8">
                     <div className="bg-gray-800 p-6 rounded-2xl">
                         <h3 className="text-xl font-bold mb-4">Résultats & Paramètres</h3>
