@@ -32,7 +32,7 @@ const CostCalculator = () => {
     // --- PARAMÈTRES DE CALCUL ---
     const [tvaRate, setTvaRate] = useState('0');
     const [marginMultiplier, setMarginMultiplier] = useState('3.50');
-    const chargesRate = 13.4; // <-- TAUX MIS À JOUR
+    const chargesRate = 13.4;
     const [feesRate, setFeesRate] = useState('1.75');
     const [depotCommissionRate, setDepotCommissionRate] = useState('30');
     const [manualTtcPrice, setManualTtcPrice] = useState('0.00');
@@ -176,16 +176,17 @@ const CostCalculator = () => {
                         <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} onQuantityChange={handleRecipeQuantityChange} onRemoveItem={handleRemoveRecipeItem} />
                     </div>
                     
-                    {(saleMode === 'internet' || saleMode === 'domicile') && (
+                    {/* CORRECTION : La carte ne s'affiche que pour le mode 'internet' */}
+                    {saleMode === 'internet' && (
                         <div className="bg-gray-800 p-6 rounded-2xl space-y-4">
                            <ItemList title="Éléments d'emballage & Expédition" icon={Box} items={packagingItems} onQuantityChange={handlePackagingQuantityChange} onRemoveItem={handleRemovePackagingItem} />
-                           {saleMode === 'internet' && <div>
+                           <div>
                                <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left p-2">
                                    <h4 className="text-lg font-semibold flex items-center gap-2"><Ship size={20}/> Grille Tarifaire d'Expédition</h4>
                                    <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
                                </button>
                                {isShippingVisible && <div className="mt-3 pt-3 border-t border-gray-700 animate-fade-in"><ShippingRateManager rates={shippingRates} /></div>}
-                           </div>}
+                           </div>
                         </div>
                     )}
 
@@ -213,7 +214,8 @@ const CostCalculator = () => {
                     feesRate={feesRate}
                     setFeesRate={setFeesRate}
                     depotCommissionRate={depotCommissionRate}
-                    setDepotCommissionRate={chargesRate}
+                    setDepotCommissionRate={setDepotCommissionRate}
+                    chargesRate={chargesRate}
                     onLoadCalculation={handleLoadCalculation}
                     showToast={showToast}
                 />
