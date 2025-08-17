@@ -1,11 +1,12 @@
 // src/components/cost/ShippingSimulator.jsx
 import React, { useState, useMemo } from 'react';
-import { PlusCircle, Trash2, Box, Weight, Info } from 'lucide-react';
+import { PlusCircle, Trash2, Box, Weight, PackagePlus } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
-const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRates, tvaRate, feesRate, chargesRate }) => {
+const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingConsumables = [], shippingRates = [], tvaRate, feesRate, chargesRate }) => {
     const [simulatedItems, setSimulatedItems] = useState([]);
     const [selectedBoxId, setSelectedBoxId] = useState('');
+    const [selectedConsumables, setSelectedConsumables] = useState(new Set());
     const [shippingService, setShippingService] = useState('Locker');
 
     const handleAddItem = (calc) => {
@@ -31,37 +32,51 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
         setSimulatedItems(prev => prev.filter(item => item.id !== calcId));
     };
 
+    const handleConsumableToggle = (consumableId) => {
+        setSelectedConsumables(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(consumableId)) {
+                newSet.delete(consumableId);
+            } else {
+                newSet.add(consumableId);
+            }
+            return newSet;
+        });
+    };
+
     const selectedBox = useMemo(() => {
-        return packagingMaterials.find(p => p.id === selectedBoxId);
-    }, [packagingMaterials, selectedBoxId]);
+        return shippingBoxes.find(p => p.id === selectedBoxId);
+    }, [shippingBoxes, selectedBoxId]);
 
     const calculationResults = useMemo(() => {
         if (simulatedItems.length === 0) {
-            return { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalWeight: 0, shippingCustomerPrice: 0, boxCost: 0, shippingProviderCost: 0, transactionFees: 0, businessCharges: 0 };
+            return { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalWeight: 0, shippingCustomerPrice: 0, boxCost: 0, consumablesCost: 0, shippingProviderCost: 0, transactionFees: 0, businessCharges: 0, totalProductCost: 0 };
         }
 
         const tva = parseFloat(tvaRate) || 0;
         const fees = parseFloat(feesRate) || 0;
         const charges = parseFloat(chargesRate) || 0;
 
-        // 1. Calculs de base sur les produits
         let totalProductCost = 0;
+        let totalProductPackagingCost = 0;
         let totalProductPriceTTC = 0;
         let totalWeight = 0;
 
         simulatedItems.forEach(item => {
-            // CORRECTION: On utilise une clé existante comme 'Locker' au lieu de 'internet' qui n'existe pas.
             const itemData = item.resultsByMode?.Locker; 
             if (!itemData) return;
             totalProductCost += itemData.productCost * item.quantity;
+            totalProductPackagingCost += itemData.packagingCost * item.quantity;
             totalProductPriceTTC += itemData.productPriceTTC * item.quantity;
             totalWeight += itemData.finalPackageWeight * item.quantity;
         });
 
-        // 2. Coût de l'emballage (1 seul carton)
         const boxCost = selectedBox?.standardizedPrice || 0;
+        const consumablesCost = Array.from(selectedConsumables).reduce((acc, id) => {
+            const consumable = shippingConsumables.find(c => c.id === id);
+            return acc + (consumable?.standardizedPrice || 0);
+        }, 0);
 
-        // 3. Coût de l'expédition (selon le poids total)
         let shippingProviderCost = 0;
         let shippingCustomerPrice = 0;
         if (totalWeight > 0) {
@@ -75,24 +90,22 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
             }
         }
 
-        // 4. Calculs financiers globaux
         const totalRevenue = totalProductPriceTTC + shippingCustomerPrice;
         const transactionFees = totalRevenue * (fees / 100);
         const turnoverHT = totalRevenue / (1 + tva / 100);
         const businessCharges = turnoverHT * (charges / 100);
 
-        const totalCost = totalProductCost + boxCost + shippingProviderCost + transactionFees + businessCharges;
+        const totalCost = totalProductCost + totalProductPackagingCost + boxCost + consumablesCost + shippingProviderCost + transactionFees + businessCharges;
         const totalProfit = totalRevenue - totalCost;
 
-        return { totalRevenue, totalCost, totalProfit, totalWeight, shippingCustomerPrice, boxCost, shippingProviderCost, transactionFees, businessCharges };
+        return { totalRevenue, totalCost, totalProfit, totalWeight, shippingCustomerPrice, boxCost, consumablesCost, shippingProviderCost, transactionFees, businessCharges, totalProductCost, totalProductPackagingCost };
 
-    }, [simulatedItems, selectedBox, shippingService, shippingRates, tvaRate, feesRate, chargesRate]);
+    }, [simulatedItems, selectedBox, selectedConsumables, shippingService, shippingRates, shippingConsumables, tvaRate, feesRate, chargesRate]);
 
     return (
         <div className="bg-gray-800 p-6 rounded-2xl">
             <h3 className="text-xl font-bold mb-4">Simulateur d'Envoi de Colis</h3>
             <div className="flex flex-col md:flex-row gap-8">
-                {/* Colonne de gauche: Bibliothèque et colis */}
                 <div className="md:w-1/2 space-y-4">
                     <div>
                         <h4 className="font-semibold mb-2">1. Ajouter des produits au colis</h4>
@@ -119,17 +132,28 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
                     </div>
                 </div>
 
-                {/* Colonne de droite: Configuration et résultats */}
                 <div className="md:w-1/2 space-y-4">
                      <div>
-                        <h4 className="font-semibold mb-2">3. Choisir l'emballage et le service</h4>
+                        <h4 className="font-semibold mb-2">3. Choisir le Carton et les Consommables</h4>
                         <select value={selectedBoxId} onChange={e => setSelectedBoxId(e.target.value)} className="w-full bg-gray-700 p-2 rounded-lg mb-2">
-                            <option value="">-- Sélectionner un carton --</option>
-                            {packagingMaterials.map(p => (
+                            <option value="">-- Aucun carton d'expédition --</option>
+                            {shippingBoxes.map(p => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
                             ))}
                         </select>
-                         <div className="flex gap-1 p-1 bg-gray-900 rounded-lg">
+                        <div className="bg-gray-900/50 p-3 rounded-lg space-y-2">
+                            <h5 className="text-sm font-semibold flex items-center gap-2"><PackagePlus size={16}/> Consommables d'expédition</h5>
+                             <div className="max-h-24 overflow-y-auto custom-scrollbar pr-2 text-sm">
+                                {shippingConsumables.map(c => (
+                                    <label key={c.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-700/50">
+                                        <input type="checkbox" checked={selectedConsumables.has(c.id)} onChange={() => handleConsumableToggle(c.id)} className="bg-gray-600 rounded" />
+                                        <span>{c.name}</span>
+                                        <span className="ml-auto text-gray-400">{formatPrice(c.standardizedPrice)}</span>
+                                    </label>
+                                ))}
+                             </div>
+                        </div>
+                         <div className="flex gap-1 p-1 bg-gray-900 rounded-lg mt-4">
                             {['Locker', 'Point Relais', 'Domicile'].map(service => (
                                 <button key={service} onClick={() => setShippingService(service)} className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold ${shippingService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{service}</button>
                             ))}
@@ -147,8 +171,10 @@ const ShippingSimulator = ({ savedCalculations, packagingMaterials, shippingRate
                             <div className="pt-2">
                                 <p className="text-red-400 font-semibold">- Dépenses du Colis</p>
                                 <div className="pl-4 text-gray-300">
-                                    <div className="flex justify-between"><span>Coût total des produits</span><span>{formatPrice(calculationResults.totalCost - calculationResults.boxCost - calculationResults.shippingProviderCost - calculationResults.transactionFees - calculationResults.businessCharges)}</span></div>
-                                    <div className="flex justify-between"><span>Coût du carton</span><span>{formatPrice(calculationResults.boxCost)}</span></div>
+                                    <div className="flex justify-between"><span>Coût matières premières</span><span>{formatPrice(calculationResults.totalProductCost)}</span></div>
+                                    <div className="flex justify-between"><span>Coût emballages produits</span><span>{formatPrice(calculationResults.totalProductPackagingCost)}</span></div>
+                                    <div className="flex justify-between"><span>Coût du carton d'expédition</span><span>{formatPrice(calculationResults.boxCost)}</span></div>
+                                    <div className="flex justify-between"><span>Coût consommables</span><span>{formatPrice(calculationResults.consumablesCost)}</span></div>
                                     <div className="flex justify-between"><span>Coût transporteur</span><span>{formatPrice(calculationResults.shippingProviderCost)}</span></div>
                                     <div className="flex justify-between"><span>Frais de transaction</span><span>{formatPrice(calculationResults.transactionFees)}</span></div>
                                     <div className="flex justify-between"><span>Cotisations URSSAF</span><span>{formatPrice(calculationResults.businessCharges)}</span></div>
