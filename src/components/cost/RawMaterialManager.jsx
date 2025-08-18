@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useContext } from 'react';
 import { db, addDoc, updateDoc, deleteDoc, doc, collection, serverTimestamp } from '../../services/firebase';
 import { AppContext } from '../../contexts/AppContext';
-import { PlusCircle, Save, Edit, Trash2, Box, Package, ChevronDown } from 'lucide-react';
+import { PlusCircle, Save, Edit, Trash2 } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
 // Sous-composant pour gérer une seule catégorie (Composant ou Emballage)
@@ -20,7 +20,6 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
     const [width, setWidth] = useState('');
     const [height, setHeight] = useState('');
     const [editingMaterial, setEditingMaterial] = useState(null);
-    // NOUVEL ÉTAT: Pour la sous-catégorie d'emballage
     const [packagingSubCategory, setPackagingSubCategory] = useState('productPackaging');
 
     const resetForm = () => {
@@ -54,7 +53,6 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
             length: category === 'packaging' ? parseFloat(length) || null : null,
             width: category === 'packaging' ? parseFloat(width) || null : null,
             height: category === 'packaging' ? parseFloat(height) || null : null,
-            // AJOUT: Sauvegarde de la sous-catégorie
             packagingSubCategory: category === 'packaging' ? packagingSubCategory : null,
         };
 
@@ -79,7 +77,6 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
         setLength(material.length || '');
         setWidth(material.width || '');
         setHeight(material.height || '');
-        // AJOUT: Chargement de la sous-catégorie
         setPackagingSubCategory(material.packagingSubCategory || 'productPackaging');
         onEdit(material.id);
     };
@@ -146,10 +143,9 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
     );
 };
 
-// --- Composant Principal ---
-const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) => {
+// --- Composant Principal Simplifié ---
+const RawMaterialManager = ({ materials, onSelect }) => {
     const { showToast } = useContext(AppContext);
-    
     const [editingId, setEditingId] = useState(null);
 
     const handleDelete = async (materialId) => {
@@ -167,32 +163,23 @@ const RawMaterialManager = ({ materials, onSelect, isVisible, setIsVisible }) =>
     }, [materials]);
 
     return (
-        <div className="bg-gray-800 p-6 rounded-2xl flex flex-col">
-            <button onClick={() => setIsVisible(!isVisible)} className="w-full flex justify-between items-center text-left">
-                <h3 className="text-xl font-bold">Bibliothèque des Matières</h3>
-                <ChevronDown className={`transform transition-transform ${isVisible ? 'rotate-180' : ''}`} />
-            </button>
-
-            {isVisible && (
-                <div className="mt-6 border-t border-gray-700 pt-6 animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <MaterialCategoryColumn 
-                        title="Composants Produit"
-                        category="component"
-                        materials={componentMaterials}
-                        onSelect={onSelect}
-                        onEdit={setEditingId}
-                        onDelete={handleDelete}
-                    />
-                    <MaterialCategoryColumn 
-                        title="Matériels d'Emballage"
-                        category="packaging"
-                        materials={packagingMaterials}
-                        onSelect={onSelect}
-                        onEdit={setEditingId}
-                        onDelete={handleDelete}
-                    />
-                </div>
-            )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <MaterialCategoryColumn 
+                title="Composants Produit"
+                category="component"
+                materials={componentMaterials}
+                onSelect={onSelect}
+                onEdit={setEditingId}
+                onDelete={handleDelete}
+            />
+            <MaterialCategoryColumn 
+                title="Matériels d'Emballage"
+                category="packaging"
+                materials={packagingMaterials}
+                onSelect={onSelect}
+                onEdit={setEditingId}
+                onDelete={handleDelete}
+            />
         </div>
     );
 };
