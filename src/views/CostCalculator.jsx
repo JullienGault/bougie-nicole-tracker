@@ -1,6 +1,5 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
-// CHEMIN D'IMPORTATION CORRIGÉ
 import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp, deleteDoc } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler, BookOpen, RefreshCw, Trash2 } from 'lucide-react';
@@ -32,6 +31,9 @@ const CostCalculator = () => {
     const [productLength, setProductLength] = useState('');
     const [productWidth, setProductWidth] = useState('');
     const [productHeight, setProductHeight] = useState('');
+    
+    // NOUVEL ÉTAT : Pour le carton d'expédition du produit principal
+    const [selectedShippingBoxId, setSelectedShippingBoxId] = useState('');
 
     const [tvaRate, setTvaRate] = useState('0');
     const [marginMultiplier, setMarginMultiplier] = useState('3.50');
@@ -54,10 +56,24 @@ const CostCalculator = () => {
         
         return () => { unsubMats(); unsubRates(); unsubCalcs(); };
     }, []);
+    
+    const { availableMaterials, shippingBoxes, shippingConsumables } = useMemo(() => {
+        const usedMaterialIds = new Set([
+            ...recipeItems.map(item => item.materialId),
+            ...packagingItems.map(item => item.materialId)
+        ]);
+        const available = rawMaterials.filter(material => !usedMaterialIds.has(material.id));
+        const boxes = rawMaterials.filter(m => m.packagingSubCategory === 'shippingBox');
+        const consumables = rawMaterials.filter(m => m.packagingSubCategory === 'shippingConsumable');
+        return { availableMaterials: available, shippingBoxes: boxes, shippingConsumables: consumables };
+    }, [rawMaterials, recipeItems, packagingItems]);
 
     const { calculations, calculateAllModes } = useCostCalculator({
         saleMode, recipeItems, packagingItems, shippingRates, shippingService,
-        marginMultiplier, tvaRate, feesRate, depotCommissionRate, chargesRate
+        marginMultiplier, tvaRate, feesRate, depotCommissionRate, chargesRate,
+        // Transmission du carton et de la liste des cartons au hook
+        selectedShippingBoxId,
+        shippingBoxes
     });
 
     const handleAddMaterialToCalculation = useCallback((material) => {
@@ -108,6 +124,7 @@ const CostCalculator = () => {
         setProductLength('');
         setProductWidth('');
         setProductHeight('');
+        setSelectedShippingBoxId(''); // Réinitialiser le carton
     };
 
     const handleSaveCost = async () => {
@@ -127,6 +144,7 @@ const CostCalculator = () => {
             productLength: parseFloat(productLength) || null,
             productWidth: parseFloat(productWidth) || null,
             productHeight: parseFloat(productHeight) || null,
+            shippingBoxId: selectedShippingBoxId, // Sauvegarder le carton
             updatedAt: serverTimestamp()
         };
 
@@ -155,6 +173,7 @@ const CostCalculator = () => {
         setProductLength(calc.productLength || '');
         setProductWidth(calc.productWidth || '');
         setProductHeight(calc.productHeight || '');
+        setSelectedShippingBoxId(calc.shippingBoxId || ''); // Charger le carton
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
     
@@ -175,18 +194,6 @@ const CostCalculator = () => {
         
         return { className: colorClass, tooltip: tooltipText };
     };
-    
-    const { availableMaterials, shippingBoxes, shippingConsumables } = useMemo(() => {
-        const usedMaterialIds = new Set([
-            ...recipeItems.map(item => item.materialId),
-            ...packagingItems.map(item => item.materialId)
-        ]);
-        const available = rawMaterials.filter(material => !usedMaterialIds.has(material.id));
-        const boxes = rawMaterials.filter(m => m.packagingSubCategory === 'shippingBox');
-        const consumables = rawMaterials.filter(m => m.packagingSubCategory === 'shippingConsumable');
-        return { availableMaterials: available, shippingBoxes: boxes, shippingConsumables: consumables };
-    }, [rawMaterials, recipeItems, packagingItems]);
-
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in">
@@ -258,6 +265,26 @@ const CostCalculator = () => {
                                 <input type="number" step="0.1" value={productHeight} onChange={e => setProductHeight(e.target.value)} placeholder="Hauteur" className="w-full bg-gray-700 p-2 rounded-lg" />
                             </div>
                         </div>
+                        
+                        {/* AJOUT : SÉLECTEUR DE CARTON POUR VENTE INTERNET */}
+                        {saleMode === 'internet' && (
+                            <div className="p-4 bg-gray-900/50 rounded-lg mb-6">
+                                <label htmlFor="shippingBoxSelect" className="text-sm text-gray-400 flex items-center gap-2 mb-2"><Box size={16}/> Carton d'expédition</label>
+                                <select
+                                    id="shippingBoxSelect"
+                                    value={selectedShippingBoxId}
+                                    onChange={e => setSelectedShippingBoxId(e.target.value)}
+                                    className="w-full bg-gray-700 p-2 rounded-lg"
+                                >
+                                    <option value="">-- Sélectionner un carton --</option>
+                                    {shippingBoxes.map(box => (
+                                        <option key={box.id} value={box.id}>
+                                            {box.name} ({box.length}x{box.width}x{box.height} cm)
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
 
                         <ItemList title="Composition du Produit" icon={Wrench} items={recipeItems} onQuantityChange={handleRecipeQuantityChange} onRemoveItem={handleRemoveRecipeItem} />
                         
