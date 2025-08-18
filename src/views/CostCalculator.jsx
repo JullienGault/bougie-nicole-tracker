@@ -12,6 +12,24 @@ import ShippingRateManager from '../components/cost/ShippingRateManager';
 import CalculationPanel from '../components/cost/CalculationPanel';
 import ShippingSimulator from '../components/cost/ShippingSimulator';
 
+// --- Composant Section (Extrait pour la performance) ---
+// En définissant ce composant ici, en dehors de CostCalculator,
+// on s'assure qu'il n'est pas recréé à chaque rendu, ce qui résout le problème de "flash".
+const Section = ({ title, icon: Icon, isVisible, setIsVisible, children }) => (
+    <section className="bg-gray-800 rounded-2xl">
+        <button type="button" onClick={() => setIsVisible(!isVisible)} className="w-full flex justify-between items-center p-6 text-left">
+            <h3 className="text-xl font-bold flex items-center gap-3"><Icon size={24} /> {title}</h3>
+            <ChevronDown className={`transform transition-transform duration-300 ${isVisible ? 'rotate-180' : ''}`} />
+        </button>
+        {isVisible && (
+            <div className="px-6 pb-6 border-t border-gray-700/50 animate-fade-in">
+                {children}
+            </div>
+        )}
+    </section>
+);
+
+
 const CostCalculator = () => {
     const { showToast } = useContext(AppContext);
 
@@ -197,20 +215,6 @@ const CostCalculator = () => {
         else if (value >= 2.5) colorClass = "bg-orange-500 text-white";
         return { className: colorClass, tooltip: tooltipText };
     };
-
-    const Section = ({ title, icon: Icon, isVisible, setIsVisible, children }) => (
-        <section className="bg-gray-800 rounded-2xl">
-            <button type="button" onClick={() => setIsVisible(!isVisible)} className="w-full flex justify-between items-center p-6 text-left">
-                <h3 className="text-xl font-bold flex items-center gap-3"><Icon size={24} /> {title}</h3>
-                <ChevronDown className={`transform transition-transform duration-300 ${isVisible ? 'rotate-180' : ''}`} />
-            </button>
-            {isVisible && (
-                <div className="px-6 pb-6 border-t border-gray-700/50 animate-fade-in">
-                    {children}
-                </div>
-            )}
-        </section>
-    );
 
     return (
         <div className="p-4 sm:p-8 animate-fade-in space-y-8">
