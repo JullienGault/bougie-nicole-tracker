@@ -1,6 +1,7 @@
 // src/views/CostCalculator.jsx
 import React, { useState, useEffect, useMemo, useContext, useCallback } from 'react';
-import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp, deleteDoc } from '../../services/firebase';
+// CHEMIN D'IMPORTATION CORRIGÉ
+import { db, collection, onSnapshot, addDoc, doc, updateDoc, query, orderBy, serverTimestamp, deleteDoc } from '../services/firebase';
 import { AppContext } from '../contexts/AppContext';
 import { Save, Wrench, Box, Ship, ChevronDown, Globe, Home, Store as StoreIcon, Ruler, BookOpen, RefreshCw, Trash2 } from 'lucide-react';
 import { formatPrice } from '../utils/formatters';
