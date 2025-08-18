@@ -124,9 +124,10 @@ const MaterialCategoryColumn = ({ title, category, materials, onSelect, onEdit, 
                             <div className="flex justify-between items-center">
                                 <span className="font-semibold truncate pr-2">{mat.name}</span>
                                 <div className="flex items-center gap-1 flex-shrink-0">
-                                    <button onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-600 rounded" title="Ajouter au calcul"><PlusCircle size={18} /></button>
-                                    <button onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-600 rounded" title="Modifier"><Edit size={18} /></button>
-                                    <button onClick={() => onDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-600 rounded" title="Supprimer"><Trash2 size={18} /></button>
+                                    {/* CORRIGÉ : Ajout de type="button" */}
+                                    <button type="button" onClick={() => onSelect(mat)} className="text-green-400 p-1 hover:bg-gray-600 rounded" title="Ajouter au calcul"><PlusCircle size={18} /></button>
+                                    <button type="button" onClick={() => startEditing(mat)} className="text-yellow-400 p-1 hover:bg-gray-600 rounded" title="Modifier"><Edit size={18} /></button>
+                                    <button type="button" onClick={() => onDelete(mat.id)} className="text-red-500 p-1 hover:bg-gray-600 rounded" title="Supprimer"><Trash2 size={18} /></button>
                                 </div>
                             </div>
                              <span className="font-mono text-xs text-indigo-300">
