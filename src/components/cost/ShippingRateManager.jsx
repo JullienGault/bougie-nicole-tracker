@@ -95,7 +95,7 @@ const ShippingRateManager = ({ rates }) => {
                             service: service,
                             maxWeight: rate.w,
                             cost: rate.c,
-                            price: rate.c // Prix client initialisé au coût
+                            price: rate.c
                         });
                         count++;
                     });
@@ -128,12 +128,12 @@ const ShippingRateManager = ({ rates }) => {
             <div className="flex justify-between items-center mb-4">
                 <div className="flex gap-1 p-1 bg-gray-900 rounded-lg">
                     {services.map(service => (
-                        <button key={service} onClick={() => setActiveService(service)} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${activeService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>
+                        <button type="button" key={service} onClick={() => setActiveService(service)} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${activeService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>
                             {service}
                         </button>
                     ))}
                 </div>
-                <button onClick={handleInitializeRates} className="p-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg flex items-center gap-2 text-xs">
+                <button type="button" onClick={handleInitializeRates} className="p-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg flex items-center gap-2 text-xs">
                     <PackagePlus size={16}/> Pré-remplir les tarifs
                 </button>
             </div>
@@ -141,9 +141,9 @@ const ShippingRateManager = ({ rates }) => {
                 <div><label className="text-sm text-gray-400">Poids max (g)</label><input type="number" value={maxWeight} onChange={e => setMaxWeight(e.target.value)} placeholder="500" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                 <div><label className="text-sm text-gray-400">Coût Transporteur (€)</label><input type="number" step="0.01" value={providerCost} onChange={e => setProviderCost(e.target.value)} placeholder="4.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
                 <div><label className="text-sm text-gray-400">Prix Client (€)</label><input type="number" step="0.01" value={customerPrice} onChange={e => setCustomerPrice(e.target.value)} placeholder="5.90" className="w-full bg-gray-700 p-2 rounded-lg mt-1" /></div>
-                <button onClick={handleSaveRate} className="bg-indigo-600 py-2 px-4 rounded-lg h-[42px]">{editingId ? 'Modifier' : 'Ajouter'}</button>
+                <button type="button" onClick={handleSaveRate} className="bg-indigo-600 py-2 px-4 rounded-lg h-[42px]">{editingId ? 'Modifier' : 'Ajouter'}</button>
             </div>
-            {editingId && <button onClick={resetForm} className="text-xs text-gray-400 hover:text-white mb-2">Annuler la modification</button>}
+            {editingId && <button type="button" onClick={resetForm} className="text-xs text-gray-400 hover:text-white mb-2">Annuler la modification</button>}
             <div className="max-h-48 overflow-y-auto custom-scrollbar">
                 {filteredRates.map(rate => (
                     <div key={rate.id} className="flex justify-between items-center p-2 bg-gray-900/50 rounded mb-2">
@@ -153,8 +153,8 @@ const ShippingRateManager = ({ rates }) => {
                             <span className="text-xs text-yellow-400">{formatPrice(rate.cost)} <span className="text-gray-400">(Coût)</span></span>
                         </div>
                         <div className="flex gap-2">
-                           <button onClick={() => startEditing(rate)} className="text-yellow-400 p-1"><Edit size={16}/></button>
-                           <button onClick={() => handleDeleteRate(rate.id)} className="text-red-500 p-1"><Trash2 size={16}/></button>
+                           <button type="button" onClick={() => startEditing(rate)} className="text-yellow-400 p-1"><Edit size={16}/></button>
+                           <button type="button" onClick={() => handleDeleteRate(rate.id)} className="text-red-500 p-1"><Trash2 size={16}/></button>
                         </div>
                     </div>
                 ))}
