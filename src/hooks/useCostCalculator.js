@@ -2,7 +2,8 @@
 import { useMemo } from 'react';
 
 const calculateForMode = (mode, commonData) => {
-    const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping, service } = commonData;
+    // Déstructuration des nouvelles propriétés
+    const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping, service, shippingBoxId, allShippingBoxes } = commonData;
     
     const margin = parseFloat(marginStr) || 0;
     const tva = parseFloat(tvaStr) || 0;
@@ -24,23 +25,27 @@ const calculateForMode = (mode, commonData) => {
     
     const productWeight = recipe.reduce((acc, item) => {
         const quantity = item.quantity || 0;
-        if (item.purchaseUnit === 'piece') {
-            return acc + (quantity * (item.weightPerPiece || 0));
-        }
+        if (item.purchaseUnit === 'piece') { return acc + (quantity * (item.weightPerPiece || 0)); }
         const density = item.density || 1;
         return acc + (quantity * density);
     }, 0);
 
     const packagingWeight = packaging.reduce((acc, item) => {
         const quantity = item.quantity || 0;
-        if (item.purchaseUnit === 'piece') {
-            return acc + (quantity * (item.weightPerPiece || 0));
-        }
+        if (item.purchaseUnit === 'piece') { return acc + (quantity * (item.weightPerPiece || 0)); }
         const density = item.density || 1;
         return acc + (quantity * density);
     }, 0);
     
-    const finalPackageWeight = productWeight + packagingWeight;
+    // Logique pour le carton d'expédition
+    const selectedBox = allShippingBoxes.find(box => box.id === shippingBoxId);
+    const shippingBoxCost = selectedBox?.standardizedPrice || 0;
+    const shippingBoxWeight = selectedBox?.weightPerPiece || 0;
+
+    let finalPackageWeight = productWeight + packagingWeight;
+    if (mode === 'internet') {
+        finalPackageWeight += shippingBoxWeight; // On ajoute le poids du carton
+    }
     
     if (mode === 'internet') {
         let shippingCustomerPrice = 0;
@@ -62,30 +67,26 @@ const calculateForMode = (mode, commonData) => {
         const turnoverHT = finalClientPrice / (1 + tva / 100);
         businessCharges = turnoverHT * (charges / 100);
         
-        totalExpenses = productCost + packagingCost + shippingProviderCost + transactionFees + businessCharges;
+        // CORRIGÉ : Ajout du coût du carton d'expédition (shippingBoxCost)
+        totalExpenses = productCost + packagingCost + shippingBoxCost + shippingProviderCost + transactionFees + businessCharges;
         finalProfit = finalClientPrice - totalExpenses;
 
     } else if (mode === 'domicile') {
         transactionFees = finalClientPrice * (fees / 100);
-
         const turnoverHT = finalClientPrice / (1 + tva / 100);
         businessCharges = turnoverHT * (charges / 100);
-        
-        // CORRIGÉ : Ajout du coût de l'emballage du produit (packagingCost)
         totalExpenses = productCost + packagingCost + transactionFees + businessCharges;
         finalProfit = finalClientPrice - totalExpenses;
 
     } else if (mode === 'depot') {
         commissionAmount = productPriceTTC * (depotCommission / 100);
-        
         businessCharges = productPriceHT * (charges / 100);
-
-        // CORRIGÉ : Ajout du coût de l'emballage du produit (packagingCost)
         totalExpenses = productCost + packagingCost + commissionAmount + businessCharges;
         finalProfit = productPriceTTC - totalExpenses;
     }
     
-    return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit, transactionFees, businessCharges, shippingProviderCost, commissionAmount, finalPackageWeight };
+    // On retourne le coût du carton pour l'affichage
+    return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit, transactionFees, businessCharges, shippingProviderCost, commissionAmount, finalPackageWeight, shippingBoxCost };
 };
 
 
@@ -99,7 +100,10 @@ export const useCostCalculator = ({
     tvaRate,
     feesRate,
     depotCommissionRate,
-    chargesRate
+    chargesRate,
+    // Nouvelles props
+    selectedShippingBoxId,
+    shippingBoxes
 }) => {
     const calculations = useMemo(() => {
         const commonData = {
@@ -111,20 +115,16 @@ export const useCostCalculator = ({
             fees: feesRate,
             depotCommission: depotCommissionRate,
             shipping: shippingRates,
-            service: shippingService
+            service: shippingService,
+            // On passe les nouvelles props
+            shippingBoxId: selectedShippingBoxId,
+            allShippingBoxes: shippingBoxes
         };
         return calculateForMode(saleMode, commonData);
-    }, [
-        recipeItems,
-        packagingItems,
-        marginMultiplier,
-        tvaRate,
-        feesRate,
-        depotCommissionRate,
-        shippingRates,
-        saleMode,
-        shippingService,
-        chargesRate
+    }, [ // Ajout aux dépendances
+        recipeItems, packagingItems, marginMultiplier, tvaRate, feesRate,
+        depotCommissionRate, shippingRates, saleMode, shippingService,
+        chargesRate, selectedShippingBoxId, shippingBoxes
     ]);
 
     const calculateAllModes = () => {
@@ -133,7 +133,10 @@ export const useCostCalculator = ({
         const baseData = {
             recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
             tva: tvaRate, charges: chargesRate, fees: feesRate,
-            depotCommission: depotCommissionRate, shipping: shippingRates
+            depotCommission: depotCommissionRate, shipping: shippingRates,
+            // On passe les nouvelles props ici aussi
+            shippingBoxId: selectedShippingBoxId,
+            allShippingBoxes: shippingBoxes
         };
 
         resultsByMode['depot'] = calculateForMode('depot', baseData);
@@ -145,7 +148,6 @@ export const useCostCalculator = ({
         
         return resultsByMode;
     };
-
 
     return {
         calculations,
