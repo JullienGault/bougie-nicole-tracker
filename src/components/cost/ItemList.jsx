@@ -22,7 +22,8 @@ const ItemList = ({ title, icon: Icon, items, onQuantityChange, onRemoveItem }) 
                         className="w-full bg-gray-700 p-1 rounded text-center"
                     />
                     <span className="text-sm text-gray-400">{item.standardizedUnit}</span>
-                    <button onClick={() => onRemoveItem(item.materialId)} className="text-red-500 p-1"><X size={18}/></button>
+                    {/* CORRIGÉ : Ajout de type="button" */}
+                    <button type="button" onClick={() => onRemoveItem(item.materialId)} className="text-red-500 p-1"><X size={18}/></button>
                 </div>
             ))}
             {items.length === 0 && <p className="text-center text-gray-500 py-4">Ajoutez un élément depuis la bibliothèque.</p>}
