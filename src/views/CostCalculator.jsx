@@ -26,9 +26,7 @@ const CostCalculator = () => {
     const [editingCalcId, setEditingCalcId] = useState(null);
     const [isShippingVisible, setIsShippingVisible] = useState(false);
     
-    // États pour contrôler la visibilité des sections principales
     const [isCalculatorVisible, setIsCalculatorVisible] = useState(true);
-    // MODIFIÉ : La bibliothèque est maintenant repliée par défaut
     const [isLibraryVisible, setIsLibraryVisible] = useState(false);
     const [isSimulatorVisible, setIsSimulatorVisible] = useState(false);
     const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
@@ -202,7 +200,7 @@ const CostCalculator = () => {
 
     const Section = ({ title, icon: Icon, isVisible, setIsVisible, children }) => (
         <section className="bg-gray-800 rounded-2xl">
-            <button onClick={() => setIsVisible(!isVisible)} className="w-full flex justify-between items-center p-6 text-left">
+            <button type="button" onClick={() => setIsVisible(!isVisible)} className="w-full flex justify-between items-center p-6 text-left">
                 <h3 className="text-xl font-bold flex items-center gap-3"><Icon size={24} /> {title}</h3>
                 <ChevronDown className={`transform transition-transform duration-300 ${isVisible ? 'rotate-180' : ''}`} />
             </button>
@@ -218,12 +216,11 @@ const CostCalculator = () => {
         <div className="p-4 sm:p-8 animate-fade-in space-y-8">
             <header className="flex justify-between items-center">
                 <h2 className="text-3xl font-bold text-white">Calculateur de Coût de Production</h2>
-                <button onClick={handleSaveCost} disabled={!productName || recipeItems.length === 0} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="button" onClick={handleSaveCost} disabled={!productName || recipeItems.length === 0} className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                     <Save size={18}/> {editingCalcId ? 'Mettre à jour' : 'Enregistrer'}
                 </button>
             </header>
 
-            {/* MODIFIÉ : Ordre des sections inversé */}
             <Section title="Bibliothèque de Produits" icon={BookOpen} isVisible={isLibraryVisible} setIsVisible={setIsLibraryVisible}>
                 <div className="pt-6 space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar">
                     {savedCalculations.map(calc => {
@@ -240,8 +237,8 @@ const CostCalculator = () => {
                                     <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
                                 </div>
                                 <div className="flex-shrink-0 flex gap-2">
-                                    <button onClick={() => handleLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
-                                    <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
+                                    <button type="button" onClick={() => handleLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
+                                    <button type="button" onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
                                 </div>
                             </div>
                         );
@@ -254,7 +251,7 @@ const CostCalculator = () => {
                 <div className="pt-6">
                     <div className="mb-6 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
                         {[{id: 'internet', label: 'Vente Internet', icon: Globe}, {id: 'domicile', label: 'Vente Domicile', icon: Home}, {id: 'depot', label: 'Dépôt-Vente', icon: StoreIcon}].map(tab => (
-                            <button key={tab.id} onClick={() => setSaleMode(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-semibold transition-colors text-sm ${saleMode === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
+                            <button type="button" key={tab.id} onClick={() => setSaleMode(tab.id)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg font-semibold transition-colors text-sm ${saleMode === tab.id ? 'bg-indigo-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}>
                                 <tab.icon size={16}/> {tab.label}
                             </button>
                         ))}
@@ -303,7 +300,7 @@ const CostCalculator = () => {
                             </div>
                             {saleMode === 'internet' && (
                                 <div className="bg-gray-900 p-6 rounded-2xl space-y-4">
-                                    <button onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left p-2">
+                                    <button type="button" onClick={() => setIsShippingVisible(!isShippingVisible)} className="w-full flex justify-between items-center text-left p-2">
                                         <h4 className="text-lg font-semibold flex items-center gap-2"><Ship size={20}/> Grille Tarifaire d'Expédition</h4>
                                         <ChevronDown className={`transform transition-transform ${isShippingVisible ? 'rotate-180' : ''}`} />
                                     </button>
