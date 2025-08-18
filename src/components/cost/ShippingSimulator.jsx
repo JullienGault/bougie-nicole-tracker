@@ -79,7 +79,9 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
 
         let shippingProviderCost = 0;
         let shippingCustomerPrice = 0;
-        if (totalWeight > 0) {
+        
+        // CORRECTION : On ne calcule les frais de port que si un carton est sélectionné ET que le poids est positif.
+        if (totalWeight > 0 && selectedBox) {
              const applicableRate = shippingRates
                 .filter(rate => rate.service === shippingService)
                 .sort((a, b) => a.maxWeight - b.maxWeight)
