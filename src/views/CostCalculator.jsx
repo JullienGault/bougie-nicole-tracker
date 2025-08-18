@@ -28,7 +28,8 @@ const CostCalculator = () => {
     
     // États pour contrôler la visibilité des sections principales
     const [isCalculatorVisible, setIsCalculatorVisible] = useState(true);
-    const [isLibraryVisible, setIsLibraryVisible] = useState(true);
+    // MODIFIÉ : La bibliothèque est maintenant repliée par défaut
+    const [isLibraryVisible, setIsLibraryVisible] = useState(false);
     const [isSimulatorVisible, setIsSimulatorVisible] = useState(false);
     const [isMaterialsVisible, setIsMaterialsVisible] = useState(false);
     
@@ -37,7 +38,6 @@ const CostCalculator = () => {
     const [productHeight, setProductHeight] = useState('');
     
     const [selectedShippingBoxId, setSelectedShippingBoxId] = useState('');
-    // NOUVEL ÉTAT : Pour les consommables d'expédition
     const [selectedConsumables, setSelectedConsumables] = useState(new Set());
 
     const [tvaRate, setTvaRate] = useState('0');
@@ -77,7 +77,6 @@ const CostCalculator = () => {
         saleMode, recipeItems, packagingItems, shippingRates, shippingService,
         marginMultiplier, tvaRate, feesRate, depotCommissionRate, chargesRate,
         selectedShippingBoxId, shippingBoxes,
-        // Transmission des consommables
         selectedConsumableIds: Array.from(selectedConsumables),
         allShippingConsumables: shippingConsumables
     });
@@ -224,6 +223,33 @@ const CostCalculator = () => {
                 </button>
             </header>
 
+            {/* MODIFIÉ : Ordre des sections inversé */}
+            <Section title="Bibliothèque de Produits" icon={BookOpen} isVisible={isLibraryVisible} setIsVisible={setIsLibraryVisible}>
+                <div className="pt-6 space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar">
+                    {savedCalculations.map(calc => {
+                        const itemMultiplierStyle = getMultiplierStyle(calc.marginMultiplier);
+                        return (
+                            <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
+                                <div className="flex items-center gap-2 flex-grow text-left w-full md:w-auto">
+                                    <span className={`px-2 py-1 rounded-md text-sm font-bold ${itemMultiplierStyle.className}`}>x{parseFloat(calc.marginMultiplier || 0).toFixed(2)}</span>
+                                    <p className="font-bold text-base text-white">{calc.productName}</p>
+                                </div>
+                                <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
+                                    <div><span className="text-xs text-cyan-400 block">Internet</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p></div>
+                                    <div><span className="text-xs text-purple-400 block">Domicile</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
+                                    <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
+                                </div>
+                                <div className="flex-shrink-0 flex gap-2">
+                                    <button onClick={() => handleLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
+                                    <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                    {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4">Aucun calcul sauvegardé.</p>}
+                </div>
+            </Section>
+
             <Section title="Calculateur de Produit" icon={Wrench} isVisible={isCalculatorVisible} setIsVisible={setIsCalculatorVisible}>
                 <div className="pt-6">
                     <div className="mb-6 p-1.5 bg-gray-900/50 rounded-xl flex gap-2">
@@ -287,32 +313,6 @@ const CostCalculator = () => {
                         </div>
                         <CalculationPanel calculations={calculations} saleMode={saleMode} shippingService={shippingService} setShippingService={setShippingService} marginMultiplier={marginMultiplier} setMarginMultiplier={setMarginMultiplier} manualTtcPrice={manualTtcPrice} handleManualTtcPriceChange={handleManualTtcPriceChange} tvaRate={tvaRate} setTvaRate={setTvaRate} availableTvaRates={availableTvaRates} feesRate={feesRate} setFeesRate={setFeesRate} depotCommissionRate={depotCommissionRate} setDepotCommissionRate={setDepotCommissionRate} chargesRate={chargesRate} />
                     </main>
-                </div>
-            </Section>
-
-            <Section title="Bibliothèque de Produits" icon={BookOpen} isVisible={isLibraryVisible} setIsVisible={setIsLibraryVisible}>
-                <div className="pt-6 space-y-3 max-h-[50vh] overflow-y-auto custom-scrollbar">
-                    {savedCalculations.map(calc => {
-                        const itemMultiplierStyle = getMultiplierStyle(calc.marginMultiplier);
-                        return (
-                            <div key={calc.id} className="bg-gray-900/50 p-4 rounded-xl flex flex-col md:flex-row justify-between items-center gap-4">
-                                <div className="flex items-center gap-2 flex-grow text-left w-full md:w-auto">
-                                    <span className={`px-2 py-1 rounded-md text-sm font-bold ${itemMultiplierStyle.className}`}>x{parseFloat(calc.marginMultiplier || 0).toFixed(2)}</span>
-                                    <p className="font-bold text-base text-white">{calc.productName}</p>
-                                </div>
-                                <div className="flex-shrink-0 grid grid-cols-3 gap-x-6 text-center">
-                                    <div><span className="text-xs text-cyan-400 block">Internet</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.Locker?.finalProfit || 0)}</p></div>
-                                    <div><span className="text-xs text-purple-400 block">Domicile</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.domicile?.finalProfit || 0)}</p></div>
-                                    <div><span className="text-xs text-pink-400 block">Dépôt</span><p className="font-semibold text-sm mt-1">{formatPrice(calc.resultsByMode?.depot?.finalProfit || 0)}</p></div>
-                                </div>
-                                <div className="flex-shrink-0 flex gap-2">
-                                    <button onClick={() => handleLoadCalculation(calc)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-blue-400 rounded-lg flex items-center gap-2 text-xs"><RefreshCw size={14} /> Recharger</button>
-                                    <button onClick={() => handleDeleteCalculation(calc.id)} className="p-2 bg-gray-700/50 hover:bg-gray-700 text-red-500 rounded-lg"><Trash2 size={16} /></button>
-                                </div>
-                            </div>
-                        );
-                    })}
-                    {savedCalculations.length === 0 && <p className="text-center text-gray-500 py-4">Aucun calcul sauvegardé.</p>}
                 </div>
             </Section>
 
