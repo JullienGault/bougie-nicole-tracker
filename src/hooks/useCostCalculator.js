@@ -59,7 +59,6 @@ const calculateForMode = (mode, commonData) => {
         finalClientPrice = productPriceTTC + shippingCustomerPrice;
         transactionFees = finalClientPrice * (fees / 100);
         
-        // CORRECTION URSSAF: Basé sur le CA total facturé (produit + port) ramené en HT
         const turnoverHT = finalClientPrice / (1 + tva / 100);
         businessCharges = turnoverHT * (charges / 100);
         
@@ -69,20 +68,20 @@ const calculateForMode = (mode, commonData) => {
     } else if (mode === 'domicile') {
         transactionFees = finalClientPrice * (fees / 100);
 
-        // CORRECTION URSSAF: Basé sur le CA total facturé ramené en HT (ici, le prix du produit)
-        const turnoverHT = finalClientPrice / (1 + tva / 100); // Équivaut à productPriceHT
+        const turnoverHT = finalClientPrice / (1 + tva / 100);
         businessCharges = turnoverHT * (charges / 100);
         
-        totalExpenses = productCost + transactionFees + businessCharges;
+        // CORRIGÉ : Ajout du coût de l'emballage du produit (packagingCost)
+        totalExpenses = productCost + packagingCost + transactionFees + businessCharges;
         finalProfit = finalClientPrice - totalExpenses;
 
     } else if (mode === 'depot') {
         commissionAmount = productPriceTTC * (depotCommission / 100);
         
-        // CORRECTION URSSAF: Basé sur le CA avant commission, donc le prix de vente HT du produit
         businessCharges = productPriceHT * (charges / 100);
 
-        totalExpenses = productCost + commissionAmount + businessCharges;
+        // CORRIGÉ : Ajout du coût de l'emballage du produit (packagingCost)
+        totalExpenses = productCost + packagingCost + commissionAmount + businessCharges;
         finalProfit = productPriceTTC - totalExpenses;
     }
     
