@@ -2,8 +2,7 @@
 import { useMemo } from 'react';
 
 const calculateForMode = (mode, commonData) => {
-    // Déstructuration des nouvelles propriétés
-    const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping, service, shippingBoxId, allShippingBoxes } = commonData;
+    const { recipe, packaging, margin: marginStr, tva: tvaStr, charges, fees: feesStr, depotCommission: depotCommissionStr, shipping, service, shippingBoxId, allShippingBoxes, selectedConsumableIds, allShippingConsumables } = commonData;
     
     const margin = parseFloat(marginStr) || 0;
     const tva = parseFloat(tvaStr) || 0;
@@ -37,14 +36,24 @@ const calculateForMode = (mode, commonData) => {
         return acc + (quantity * density);
     }, 0);
     
-    // Logique pour le carton d'expédition
     const selectedBox = allShippingBoxes.find(box => box.id === shippingBoxId);
     const shippingBoxCost = selectedBox?.standardizedPrice || 0;
     const shippingBoxWeight = selectedBox?.weightPerPiece || 0;
+    
+    // NOUVELLE LOGIQUE : Calcul du coût et poids des consommables
+    const { shippingConsumablesCost, shippingConsumablesWeight } = selectedConsumableIds.reduce((acc, id) => {
+        const consumable = allShippingConsumables.find(c => c.id === id);
+        if(consumable) {
+            acc.shippingConsumablesCost += consumable.standardizedPrice || 0;
+            acc.shippingConsumablesWeight += consumable.weightPerPiece || 0;
+        }
+        return acc;
+    }, { shippingConsumablesCost: 0, shippingConsumablesWeight: 0 });
+
 
     let finalPackageWeight = productWeight + packagingWeight;
     if (mode === 'internet') {
-        finalPackageWeight += shippingBoxWeight; // On ajoute le poids du carton
+        finalPackageWeight += shippingBoxWeight + shippingConsumablesWeight; // Poids du carton ET des consommables
     }
     
     if (mode === 'internet') {
@@ -67,8 +76,8 @@ const calculateForMode = (mode, commonData) => {
         const turnoverHT = finalClientPrice / (1 + tva / 100);
         businessCharges = turnoverHT * (charges / 100);
         
-        // CORRIGÉ : Ajout du coût du carton d'expédition (shippingBoxCost)
-        totalExpenses = productCost + packagingCost + shippingBoxCost + shippingProviderCost + transactionFees + businessCharges;
+        // CORRIGÉ : Ajout du coût du carton ET des consommables
+        totalExpenses = productCost + packagingCost + shippingBoxCost + shippingConsumablesCost + shippingProviderCost + transactionFees + businessCharges;
         finalProfit = finalClientPrice - totalExpenses;
 
     } else if (mode === 'domicile') {
@@ -85,8 +94,7 @@ const calculateForMode = (mode, commonData) => {
         finalProfit = productPriceTTC - totalExpenses;
     }
     
-    // On retourne le coût du carton pour l'affichage
-    return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit, transactionFees, businessCharges, shippingProviderCost, commissionAmount, finalPackageWeight, shippingBoxCost };
+    return { productCost, packagingCost, productPriceHT, productPriceTTC, finalClientPrice, totalExpenses, finalProfit, transactionFees, businessCharges, shippingProviderCost, commissionAmount, finalPackageWeight, shippingBoxCost, shippingConsumablesCost };
 };
 
 
@@ -101,30 +109,29 @@ export const useCostCalculator = ({
     feesRate,
     depotCommissionRate,
     chargesRate,
-    // Nouvelles props
     selectedShippingBoxId,
-    shippingBoxes
+    shippingBoxes,
+    // Nouvelles props
+    selectedConsumableIds,
+    allShippingConsumables
 }) => {
     const calculations = useMemo(() => {
         const commonData = {
-            recipe: recipeItems,
-            packaging: packagingItems,
-            margin: marginMultiplier,
-            tva: tvaRate,
-            charges: chargesRate,
-            fees: feesRate,
-            depotCommission: depotCommissionRate,
-            shipping: shippingRates,
-            service: shippingService,
+            recipe: recipeItems, packaging: packagingItems,
+            margin: marginMultiplier, tva: tvaRate, charges: chargesRate,
+            fees: feesRate, depotCommission: depotCommissionRate,
+            shipping: shippingRates, service: shippingService,
+            shippingBoxId: selectedShippingBoxId, allShippingBoxes: shippingBoxes,
             // On passe les nouvelles props
-            shippingBoxId: selectedShippingBoxId,
-            allShippingBoxes: shippingBoxes
+            selectedConsumableIds: selectedConsumableIds,
+            allShippingConsumables: allShippingConsumables
         };
         return calculateForMode(saleMode, commonData);
-    }, [ // Ajout aux dépendances
+    }, [
         recipeItems, packagingItems, marginMultiplier, tvaRate, feesRate,
         depotCommissionRate, shippingRates, saleMode, shippingService,
-        chargesRate, selectedShippingBoxId, shippingBoxes
+        chargesRate, selectedShippingBoxId, shippingBoxes,
+        selectedConsumableIds, allShippingConsumables // Ajout aux dépendances
     ]);
 
     const calculateAllModes = () => {
@@ -134,9 +141,9 @@ export const useCostCalculator = ({
             recipe: recipeItems, packaging: packagingItems, margin: marginMultiplier,
             tva: tvaRate, charges: chargesRate, fees: feesRate,
             depotCommission: depotCommissionRate, shipping: shippingRates,
-            // On passe les nouvelles props ici aussi
-            shippingBoxId: selectedShippingBoxId,
-            allShippingBoxes: shippingBoxes
+            shippingBoxId: selectedShippingBoxId, allShippingBoxes: shippingBoxes,
+            selectedConsumableIds: selectedConsumableIds,
+            allShippingConsumables: allShippingConsumables
         };
 
         resultsByMode['depot'] = calculateForMode('depot', baseData);
