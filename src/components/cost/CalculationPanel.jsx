@@ -36,7 +36,7 @@ const CalculationPanel = ({
     setDepotCommissionRate,
     chargesRate,
 }) => {
-    const [isExpensesVisible, setIsExpensesVisible] = useState(true); // Déplié par défaut
+    const [isExpensesVisible, setIsExpensesVisible] = useState(true);
 
     const transactionFeesTooltip = `${formatPrice(calculations.finalClientPrice)} (Total Facturé) × ${feesRate}% = ${formatPrice(calculations.transactionFees)}`;
     const commissionTooltip = `${formatPrice(calculations.productPriceTTC)} (Prix Produit TTC) × ${depotCommissionRate}% = ${formatPrice(calculations.commissionAmount)}`;
@@ -90,7 +90,7 @@ const CalculationPanel = ({
                             </div>
                         </div>
                         <div className="flex justify-between items-center"><label className="text-gray-300">Prix Vente (TTC)</label><input type="number" step="0.01" value={manualTtcPrice} onChange={handleManualTtcPriceChange} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>
-                        <div className="flex justify-between items-center"> <label className="text-gray-300">TVA (%)</label> <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">{availableTvaRates.map(rate => (<button key={rate} onClick={() => setTvaRate(rate.toString())} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate.toString() ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{rate}%</button>))}</div> </div>
+                        <div className="flex justify-between items-center"> <label className="text-gray-300">TVA (%)</label> <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">{availableTvaRates.map(rate => (<button type="button" key={rate} onClick={() => setTvaRate(rate.toString())} className={`px-3 py-1.5 rounded-md text-sm font-semibold ${tvaRate === rate.toString() ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{rate}%</button>))}</div> </div>
                         {(saleMode === 'internet' || saleMode === 'domicile') && <div className="flex justify-between items-center"><label className="text-gray-300">Frais Transaction %</label><input type="number" step="0.1" value={feesRate} onChange={e => setFeesRate(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
                         {saleMode === 'depot' && <div className="flex justify-between items-center"><label className="text-gray-300">Commission Dépôt %</label><input type="number" step="1" value={depotCommissionRate} onChange={e => setDepotCommissionRate(e.target.value)} className="w-24 bg-gray-700 p-2 rounded-lg text-right" /></div>}
                     </div>
@@ -99,7 +99,7 @@ const CalculationPanel = ({
                         <div className="p-4 bg-gray-800/60 rounded-lg">
                             <label className="text-gray-300 mb-2 block">Service d'expédition</label>
                             <div className="flex gap-1 p-1 bg-gray-700 rounded-lg">
-                                {['Locker', 'Point Relais', 'Domicile'].map(service => (<button key={service} onClick={() => setShippingService(service)} className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold ${shippingService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{service}</button>))}
+                                {['Locker', 'Point Relais', 'Domicile'].map(service => (<button type="button" key={service} onClick={() => setShippingService(service)} className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold ${shippingService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{service}</button>))}
                             </div>
                         </div>
                     )}
@@ -112,7 +112,7 @@ const CalculationPanel = ({
                         {saleMode === 'internet' && (<div className="flex justify-between p-2"><span className="text-gray-300">Expédition (facturée)</span><span className="font-bold text-lg">{formatPrice(shippingCustomerPrice)}</span></div>)}
                         <div className="flex justify-between p-3 font-semibold bg-gray-800/60 rounded-md"><span className="text-gray-200">Total Facturé Client</span><span className="text-xl">{formatPrice(calculations.finalClientPrice)}</span></div>
                         <hr className="border-gray-700/50" />
-                        <button onClick={() => setIsExpensesVisible(!isExpensesVisible)} className="w-full flex justify-between items-center text-red-400 p-2 text-left">
+                        <button type="button" onClick={() => setIsExpensesVisible(!isExpensesVisible)} className="w-full flex justify-between items-center text-red-400 p-2 text-left">
                             <span className="font-semibold">- Dépenses Totales</span>
                             <div className="flex items-center gap-2">
                                 <span className="font-bold">{formatPrice(calculations.totalExpenses)}</span>
