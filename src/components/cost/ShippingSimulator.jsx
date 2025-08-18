@@ -1,6 +1,6 @@
 // src/components/cost/ShippingSimulator.jsx
 import React, { useState, useMemo } from 'react';
-import { PlusCircle, Trash2, Box, Weight, PackagePlus } from 'lucide-react';
+import { PlusCircle, Trash2, Box, Weight, PackagePlus, Percent, Gift } from 'lucide-react';
 import { formatPrice } from '../../utils/formatters';
 
 const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingConsumables = [], shippingRates = [], tvaRate, feesRate, chargesRate }) => {
@@ -9,13 +9,22 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
     const [selectedConsumables, setSelectedConsumables] = useState(new Set());
     const [shippingService, setShippingService] = useState('Locker');
 
+    // Nouveaux états pour les offres commerciales
+    const [isShippingFree, setIsShippingFree] = useState(false);
+    const [isBundleOfferActive, setIsBundleOfferActive] = useState(false);
+    const [bundleBuyQuantity, setBundleBuyQuantity] = useState(3);
+    const [bundleGetQuantity, setBundleGetQuantity] = useState(1);
+
+
     const handleAddItem = (calc) => {
         setSimulatedItems(prev => {
             const existing = prev.find(item => item.id === calc.id);
             if (existing) {
                 return prev.map(item => item.id === calc.id ? { ...item, quantity: item.quantity + 1 } : item);
             }
-            return [...prev, { ...calc, quantity: 1 }];
+            // On ajoute le prix unitaire TTC pour simplifier les calculs d'offre
+            const unitPriceTTC = calc.resultsByMode?.Locker?.productPriceTTC || 0;
+            return [...prev, { ...calc, quantity: 1, unitPriceTTC }];
         });
     };
 
@@ -50,7 +59,7 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
 
     const calculationResults = useMemo(() => {
         if (simulatedItems.length === 0) {
-            return { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalWeight: 0, shippingCustomerPrice: 0, boxCost: 0, consumablesCost: 0, shippingProviderCost: 0, transactionFees: 0, businessCharges: 0, totalProductCost: 0 };
+            return { totalRevenue: 0, totalCost: 0, totalProfit: 0, totalWeight: 0, shippingCustomerPrice: 0, boxCost: 0, consumablesCost: 0, shippingProviderCost: 0, transactionFees: 0, businessCharges: 0, totalProductCost: 0, totalDiscount: 0 };
         }
 
         const tva = parseFloat(tvaRate) || 0;
@@ -59,17 +68,28 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
 
         let totalProductCost = 0;
         let totalProductPackagingCost = 0;
-        let totalProductPriceTTC = 0;
+        let totalProductPriceTTCBeforeDiscount = 0;
         let totalWeight = 0;
+        let totalDiscount = 0;
 
         simulatedItems.forEach(item => {
             const itemData = item.resultsByMode?.Locker; 
             if (!itemData) return;
             totalProductCost += itemData.productCost * item.quantity;
             totalProductPackagingCost += itemData.packagingCost * item.quantity;
-            totalProductPriceTTC += itemData.productPriceTTC * item.quantity;
+            totalProductPriceTTCBeforeDiscount += item.unitPriceTTC * item.quantity;
             totalWeight += itemData.finalPackageWeight * item.quantity;
+            
+            // Logique de l'offre par produit
+            if (isBundleOfferActive && bundleBuyQuantity > 0) {
+                const totalUnitsForOffer = bundleBuyQuantity + bundleGetQuantity;
+                const numberOfBundles = Math.floor(item.quantity / totalUnitsForOffer);
+                const freeItemsCount = numberOfBundles * bundleGetQuantity;
+                totalDiscount += freeItemsCount * item.unitPriceTTC;
+            }
         });
+
+        const totalProductPriceTTC = totalProductPriceTTCBeforeDiscount - totalDiscount;
 
         const boxCost = selectedBox?.standardizedPrice || 0;
         const consumablesCost = Array.from(selectedConsumables).reduce((acc, id) => {
@@ -80,7 +100,6 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
         let shippingProviderCost = 0;
         let shippingCustomerPrice = 0;
         
-        // CORRECTION : On ne calcule les frais de port que si un carton est sélectionné ET que le poids est positif.
         if (totalWeight > 0 && selectedBox) {
              const applicableRate = shippingRates
                 .filter(rate => rate.service === shippingService)
@@ -88,7 +107,8 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
                 .find(rate => totalWeight <= rate.maxWeight);
             if (applicableRate) {
                 shippingProviderCost = applicableRate.cost;
-                shippingCustomerPrice = applicableRate.price;
+                // On met le prix client à 0 si l'offre est activée
+                shippingCustomerPrice = isShippingFree ? 0 : applicableRate.price;
             }
         }
 
@@ -100,9 +120,9 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
         const totalCost = totalProductCost + totalProductPackagingCost + boxCost + consumablesCost + shippingProviderCost + transactionFees + businessCharges;
         const totalProfit = totalRevenue - totalCost;
 
-        return { totalRevenue, totalCost, totalProfit, totalWeight, shippingCustomerPrice, boxCost, consumablesCost, shippingProviderCost, transactionFees, businessCharges, totalProductCost, totalProductPackagingCost };
+        return { totalRevenue, totalCost, totalProfit, totalWeight, shippingCustomerPrice, boxCost, consumablesCost, shippingProviderCost, transactionFees, businessCharges, totalProductCost, totalProductPackagingCost, totalDiscount };
 
-    }, [simulatedItems, selectedBox, selectedConsumables, shippingService, shippingRates, shippingConsumables, tvaRate, feesRate, chargesRate]);
+    }, [simulatedItems, selectedBox, selectedConsumables, shippingService, shippingRates, shippingConsumables, tvaRate, feesRate, chargesRate, isShippingFree, isBundleOfferActive, bundleBuyQuantity, bundleGetQuantity]);
 
     return (
         <div className="bg-gray-800 p-6 rounded-2xl">
@@ -115,7 +135,7 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
                              {savedCalculations.map(calc => (
                                 <div key={calc.id} className="bg-gray-900/50 p-2 rounded-lg flex justify-between items-center">
                                     <span>{calc.productName}</span>
-                                    <button onClick={() => handleAddItem(calc)} className="p-1 text-green-400 hover:bg-gray-700 rounded-full"><PlusCircle size={20}/></button>
+                                    <button type="button" onClick={() => handleAddItem(calc)} className="p-1 text-green-400 hover:bg-gray-700 rounded-full"><PlusCircle size={20}/></button>
                                 </div>
                             ))}
                         </div>
@@ -127,7 +147,7 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
                                 <div key={item.id} className="bg-gray-900/50 p-2 rounded-lg flex items-center gap-2">
                                     <span className="flex-grow">{item.productName}</span>
                                     <input type="number" value={item.quantity} onChange={(e) => handleQuantityChange(item.id, e.target.value)} className="w-16 bg-gray-700 p-1 rounded text-center"/>
-                                    <button onClick={() => handleRemoveItem(item.id)} className="text-red-500 p-1"><Trash2 size={16}/></button>
+                                    <button type="button" onClick={() => handleRemoveItem(item.id)} className="text-red-500 p-1"><Trash2 size={16}/></button>
                                 </div>
                             )) : <p className="text-sm text-gray-500 text-center py-4">Le colis est vide.</p>}
                         </div>
@@ -157,16 +177,46 @@ const ShippingSimulator = ({ savedCalculations, shippingBoxes = [], shippingCons
                         </div>
                          <div className="flex gap-1 p-1 bg-gray-900 rounded-lg mt-4">
                             {['Locker', 'Point Relais', 'Domicile'].map(service => (
-                                <button key={service} onClick={() => setShippingService(service)} className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold ${shippingService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{service}</button>
+                                <button type="button" key={service} onClick={() => setShippingService(service)} className={`flex-1 px-3 py-1.5 rounded-md text-sm font-semibold ${shippingService === service ? 'bg-indigo-600' : 'hover:bg-gray-600'}`}>{service}</button>
                             ))}
                         </div>
                     </div>
+                     {/* --- NOUVELLE SECTION OFFRES COMMERCIALES --- */}
                     <div>
-                         <h4 className="font-semibold mb-2">4. Résultat de la simulation</h4>
+                        <h4 className="font-semibold mb-2">4. Offres Commerciales</h4>
+                        <div className="p-4 bg-gray-900/50 rounded-lg space-y-3">
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={isShippingFree} onChange={(e) => setIsShippingFree(e.target.checked)} className="bg-gray-600 rounded w-5 h-5" />
+                                <span>Frais de port offerts au client</span>
+                            </label>
+                            <hr className="border-gray-700/50" />
+                            <label className="flex items-center gap-3 cursor-pointer">
+                                <input type="checkbox" checked={isBundleOfferActive} onChange={(e) => setIsBundleOfferActive(e.target.checked)} className="bg-gray-600 rounded w-5 h-5" />
+                                <span>Activer l'offre produit</span>
+                            </label>
+                            {isBundleOfferActive && (
+                                <div className="pl-8 flex items-center gap-3 animate-fade-in">
+                                    <p>Pour</p>
+                                    <input type="number" value={bundleBuyQuantity} onChange={e => setBundleBuyQuantity(parseInt(e.target.value) || 0)} className="w-16 bg-gray-700 p-1 rounded text-center"/>
+                                    <p>achetés,</p>
+                                    <input type="number" value={bundleGetQuantity} onChange={e => setBundleGetQuantity(parseInt(e.target.value) || 0)} className="w-16 bg-gray-700 p-1 rounded text-center"/>
+                                    <p>offert(s)</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div>
+                         <h4 className="font-semibold mb-2">5. Résultat de la simulation</h4>
                          <div className="p-4 bg-gray-900/50 rounded-lg space-y-2 text-sm">
                             <div className="flex justify-between items-center"><span className="text-gray-400 flex items-center gap-2"><Weight size={16}/> Poids Total du Colis</span><span className="font-bold">{calculationResults.totalWeight.toFixed(0)} g</span></div>
                             <hr className="border-gray-700"/>
-                            <div className="flex justify-between items-center"><span>Total Produits TTC</span><span>{formatPrice(calculationResults.totalRevenue - calculationResults.shippingCustomerPrice)}</span></div>
+                            <div className="flex justify-between items-center"><span>Total Produits TTC</span><span>{formatPrice(calculationResults.totalRevenue - calculationResults.shippingCustomerPrice + calculationResults.totalDiscount)}</span></div>
+                            {calculationResults.totalDiscount > 0 && (
+                                <div className="flex justify-between items-center text-orange-400">
+                                    <span>- Remise article(s) offert(s)</span>
+                                    <span>- {formatPrice(calculationResults.totalDiscount)}</span>
+                                </div>
+                            )}
                             <div className="flex justify-between items-center"><span>Expédition (facturée client)</span><span>{formatPrice(calculationResults.shippingCustomerPrice)}</span></div>
                             <div className="flex justify-between items-center font-bold text-base border-t border-gray-700 pt-2"><span>Total Facturé Client</span><span>{formatPrice(calculationResults.totalRevenue)}</span></div>
                             
